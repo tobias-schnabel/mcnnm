@@ -157,3 +157,43 @@ def compute_H(Y: Array, L: Array, gamma: Optional[Array] = None, delta: Optional
     H = jnp.linalg.lstsq(X, Y_adjusted)[0]
 
     return H
+
+
+def compute_L(
+    Y: Array, O: Array, lambda_L: float, gamma: Optional[Array] = None, delta: Optional[Array] = None,
+    beta: Optional[Array] = None, H: Optional[Array] = None, X: Optional[Array] = None,
+    Omega_inv: Optional[Array] = None, max_iter: int = 1000, tol: float = 1e-4
+) -> Array:
+    """
+    Computes the low-rank matrix L using the iterative algorithm (Equation 10).
+
+    Args:
+        ...
+        Omega_inv: The inverse of the autocorrelation matrix. If None, no autocorrelation is assumed.
+        ...
+
+    Returns:
+        The low-rank matrix L.
+    """
+    N, T = Y.shape
+    if gamma is None:
+        gamma = jnp.zeros(N)
+    if delta is None:
+        delta = jnp.zeros(T)
+    if beta is None:
+        beta = jnp.zeros((N, T))
+    if H is None or X is None:
+        H = jnp.zeros((N + Y.shape[1], T + Y.shape[0]))
+        X = jnp.zeros((N, T))
+    if Omega_inv is None:
+        Omega_inv = jnp.eye(T)
+
+    L = jnp.zeros_like(Y)
+    for _ in range(max_iter):
+        Y_adj = Y - jnp.outer(gamma, jnp.ones(T)) - jnp.outer(jnp.ones(N), delta) - beta - jnp.dot(X, H)
+        L_new = shrink_lambda(P_O(jnp.dot(Y_adj, Omega_inv), O) + P_perp_O(L, O), lambda_L / jnp.sqrt(jnp.sum(O)))
+        if jnp.linalg.norm(L_new - L, ord='fro') < tol:
+            break
+        L = L_new
+
+    return L
