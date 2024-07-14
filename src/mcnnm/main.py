@@ -61,7 +61,7 @@ def shrink_lambda(A: Array, lambda_: float) -> Array:
 
 
 def objective_function(
-        Y: Array, L: Array, Omega: Optional[Array] = None, gamma: Optional[Array] = None,
+        Y: Array, L: Array, Omega_inv: Optional[Array] = None, gamma: Optional[Array] = None,
         delta: Optional[Array] = None, beta: Optional[Array] = None, H: Optional[Array] = None,
         X: Optional[Array] = None
 ) -> float:
@@ -71,7 +71,7 @@ def objective_function(
     Args:
         Y: The observed outcome matrix.
         L: The low-rank matrix.
-        Omega: The autocorrelation matrix. If None, no autocorrelation is assumed.
+        Omega_inv: The autocorrelation matrix. If None, no autocorrelation is assumed.
         gamma: The unit fixed effects vector. If None, unit fixed effects are not included.
         delta: The time fixed effects vector. If None, time fixed effects are not included.
         beta: The coefficient vector for the covariates. If None, unit-time specific covariates are not included.
@@ -91,10 +91,9 @@ def objective_function(
     if H is None or X is None:
         H = jnp.zeros((N + Y.shape[1], T + Y.shape[0]))
         X = jnp.zeros((N, T))
-    if Omega is None:
+    if Omega_inv is None:
         Omega_inv = jnp.eye(T)
-    else:
-        Omega_inv = jnp.linalg.inv(Omega)
+
 
     residual = Y - L - jnp.outer(gamma, jnp.ones(T)) - jnp.outer(jnp.ones(N), delta) - beta - jnp.dot(X, H)
     return jnp.sum(jnp.dot(residual, Omega_inv) * residual) / (N * T)
@@ -192,7 +191,7 @@ def compute_L(
     L = jnp.zeros_like(Y)
     for _ in range(max_iter):
         Y_adj = Y - jnp.outer(gamma, jnp.ones(T)) - jnp.outer(jnp.ones(N), delta) - beta - jnp.dot(X, H)
-        L_new = shrink_lambda(P_O(jnp.dot(Y_adj, Omega_inv), O) + P_perp_O(L, O), lambda_L / jnp.sqrt(jnp.sum(O)))
+        L_new = shrink_lambda(p_o(jnp.dot(Y_adj, Omega_inv), O) + p_perp_o(L, O), lambda_L / jnp.sqrt(jnp.sum(O)))
         if jnp.linalg.norm(L_new - L, ord='fro') < tol:
             break
         L = L_new
