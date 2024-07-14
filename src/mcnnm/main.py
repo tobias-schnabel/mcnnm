@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-from typing import Optional
+from typing import Optional, Tuple
 from src.mcnnm import Array
 from util import *
 
@@ -258,3 +258,83 @@ def cross_validation(
                 best_loss = loss
 
     return best_lambda_L, best_lambda_H
+
+
+def compute_treatment_effect(Y: Array, L: Array, gamma: Array, delta: Array, beta: Array, H: Array, X: Array, W: Array) -> float:
+    """
+    Computes the average treatment effect (tau) for the treated units.
+
+    Args:
+        Y: The observed outcome matrix.
+        L: The completed low-rank matrix.
+        gamma: The unit fixed effects vector.
+        delta: The time fixed effects vector.
+        beta: The coefficient vector for the covariates.
+        H: The coefficient matrix for the covariates.
+        X: The matrix of unit and time specific covariates.
+        W: The binary treatment matrix.
+
+    Returns:
+        The average treatment effect (tau) for the treated units.
+    """
+    N, T = Y.shape
+    Y_completed = L + jnp.outer(gamma, jnp.ones(T)) + jnp.outer(jnp.ones(N), delta) + beta + jnp.dot(X, H)
+    treated_units = jnp.sum(W)
+    tau = jnp.sum((Y - Y_completed) * W) / treated_units
+    return tau
+
+def fit(
+    Y: Array, W: Array, X: Optional[Array] = None, Omega: Optional[Array] = None,
+    lambda_L: Optional[float] = None, lambda_H: Optional[float] = None,
+    return_tau: bool = True, return_lambda: bool = True,
+    return_completed_L: bool = True, return_completed_Y: bool = True,
+    max_iter: int = 1000, tol: float = 1e-4
+) -> Tuple:
+    """
+    Estimates the MC-NNM model and returns the selected outputs.
+
+    Args:
+        Y: The observed outcome matrix.
+        W: The binary treatment matrix.
+        X: The matrix of unit and time specific covariates. If None, covariates are not included.
+        Omega: The autocorrelation matrix. If None, no autocorrelation is assumed.
+        lambda_L: The regularization parameter for the nuclear norm of L. If None, it is selected via cross-validation.
+        lambda_H: The regularization parameter for the element-wise L1 norm of H. If None, it is selected via cross-validation.
+        return_tau: Whether to return the average treatment effect (tau) for the treated units.
+        return_lambda: Whether to return the optimal regularization parameter lambda_L.
+        return_completed_L: Whether to return the completed low-rank matrix L.
+        return_completed_Y: Whether to return the completed outcome matrix Y.
+        max_iter: The maximum number of iterations for the algorithm.
+        tol: The tolerance for the convergence of the algorithm.
+
+    Returns:
+        A tuple containing the selected outputs (tau, lambda_L, completed L, completed Y).
+    """
+    N, T = Y.shape
+    if X is None:
+        X = jnp.zeros((N, T))
+    if Omega is None:
+        Omega = jnp.eye(T)
+
+    if lambda_L is None or lambda_H is None:
+        lambda_L, lambda_H = cross_validation(Y, W, X, Omega=Omega)
+
+    O = (W == 0)
+    L = compute_L(Y, O, lambda_L, X=X, Omega_inv=jnp.linalg.inv(Omega), max_iter=max_iter, tol=tol)
+    gamma, delta = compute_fixed_effects(Y, L, X=X)
+    H = compute_H(Y, L, gamma, delta, X=X)
+    beta = jnp.zeros_like(Y)
+
+    results = []
+    if return_tau:
+        tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W)
+        results.append(tau)
+    if return_lambda:
+        results.append(lambda_L)
+    if return_completed_L:
+        results.append(L)
+    if return_completed_Y:
+        Y_completed = L + jnp.outer(gamma, jnp.ones(T)) + jnp.outer(jnp.ones(N), delta) + beta + jnp.dot(X, H)
+        results.append(Y_completed)
+
+    return tuple(results)
