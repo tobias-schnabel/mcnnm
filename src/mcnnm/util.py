@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 from jax.numpy.linalg import norm
 from src.mcnnm import Array
+import time
 
 
 def frobenius_norm(A: Array) -> float:
@@ -77,3 +78,46 @@ def propose_lambda(proposed_lambda: Optional[float] = None, n_lambdas: int = 10)
         log_min = log_proposed_lambda - 2
         log_max = log_proposed_lambda + 2
         return jnp.logspace(log_min, log_max, n_lambdas)
+
+
+def timer(func):
+    """
+    A decorator that times the execution of a function.
+
+    Args:
+        func: The function to be timed.
+
+    Returns:
+        The decorated function that prints the execution time.
+    """
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        execution_time = end_time - start_time
+        print(f"Execution time of {func.__name__}: {execution_time:.5f} seconds")
+        return result
+    return wrapper
+
+def time_fit(Y: Array, W: Array, X: Optional[Array] = None, Omega: Optional[Array] = None,
+             lambda_L: Optional[float] = None, lambda_H: Optional[float] = None,
+             return_tau: bool = True, return_lambda: bool = True,
+             return_completed_L: bool = True, return_completed_Y: bool = True,
+             max_iter: int = 1000, tol: float = 1e-4):
+    """
+    Times the execution of the fit function.
+
+    Args:
+        Same as the fit function.
+
+    Returns:
+        The result of the fit function.
+    """
+    @timer
+    def timed_fit(Y, W, X, Omega, lambda_L, lambda_H, return_tau, return_lambda,
+                  return_completed_L, return_completed_Y, max_iter, tol):
+        return fit(Y, W, X, Omega, lambda_L, lambda_H, return_tau, return_lambda,
+                   return_completed_L, return_completed_Y, max_iter, tol)
+
+    return timed_fit(Y, W, X, Omega, lambda_L, lambda_H, return_tau, return_lambda,
+                     return_completed_L, return_completed_Y, max_iter, tol)
