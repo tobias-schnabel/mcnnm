@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from jax.numpy.linalg import norm
 from typing import Union
 
-Array = Union[jnp.ndarray, jnp.DeviceArray]  # Define a type alias for array-like objects
+Array = Union[jnp.ndarray, jnp.Array]  # Define a type alias for array-like objects
 
 def frobenius_norm(A: Array) -> float:
     """

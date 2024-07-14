@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 from typing import Union
 
-Array = Union[jnp.ndarray, jnp.DeviceArray]
+Array = Union[jnp.ndarray, jnp.Array]
 
 def P_O(A: Array, O: Array) -> Array:
     """
