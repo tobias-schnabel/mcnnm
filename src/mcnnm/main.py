@@ -1,8 +1,7 @@
 import jax
 import jax.numpy as jnp
-from typing import Optional, Union
-
-Array = Union[jnp.ndarray, jnp.Array]
+from typing import Optional
+from src.mcnnm import Array
 
 
 def p_o(A: Array, mask: Array) -> Array:
@@ -127,3 +126,34 @@ def compute_fixed_effects(Y: Array, L: Array, beta: Optional[Array] = None, H: O
     delta = jnp.mean(Y_adjusted - jnp.outer(gamma, jnp.ones(T)), axis=0)
 
     return gamma, delta
+
+
+def compute_H(Y: Array, L: Array, gamma: Optional[Array] = None, delta: Optional[Array] = None, beta: Optional[Array] = None, X: Optional[Array] = None) -> Array:
+    """
+    Computes the coefficient matrix H for the unit and time specific covariates (Section 8.1).
+
+    Args:
+        Y: The observed outcome matrix.
+        L: The low-rank matrix.
+        gamma: The unit fixed effects vector. If None, unit fixed effects are not included.
+        delta: The time fixed effects vector. If None, time fixed effects are not included.
+        beta: The coefficient vector for the unit-time specific covariates. If None, unit-time specific covariates are not included.
+        X: The matrix of unit and time specific covariates. If None, unit and time specific covariates are not included.
+
+    Returns:
+        The coefficient matrix H.
+    """
+    N, T = Y.shape
+    if gamma is None:
+        gamma = jnp.zeros(N)
+    if delta is None:
+        delta = jnp.zeros(T)
+    if beta is None:
+        beta = jnp.zeros((N, T))
+    if X is None:
+        X = jnp.zeros((N, T))
+
+    Y_adjusted = Y - L - jnp.outer(gamma, jnp.ones(T)) - jnp.outer(jnp.ones(N), delta) - beta
+    H = jnp.linalg.lstsq(X, Y_adjusted)[0]
+
+    return H
