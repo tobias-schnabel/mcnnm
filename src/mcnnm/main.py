@@ -40,3 +40,21 @@ def P_perp_O(A: Array, O: Array) -> Array:
     if A.shape != O.shape:
         raise ValueError("Shapes of A and O must match.")
     return jnp.where(O, jnp.zeros_like(A), A)
+
+
+
+@jax.jit
+def shrink_lambda(A: Array, lambda_: float) -> Array:
+    """
+    Applies the soft-thresholding operator to the singular values of a matrix A.
+
+    Args:
+        A: The input matrix.
+        lambda_: The shrinkage parameter.
+
+    Returns:
+        The matrix with soft-thresholded singular values.
+    """
+    U, s, Vt = jnp.linalg.svd(A, full_matrices=False)
+    s_shrunk = jnp.maximum(s - lambda_, 0)
+    return jnp.dot(U * s_shrunk, Vt)
