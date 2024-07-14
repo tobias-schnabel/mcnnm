@@ -197,3 +197,64 @@ def compute_L(
         L = L_new
 
     return L
+
+
+def cross_validation(
+    Y: Array, W: Array, X: Optional[Array] = None, proposed_lambda_L: Optional[float] = None,
+    proposed_lambda_H: Optional[float] = None, n_lambdas: int = 10, Omega: Optional[Array] = None, K: int = 5
+) -> tuple:
+    """
+    Performs K-fold cross-validation to select the best regularization parameters lambda_L and lambda_H (Section 4.3).
+
+    Args:
+        Y: The observed outcome matrix.
+        W: The binary treatment matrix.
+        X: The matrix of unit and time specific covariates. If None, unit and time specific covariates are not included.
+        proposed_lambda_L: The proposed lambda_L value. If None, the default sequence is used.
+        proposed_lambda_H: The proposed lambda_H value. If None, the default sequence is used.
+        n_lambdas: The number of lambda values to generate.
+        Omega: The autocorrelation matrix. If None, no autocorrelation is assumed.
+        K: The number of folds for cross-validation.
+
+    Returns:
+        A tuple containing the best values of lambda_L and lambda_H.
+    """
+    N, T = Y.shape
+    if X is None:
+        X = jnp.zeros((N, T))
+    if Omega is None:
+        Omega = jnp.eye(T)
+
+    lambda_L_seq = propose_lambda(proposed_lambda_L, n_lambdas)
+    lambda_H_seq = propose_lambda(proposed_lambda_H, n_lambdas)
+
+    best_lambda_L = None
+    best_lambda_H = None
+    best_loss = jnp.inf
+
+    for lambda_L in lambda_L_seq:
+        for lambda_H in lambda_H_seq:
+            loss = 0.0
+            for k in range(K):
+                mask = jnp.arange(N) % K == k
+                Y_train, Y_test = Y[~mask], Y[mask]
+                W_train, W_test = W[~mask], W[mask]
+                X_train, X_test = X[~mask], X[mask]
+
+                O_train = (W_train == 0)
+                L_train = compute_L(Y_train, O_train, lambda_L, X=X_train, Omega_inv=jnp.linalg.inv(Omega))
+                gamma_train, delta_train = compute_fixed_effects(Y_train, L_train, X=X_train)
+                H_train = compute_H(Y_train, L_train, gamma_train, delta_train, X=X_train)
+                beta_train = jnp.zeros_like(Y_train)
+
+                O_test = (W_test == 0)
+                Y_pred = L_train[mask] + jnp.outer(gamma_train[mask], jnp.ones(T)) + jnp.outer(jnp.ones(jnp.sum(mask)), delta_train) + beta_train[mask] + jnp.dot(X_test, H_train)
+                loss += jnp.sum((Y_test - Y_pred)**2 * O_test) / jnp.sum(O_test)
+
+            loss /= K
+            if loss < best_loss:
+                best_lambda_L = lambda_L
+                best_lambda_H = lambda_H
+                best_loss = loss
+
+    return best_lambda_L, best_lambda_H
