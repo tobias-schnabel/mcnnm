@@ -1,8 +1,10 @@
 import jax
 import jax.numpy as jnp
 from jax.numpy.linalg import norm
-from src.mcnnm import Array
+from . import Array
+from typing import Optional
 import time
+from .main import fit
 
 
 def frobenius_norm(A: Array) -> float:

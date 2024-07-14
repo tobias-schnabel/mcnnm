@@ -1,8 +1,8 @@
 import jax
 import jax.numpy as jnp
 from typing import Optional, Tuple
-from src.mcnnm import Array
-from util import *
+from . import Array
+from mcnnm.util import *
 
 
 def p_o(A: Array, mask: Array) -> Array:
