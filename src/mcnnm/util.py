@@ -57,3 +57,23 @@ def element_wise_l1_norm(A: Array) -> float:
     if A.ndim != 2:
         raise ValueError("Input must be a 2D array.")
     return jnp.sum(jnp.abs(A))
+
+
+def propose_lambda(proposed_lambda: Optional[float] = None, n_lambdas: int = 10) -> Array:
+    """
+    Creates a log-spaced list of proposed lambda values around a given value.
+
+    Args:
+        proposed_lambda: The proposed lambda value. If None, the default sequence is used.
+        n_lambdas: The number of lambda values to generate.
+
+    Returns:
+        The sequence of proposed lambda values.
+    """
+    if proposed_lambda is None:
+        return jnp.logspace(-3, 1, n_lambdas)
+    else:
+        log_proposed_lambda = jnp.log10(proposed_lambda)
+        log_min = log_proposed_lambda - 2
+        log_max = log_proposed_lambda + 2
+        return jnp.logspace(log_min, log_max, n_lambdas)

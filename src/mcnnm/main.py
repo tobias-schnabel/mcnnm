@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 from typing import Optional
 from src.mcnnm import Array
+from util import *
 
 
 def p_o(A: Array, mask: Array) -> Array:
