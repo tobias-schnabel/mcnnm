@@ -1,6 +1,5 @@
 import jax
 import jax.numpy as jnp
-from jax.numpy import typing as jnpt
 from typing import Optional, Tuple
 from . import Array
 from mcnnm.util import *
@@ -190,8 +189,9 @@ def compute_H(Y: Array, L: Array, gamma: Array, delta: Array, beta: Optional[Arr
 
 
 def cross_validation(
-        Y: Array, W: Array, X: Optional[Array] = None, proposed_lambda_L: Optional[float] = None,
-        proposed_lambda_H: Optional[float] = None, n_lambdas: int = 10, Omega: Optional[Array] = None, K: int = 5
+        Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] = None, V: Optional[Array] = None,
+        proposed_lambda_L: Optional[float] = None, proposed_lambda_H: Optional[float] = None,
+        n_lambdas: int = 10, Omega: Optional[Array] = None, K: int = 5
 ) -> tuple:
     """
     Performs K-fold cross-validation to select the best regularization parameters lambda_L and lambda_H.
@@ -199,7 +199,9 @@ def cross_validation(
     Args:
         Y: The observed outcome matrix of shape (N, T).
         W: The binary treatment matrix of shape (N, T).
-        X: The matrix of unit and time specific covariates. Can be 2D (N, T) or 3D (N, T, P). If None, covariates are not included.
+        X: The unit-specific covariates matrix of shape (N, P). If None, unit-specific covariates are not included.
+        Z: The time-specific covariates matrix of shape (T, Q). If None, time-specific covariates are not included.
+        V: The unit-time specific covariates tensor of shape (N, T, J). If None, unit-time specific covariates are not included.
         proposed_lambda_L: The proposed lambda_L value. If None, a default sequence is generated.
         proposed_lambda_H: The proposed lambda_H value. If None, a default sequence is generated.
         n_lambdas: The number of lambda values to generate if proposed values are None.
@@ -211,7 +213,11 @@ def cross_validation(
     """
     N, T = Y.shape
     if X is None:
-        X = jnp.zeros((N, T))
+        X = jnp.zeros((N, 0))
+    if Z is None:
+        Z = jnp.zeros((T, 0))
+    if V is None:
+        V = jnp.zeros((N, T, 0))
     if Omega is None:
         Omega = jnp.eye(T)
 
@@ -230,27 +236,35 @@ def cross_validation(
                 Y_train, Y_test = Y[~mask], Y[mask]
                 W_train, W_test = W[~mask], W[mask]
                 X_train, X_test = X[~mask], X[mask] if X is not None else (None, None)
+                Z_train, Z_test = Z[~mask], Z[mask] if Z is not None else (None, None)
+                V_train, V_test = V[~mask], V[mask] if V is not None else (None, None)
 
                 O_train = (W_train == 0)
-                L_train = compute_L(Y_train, O_train, lambda_L, X=X_train, Omega_inv=jnp.linalg.inv(Omega))
-                H_train = compute_H(Y_train, L_train, jnp.zeros(Y_train.shape[0]), jnp.zeros(Y_train.shape[1]),
-                                    X=X_train)
-                gamma_train, delta_train = compute_fixed_effects(Y_train, L_train, X=X_train, H=H_train)
-                beta_train = jnp.zeros_like(Y_train)
+                gamma_train, delta_train = compute_fixed_effects(Y_train, jnp.zeros_like(Y_train),
+                                                                 X=X_train, Z=Z_train, V=V_train)
+                H_train = compute_H(Y_train, jnp.zeros_like(Y_train), gamma_train, delta_train,
+                                    X=X_train, Z=Z_train, V=V_train)
+                beta_train = jnp.zeros(V_train.shape[2]) if V is not None else jnp.zeros(0)
+                L_train = compute_L(Y_train, O_train, lambda_L, gamma=gamma_train, delta=delta_train,
+                                    beta=beta_train, H=H_train, X=X_train, Z=Z_train, V=V_train,
+                                    Omega_inv=jnp.linalg.inv(Omega))
 
                 O_test = (W_test == 0)
-                if X_test is not None:
-                    if X_test.ndim == 3:
-                        X_dot_H = jnp.einsum('ijp,pt->ijt', X_test, H_train)
-                    else:
-                        X_dot_H = jnp.dot(X_test, H_train)
+                if X_test is not None and Z_test is not None:
+                    X_tilde_test = jnp.hstack((X_test, jnp.eye(jnp.sum(mask))))
+                    Z_tilde_test = jnp.hstack((Z_test, jnp.eye(T)))
+                    X_dot_H = jnp.dot(X_tilde_test, jnp.dot(H_train, Z_tilde_test.T))
                 else:
-                    X_dot_H = jnp.zeros_like(Y_test)
+                    X_dot_H = jnp.zeros((jnp.sum(mask), T))
+                if V_test is not None:
+                    V_dot_beta = jnp.sum(V_test * beta_train, axis=2)
+                else:
+                    V_dot_beta = jnp.zeros((jnp.sum(mask), T))
 
                 Y_pred = (L_train[mask] +
                           jnp.outer(gamma_train[mask], jnp.ones(T)) +
                           jnp.outer(jnp.ones(jnp.sum(mask)), delta_train) +
-                          beta_train[mask] + X_dot_H)
+                          V_dot_beta + X_dot_H)
                 loss += jnp.sum((Y_test - Y_pred) ** 2 * O_test) / jnp.sum(O_test)
 
             loss /= K
@@ -262,7 +276,9 @@ def cross_validation(
     return best_lambda_L, best_lambda_H
 
 
-def compute_treatment_effect(Y: Array, L: Array, gamma: Array, delta: Array, beta: Array, H: Array, X: Array, W: Array) -> float:
+def compute_treatment_effect(Y: Array, L: Array, gamma: Array, delta: Array, beta: Array, H: Array,
+                             X: Array, W: Array) -> float:
+    ...
     """
     Computes the average treatment effect (tau) for the treated units.
 
@@ -286,8 +302,8 @@ def compute_treatment_effect(Y: Array, L: Array, gamma: Array, delta: Array, bet
     return tau
 
 def fit(
-    Y: Array, W: Array, X: Optional[Array] = None, Omega: Optional[Array] = None,
-    lambda_L: Optional[float] = None, lambda_H: Optional[float] = None,
+    Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] = None, V: Optional[Array] = None,
+    Omega: Optional[Array] = None, lambda_L: Optional[float] = None, lambda_H: Optional[float] = None,
     return_tau: bool = True, return_lambda: bool = True,
     return_completed_L: bool = True, return_completed_Y: bool = True,
     max_iter: int = 1000, tol: float = 1e-4
@@ -319,13 +335,14 @@ def fit(
         Omega = jnp.eye(T)
 
     if lambda_L is None or lambda_H is None:
-        lambda_L, lambda_H = cross_validation(Y, W, X, Omega=Omega)
+        lambda_L, lambda_H = cross_validation(Y, W, X=X, Z=Z, V=V, Omega=Omega)
 
     O = (W == 0)
-    L = compute_L(Y, O, lambda_L, X=X, Omega_inv=jnp.linalg.inv(Omega), max_iter=max_iter, tol=tol)
-    gamma, delta = compute_fixed_effects(Y, L, X=X)
-    H = compute_H(Y, L, gamma, delta, X=X)
-    beta = jnp.zeros_like(Y)
+    gamma, delta = compute_fixed_effects(Y, jnp.zeros_like(Y), X=X, Z=Z, V=V)
+    beta = jnp.zeros(V.shape[2]) if V is not None else jnp.zeros(0)
+    H = compute_H(Y, jnp.zeros_like(Y), gamma, delta, beta=beta, X=X, Z=Z, V=V)
+    L = compute_L(Y, O, lambda_L, gamma=gamma, delta=delta, beta=beta, H=H, X=X, Z=Z, V=V,
+                  Omega_inv=jnp.linalg.inv(Omega), max_iter=max_iter, tol=tol)
 
     results = []
     if return_tau:

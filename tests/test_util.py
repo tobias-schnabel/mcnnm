@@ -31,5 +31,8 @@ def test_timer():
 def test_time_fit():
     Y = jnp.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
     W = jnp.array([[0, 0, 1], [0, 0, 0], [0, 0, 0]])
-    result = time_fit(Y, W)
+    X = jnp.zeros((3, 2))
+    Z = jnp.zeros((3, 1))
+    V = jnp.zeros((3, 3, 1))
+    result = time_fit(Y, W, X=X, Z=Z, V=V)
     assert isinstance(result, tuple)
