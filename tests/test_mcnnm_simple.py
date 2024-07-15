@@ -1,80 +1,163 @@
+import numpy as np
+import pandas as pd
 import jax.numpy as jnp
 from jax import random
-import pandas as pd
-import numpy as np
+from typing import Optional, Tuple, Dict
 from mcnnm.main import fit
 
-def generate_data(nobs=500, nperiods=100, nobsgroups=50, treated_period=20):
-    key = random.PRNGKey(0)
+def generate_data(
+    nobs: int = 500,
+    nperiods: int = 100,
+    treated_period: int = 50,
+    include_unit_fe: bool = True,
+    include_time_fe: bool = True,
+    include_unit_covariates: bool = True,
+    include_time_covariates: bool = True,
+    include_unit_time_covariates: bool = True,
+    treatment_effect: float = 5.0,
+    noise_std: float = 0.2,
+    seed: Optional[int] = None
+) -> Tuple[pd.DataFrame, Dict]:
+    """
+    Generate synthetic data for testing the MC-NNM model.
 
-    # Generate unit data
-    unit_key, group_key, fe_key = random.split(key, 3)
-    unit = pd.DataFrame({
-        'unit': range(1, nobs + 1),
-        'obsgroup': random.choice(group_key, nobsgroups, shape=(nobs,)) + 1,
-        'unit_fe': random.normal(fe_key, shape=(nobs,)) * 0.5
-    })
+    Args:
+        nobs: Number of observations (units).
+        nperiods: Number of time periods.
+        treated_period: The period when treatment starts.
+        include_unit_fe: Whether to include unit fixed effects.
+        include_time_fe: Whether to include time fixed effects.
+        include_unit_covariates: Whether to include unit-specific covariates.
+        include_time_covariates: Whether to include time-specific covariates.
+        include_unit_time_covariates: Whether to include unit-time specific covariates.
+        treatment_effect: The true treatment effect.
+        noise_std: Standard deviation of the noise.
+        seed: Random seed for reproducibility.
 
-    # Assign treatment status
-    shuffled_groups = np.random.permutation(unit['obsgroup'].unique())
-    half = len(shuffled_groups) // 2
-    unit['group'] = np.where(unit['obsgroup'].isin(shuffled_groups[:half]), treated_period, nperiods + 1)
-    unit['evertreated'] = np.where(unit['group'] == treated_period, 1, 0)
-    unit['avg_te'] = np.where(unit['group'] == treated_period, 1, 0)
-    unit['te'] = unit['avg_te'] + random.normal(random.PRNGKey(1), shape=(nobs,)) * 0.2
+    Returns:
+        A tuple containing:
+        - pandas DataFrame with the generated data
+        - Dictionary with true parameter values
+    """
+    if seed is not None:
+        np.random.seed(seed)
 
-    # Generate period data
-    period_key = random.PRNGKey(2)
-    period = pd.DataFrame({
-        'period': range(1, nperiods + 1),
-        'period_fe': random.normal(period_key, shape=(nperiods,)) * 0.5
-    })
+    # Generate basic structure
+    unit = np.arange(1, nobs + 1)
+    period = np.arange(1, nperiods + 1)
+    data = pd.DataFrame([(u, t) for u in unit for t in period], columns=['unit', 'period'])
 
-    # Combine unit and period data
-    data = unit.merge(period, how='cross')
-    data['error'] = random.normal(random.PRNGKey(3), shape=(len(data),)) * 0.5
-    data['treat'] = np.where((data['evertreated'] == 1) & (data['period'] > treated_period), 1, 0)
-    data['t_eff'] = np.where(data['treat'] == 1, data['te'], 0)
-    data['y'] = data['unit_fe'] + data['period_fe'] + data['t_eff'] + data['error']
-    data['group'] = np.where(data['group'] == nperiods + 1, 0, data['group'])
+    # Initialize outcome
+    data['y'] = 0.0
 
-    return data
+    # Generate and add fixed effects
+    true_params = {}
+    if include_unit_fe:
+        unit_fe = np.random.normal(0, 1, nobs)
+        data['y'] += np.repeat(unit_fe, nperiods)
+        true_params['unit_fe'] = unit_fe
 
-def test_mcnnm_simple():
-    # Generate data
-    data = generate_data()
+    if include_time_fe:
+        time_fe = np.random.normal(0, 1, nperiods)
+        data['y'] += np.tile(time_fe, nobs)
+        true_params['time_fe'] = time_fe
 
-    # Prepare inputs for MCNNM
+    # Generate and add covariates
+    if include_unit_covariates:
+        X = np.random.normal(0, 1, (nobs, 2))  # 2 unit-specific covariates
+        X_coef = np.array([0.5, -0.5])
+        data['y'] += np.repeat(X.dot(X_coef), nperiods)
+        true_params['X'] = X
+        true_params['X_coef'] = X_coef
+
+    if include_time_covariates:
+        Z = np.random.normal(0, 1, (nperiods, 2))  # 2 time-specific covariates
+        Z_coef = np.array([0.3, -0.3])
+        data['y'] += np.tile(Z.dot(Z_coef), nobs)
+        true_params['Z'] = Z
+        true_params['Z_coef'] = Z_coef
+
+    if include_unit_time_covariates:
+        V = np.random.normal(0, 1, (nobs, nperiods, 2))  # 2 unit-time specific covariates
+        V_coef = np.array([0.2, -0.2])
+        data['y'] += V.reshape(-1, 2).dot(V_coef)
+        true_params['V'] = V
+        true_params['V_coef'] = V_coef
+
+    # Add treatment
+    data['treat'] = (data['period'] > treated_period).astype(int)
+    data['y'] += data['treat'] * treatment_effect
+    true_params['treatment_effect'] = treatment_effect
+
+    # Add noise
+    data['y'] += np.random.normal(0, noise_std, nobs * nperiods)
+    true_params['noise_std'] = noise_std
+
+    print(f"Proportion of treated observations: {data['treat'].mean()}")
+
+    return data, true_params
+
+def test_mcnnm_accuracy():
+    nobs, nperiods = 500, 100
+    data, true_params = generate_data(nobs=nobs, nperiods=nperiods, seed=42)
+
     Y = data.pivot(index='unit', columns='period', values='y').values
     W = data.pivot(index='unit', columns='period', values='treat').values
 
-    # Set lambda values
-    lambda_L = 0.1
-    lambda_H = 0.1
+    # Prepare covariates if they exist in the data
+    X = true_params.get('X')
+    Z = true_params.get('Z')
+    V = true_params.get('V')
 
-    # Fit MCNNM
-    results = fit(Y, W, lambda_L=lambda_L, lambda_H=lambda_H)
+    print(f"Proportion of treated observations: {W.mean()}")
+    print(f"Mean of Y: {np.mean(Y)}")
+    print(f"Std of Y: {np.std(Y)}")
 
-    # Check results
-    assert len(results) == 4, "Expected 4 return values from fit function"
-    tau, lambda_L_out, L, Y_completed = results
+    # Use fit function with cross-validation
+    results = fit(Y, W, X=X, Z=Z, V=V, return_fixed_effects=True, return_covariate_coefficients=True)
+    tau, lambda_L, L, Y_completed, gamma, delta, beta, H = results
 
-    print("tau:", tau)
-    print("lambda_L:", lambda_L_out)
-    print("L shape:", L.shape)
-    print("Y_completed shape:", Y_completed.shape)
+    # Check treatment effect
+    print(f"True effect: {true_params['treatment_effect']}, Estimated effect: {tau}")
+    print(f"Chosen lambda_L: {lambda_L}")
 
-    assert isinstance(tau, (float, jnp.ndarray)), f"tau should be a float or JAX array, got {type(tau)}"
-    if isinstance(tau, jnp.ndarray):
-        assert tau.shape == (), f"tau should be a scalar, got shape {tau.shape}"
-    assert isinstance(lambda_L_out, (float, jnp.ndarray)), f"lambda_L should be a float or JAX array, got {type(lambda_L_out)}"
-    assert isinstance(L, jnp.ndarray), f"L should be a JAX array, got {type(L)}"
-    assert isinstance(Y_completed, jnp.ndarray), f"Y_completed should be a JAX array, got {type(Y_completed)}"
+    # Compare true and estimated fixed effects
+    if 'unit_fe' in true_params:
+        print(f"Unit fixed effects correlation: {np.corrcoef(gamma, true_params['unit_fe'])[0, 1]}")
+        print(f"True unit FE mean: {np.mean(true_params['unit_fe'])}, Estimated: {np.mean(gamma)}")
+        print(f"True unit FE std: {np.std(true_params['unit_fe'])}, Estimated: {np.std(gamma)}")
 
-    assert L.shape == Y.shape, f"L shape {L.shape} should match Y shape {Y.shape}"
-    assert Y_completed.shape == Y.shape, f"Y_completed shape {Y_completed.shape} should match Y shape {Y.shape}"
+    if 'time_fe' in true_params:
+        print(f"Time fixed effects correlation: {np.corrcoef(delta, true_params['time_fe'])[0, 1]}")
+        print(f"True time FE mean: {np.mean(true_params['time_fe'])}, Estimated: {np.mean(delta)}")
+        print(f"True time FE std: {np.std(true_params['time_fe'])}, Estimated: {np.std(delta)}")
 
-    print("All assertions passed!")
+    # Compare true and estimated covariate coefficients
+    if 'X_coef' in true_params:
+        estimated_X_coef = H[:X.shape[1], :Z.shape[1]]
+        print(f"True X coefficients: {true_params['X_coef']}, Estimated: {estimated_X_coef}")
+
+    if 'Z_coef' in true_params:
+        estimated_Z_coef = H[:X.shape[1], :Z.shape[1]].T
+        print(f"True Z coefficients: {true_params['Z_coef']}, Estimated: {estimated_Z_coef}")
+
+    if 'V_coef' in true_params:
+        print(f"True V coefficients: {true_params['V_coef']}, Estimated: {beta}")
+
+    # Check completed matrix
+    mse = np.mean((Y - Y_completed)**2)
+    print(f"Mean Squared Error of completed matrix: {mse}")
+
+    # Simple difference in means
+    treated_mean = np.mean(Y[W == 1])
+    control_mean = np.mean(Y[W == 0])
+    print(f"Simple diff-in-means estimate: {treated_mean - control_mean}")
+
+    assert np.allclose(tau, true_params['treatment_effect'], atol=1e-1), \
+        f"Estimated effect {tau} not close to true effect {true_params['treatment_effect']}"
+
+    print("All tests passed successfully!")
 
 if __name__ == "__main__":
-    test_mcnnm_simple()
+    test_mcnnm_accuracy()
+

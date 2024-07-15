@@ -118,14 +118,31 @@ def test_compute_treatment_effect(sample_data):
     tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W, Z, V)
     assert jnp.isfinite(tau)
 
+
 def test_fit(sample_data):
     Y, W, X, Z, V = sample_data
-    results = fit(Y, W, X=X, Z=Z, V=V)
-    assert len(results) == 4
-    tau, lambda_L, L, Y_completed = results
-    assert jnp.isfinite(tau)
-    assert jnp.isfinite(lambda_L)
-    assert L.shape == Y.shape
-    assert Y_completed.shape == Y.shape
-    assert jnp.all(jnp.isfinite(L))
-    assert jnp.all(jnp.isfinite(Y_completed))
+    results = fit(Y, W, X=X, Z=Z, V=V, return_fixed_effects=True, return_covariate_coefficients=True)
+
+    assert len(results) == 8, f"Expected 8 return values from fit function, got {len(results)}"
+    tau, lambda_L, L, Y_completed, gamma, delta, beta, H = results
+
+    assert isinstance(tau, (float, jnp.ndarray)), f"tau should be a float or JAX array, got {type(tau)}"
+    if isinstance(tau, jnp.ndarray):
+        assert tau.shape == (), f"tau should be a scalar, got shape {tau.shape}"
+    assert isinstance(lambda_L, (float, jnp.ndarray)), f"lambda_L should be a float or JAX array, got {type(lambda_L)}"
+    assert isinstance(L, jnp.ndarray), f"L should be a JAX array, got {type(L)}"
+    assert isinstance(Y_completed, jnp.ndarray), f"Y_completed should be a JAX array, got {type(Y_completed)}"
+    assert isinstance(gamma, jnp.ndarray), f"gamma should be a JAX array, got {type(gamma)}"
+    assert isinstance(delta, jnp.ndarray), f"delta should be a JAX array, got {type(delta)}"
+    assert isinstance(beta, jnp.ndarray), f"beta should be a JAX array, got {type(beta)}"
+    assert isinstance(H, jnp.ndarray), f"H should be a JAX array, got {type(H)}"
+
+    assert L.shape == Y.shape, f"L shape {L.shape} should match Y shape {Y.shape}"
+    assert Y_completed.shape == Y.shape, f"Y_completed shape {Y_completed.shape} should match Y shape {Y.shape}"
+    assert gamma.shape == (Y.shape[0],), f"gamma shape {gamma.shape} should be ({Y.shape[0]},)"
+    assert delta.shape == (Y.shape[1],), f"delta shape {delta.shape} should be ({Y.shape[1]},)"
+    assert beta.shape == (V.shape[2],), f"beta shape {beta.shape} should be ({V.shape[2]},)"
+    assert H.shape == (X.shape[1] + Y.shape[0], Z.shape[1] + Y.shape[
+        1]), f"H shape {H.shape} should be ({X.shape[1] + Y.shape[0]}, {Z.shape[1] + Y.shape[1]})"
+
+    print("All assertions passed!")

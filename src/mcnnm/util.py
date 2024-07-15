@@ -7,7 +7,7 @@ from typing import Optional
 import time
 from .timer import timer
 
-
+@jax.jit
 def p_o(A: Array, mask: Array) -> Array:
     """
     Projects the matrix A onto the observed entries specified by the binary mask mask.
@@ -27,6 +27,7 @@ def p_o(A: Array, mask: Array) -> Array:
     return jnp.where(mask, A, jnp.zeros_like(A))
 
 
+@jax.jit
 def p_perp_o(A: Array, mask: Array) -> Array:
     """
     Projects the matrix A onto the unobserved entries specified by the binary mask.
@@ -63,6 +64,7 @@ def shrink_lambda(A: Array, lambda_: float) -> Array:
     return jnp.dot(u * s_shrunk, v_transpose)
 
 
+@jax.jit
 def frobenius_norm(A: Array) -> float:
     """
     Computes the Frobenius norm of a matrix A.
@@ -81,6 +83,7 @@ def frobenius_norm(A: Array) -> float:
     return norm(A, ord='fro')
 
 
+@jax.jit
 def nuclear_norm(A: Array) -> float:
     """
     Computes the nuclear norm (sum of singular values) of a matrix A.
@@ -100,6 +103,7 @@ def nuclear_norm(A: Array) -> float:
     return jnp.sum(s)
 
 
+@jax.jit
 def element_wise_l1_norm(A: Array) -> float:
     """
     Computes the element-wise L1 norm of a matrix A.
@@ -118,7 +122,7 @@ def element_wise_l1_norm(A: Array) -> float:
     return jnp.sum(jnp.abs(A))
 
 
-def propose_lambda(proposed_lambda: Optional[float] = None, n_lambdas: int = 10) -> Array:
+def propose_lambda(proposed_lambda: Optional[float] = None, n_lambdas: int = 6) -> Array:
     """
     Creates a log-spaced list of proposed lambda values around a given value.
 
