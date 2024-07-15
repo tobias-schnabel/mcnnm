@@ -4,7 +4,6 @@ from jax.numpy.linalg import norm
 from . import Array
 from typing import Optional
 import time
-from .main import fit
 
 
 def frobenius_norm(A: Array) -> float:
@@ -115,6 +114,8 @@ def time_fit(Y: Array, W: Array, X: Optional[Array] = None, Omega: Optional[Arra
     Returns:
         The result of the fit function.
     """
+    from .main import fit  # Import fit locally
+
     @timer
     def timed_fit(Y, W, X, Omega, lambda_L, lambda_H, return_tau, return_lambda,
                   return_completed_L, return_completed_Y, max_iter, tol):

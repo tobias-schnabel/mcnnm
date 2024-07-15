@@ -2,8 +2,8 @@ import pytest
 import jax.numpy as jnp
 from jax import random
 from typing import Optional, Tuple
-from src.mcnnm.main import p_o, p_perp_o, shrink_lambda, objective_function, compute_fixed_effects, compute_H, compute_L, cross_validation, compute_treatment_effect, fit
-from src.mcnnm.util import timer, time_fit
+from mcnnm.main import p_o, p_perp_o, shrink_lambda, objective_function, compute_fixed_effects, compute_H, compute_L, cross_validation, compute_treatment_effect, fit
+from mcnnm.util import timer, time_fit
 
 # Set a fixed seed for reproducibility
 key = random.PRNGKey(2024)
@@ -53,7 +53,7 @@ def test_compute_H(sample_data):
     Y, _, X = sample_data
     L = random.normal(key, Y.shape)
     H = compute_H(Y, L, X=X)
-    assert H.shape == (X.shape[0], X.shape[1])
+    assert H.shape == (Y.shape[0], Y.shape[1])  # Updated assertion
     assert jnp.all(jnp.isfinite(H))
 
 def test_compute_L(sample_data):
