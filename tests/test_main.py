@@ -3,7 +3,6 @@ import jax.numpy as jnp
 from jax import random
 from typing import Optional, Tuple
 from mcnnm.main import p_o, p_perp_o, shrink_lambda, objective_function, compute_fixed_effects, compute_H, compute_L, cross_validation, compute_treatment_effect, fit
-from mcnnm.util import timer, time_fit
 
 # Set a fixed seed for reproducibility
 key = random.PRNGKey(2024)
@@ -91,15 +90,3 @@ def test_fit(sample_data):
     assert Y_completed.shape == Y.shape
     assert jnp.all(jnp.isfinite(L))
     assert jnp.all(jnp.isfinite(Y_completed))
-
-def test_timer():
-    @timer
-    def dummy_function():
-        return 42
-
-    assert dummy_function() == 42
-
-def test_time_fit(sample_data):
-    Y, W, X = sample_data
-    result = time_fit(Y, W, X=X)
-    assert isinstance(result, tuple)
