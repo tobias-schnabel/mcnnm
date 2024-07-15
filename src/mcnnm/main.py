@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as jnp
+from jax import random
 from typing import Optional, Tuple
 from . import Array
 from mcnnm.util import *
@@ -192,7 +193,7 @@ def cross_validation(
         Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] = None, V: Optional[Array] = None,
         proposed_lambda_L: Optional[float] = None, proposed_lambda_H: Optional[float] = None,
         n_lambdas: int = 10, Omega: Optional[Array] = None, K: int = 5
-) -> tuple:
+) -> Tuple[float, float]:
     """
     Performs K-fold cross-validation to select the best regularization parameters lambda_L and lambda_H.
 
@@ -228,16 +229,19 @@ def cross_validation(
     best_lambda_H = None
     best_loss = jnp.inf
 
+    key = random.PRNGKey(0)
+
     for lambda_L in lambda_L_seq:
         for lambda_H in lambda_H_seq:
             loss = 0.0
             for k in range(K):
-                mask = jnp.arange(N) % K == k
-                Y_train, Y_test = Y[~mask], Y[mask]
-                W_train, W_test = W[~mask], W[mask]
-                X_train, X_test = X[~mask], X[mask] if X is not None else (None, None)
-                Z_train, Z_test = Z[~mask], Z[mask] if Z is not None else (None, None)
-                V_train, V_test = V[~mask], V[mask] if V is not None else (None, None)
+                key, subkey = random.split(key)
+                mask = random.bernoulli(subkey, 0.8, (N,))
+                Y_train, Y_test = Y[mask], Y[~mask]
+                W_train, W_test = W[mask], W[~mask]
+                X_train, X_test = X[mask], X[~mask] if X.shape[1] > 0 else (None, None)
+                Z_train, Z_test = Z, Z  # Z is time-specific, so it doesn't change
+                V_train, V_test = V[mask], V[~mask] if V.shape[2] > 0 else (None, None)
 
                 O_train = (W_train == 0)
                 gamma_train, delta_train = compute_fixed_effects(Y_train, jnp.zeros_like(Y_train),
@@ -249,22 +253,16 @@ def cross_validation(
                                     beta=beta_train, H=H_train, X=X_train, Z=Z_train, V=V_train,
                                     Omega_inv=jnp.linalg.inv(Omega))
 
-                O_test = (W_test == 0)
-                if X_test is not None and Z_test is not None:
-                    X_tilde_test = jnp.hstack((X_test, jnp.eye(jnp.sum(mask))))
-                    Z_tilde_test = jnp.hstack((Z_test, jnp.eye(T)))
-                    X_dot_H = jnp.dot(X_tilde_test, jnp.dot(H_train, Z_tilde_test.T))
-                else:
-                    X_dot_H = jnp.zeros((jnp.sum(mask), T))
+                # Predict Y for test set
+                Y_pred = (L_train[~mask] +
+                          jnp.outer(gamma_train[~mask], jnp.ones(T)) +
+                          jnp.outer(jnp.ones(jnp.sum(~mask)), delta_train))
+                if X_test is not None and Z_test is not None and X_test.shape[1] > 0 and Z_test.shape[1] > 0:
+                    Y_pred += jnp.dot(X_test, H_train[:X.shape[1], :Z.shape[1]])
                 if V_test is not None:
-                    V_dot_beta = jnp.sum(V_test * beta_train, axis=2)
-                else:
-                    V_dot_beta = jnp.zeros((jnp.sum(mask), T))
+                    Y_pred += jnp.sum(V_test * beta_train, axis=2)
 
-                Y_pred = (L_train[mask] +
-                          jnp.outer(gamma_train[mask], jnp.ones(T)) +
-                          jnp.outer(jnp.ones(jnp.sum(mask)), delta_train) +
-                          V_dot_beta + X_dot_H)
+                O_test = (W_test == 0)
                 loss += jnp.sum((Y_test - Y_pred) ** 2 * O_test) / jnp.sum(O_test)
 
             loss /= K
@@ -277,26 +275,34 @@ def cross_validation(
 
 
 def compute_treatment_effect(Y: Array, L: Array, gamma: Array, delta: Array, beta: Array, H: Array,
-                             X: Array, W: Array) -> float:
-    ...
+                             X: Array, W: Array, Z: Optional[Array] = None, V: Optional[Array] = None) -> float:
     """
     Computes the average treatment effect (tau) for the treated units.
 
     Args:
-        Y: The observed outcome matrix.
-        L: The completed low-rank matrix.
-        gamma: The unit fixed effects vector.
-        delta: The time fixed effects vector.
-        beta: The coefficient vector for the covariates.
-        H: The coefficient matrix for the covariates.
-        X: The matrix of unit and time specific covariates.
-        W: The binary treatment matrix.
+        Y: The observed outcome matrix of shape (N, T).
+        L: The completed low-rank matrix of shape (N, T).
+        gamma: The unit fixed effects vector of shape (N,).
+        delta: The time fixed effects vector of shape (T,).
+        beta: The coefficient vector for the unit-time specific covariates of shape (J,).
+        H: The coefficient matrix for the covariates of shape (P+N, Q+T).
+        X: The matrix of unit-specific covariates of shape (N, P).
+        W: The binary treatment matrix of shape (N, T).
+        Z: The time-specific covariates matrix of shape (T, Q). If None, not included.
+        V: The unit-time specific covariates tensor of shape (N, T, J). If None, not included.
 
     Returns:
         The average treatment effect (tau) for the treated units.
     """
     N, T = Y.shape
-    Y_completed = L + jnp.outer(gamma, jnp.ones(T)) + jnp.outer(jnp.ones(N), delta) + beta + jnp.dot(X, H)
+    Y_completed = L + jnp.outer(gamma, jnp.ones(T)) + jnp.outer(jnp.ones(N), delta)
+
+    if X is not None and Z is not None and X.shape[1] > 0 and Z.shape[1] > 0:
+        Y_completed += jnp.dot(X, jnp.dot(H[:X.shape[1], :Z.shape[1]], Z.T))
+
+    if V is not None:
+        Y_completed += jnp.sum(V * beta[None, None, :], axis=2)
+
     treated_units = jnp.sum(W)
     tau = jnp.sum((Y - Y_completed) * W) / treated_units
     return tau

@@ -1,9 +1,11 @@
 import jax
 import jax.numpy as jnp
+from jax import random
 from jax.numpy.linalg import norm
 from . import Array
 from typing import Optional
 import time
+from .timer import timer
 
 
 def p_o(A: Array, mask: Array) -> Array:
@@ -156,7 +158,8 @@ def timer(func):
     return wrapper
 
 
-def time_fit(Y: Array, W: Array, X: Optional[Array] = None, Omega: Optional[Array] = None,
+def time_fit(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] = None,
+             V: Optional[Array] = None, Omega: Optional[Array] = None,
              lambda_L: Optional[float] = None, lambda_H: Optional[float] = None,
              return_tau: bool = True, return_lambda: bool = True,
              return_completed_L: bool = True, return_completed_Y: bool = True,
@@ -165,7 +168,20 @@ def time_fit(Y: Array, W: Array, X: Optional[Array] = None, Omega: Optional[Arra
     Times the execution of the fit function.
 
     Args:
-        Same as the fit function.
+        Y: The observed outcome matrix of shape (N, T).
+        W: The binary treatment matrix of shape (N, T).
+        X: The unit-specific covariates matrix of shape (N, P). If None, not included.
+        Z: The time-specific covariates matrix of shape (T, Q). If None, not included.
+        V: The unit-time specific covariates tensor of shape (N, T, J). If None, not included.
+        Omega: The autocorrelation matrix of shape (T, T). If None, no autocorrelation is assumed.
+        lambda_L: The regularization parameter for the nuclear norm of L. If None, it is selected via cross-validation.
+        lambda_H: The regularization parameter for the element-wise L1 norm of H. If None, it is selected via cross-validation.
+        return_tau: Whether to return the average treatment effect (tau) for the treated units.
+        return_lambda: Whether to return the optimal regularization parameter lambda_L.
+        return_completed_L: Whether to return the completed low-rank matrix L.
+        return_completed_Y: Whether to return the completed outcome matrix Y.
+        max_iter: The maximum number of iterations for the algorithm.
+        tol: The tolerance for the convergence of the algorithm.
 
     Returns:
         The result of the fit function.
@@ -173,10 +189,19 @@ def time_fit(Y: Array, W: Array, X: Optional[Array] = None, Omega: Optional[Arra
     from .main import fit  # Import fit locally
 
     @timer
-    def timed_fit(Y, W, X, Omega, lambda_L, lambda_H, return_tau, return_lambda,
+    def timed_fit(Y, W, X, Z, V, Omega, lambda_L, lambda_H, return_tau, return_lambda,
                   return_completed_L, return_completed_Y, max_iter, tol):
-        return fit(Y, W, X, Omega, lambda_L, lambda_H, return_tau, return_lambda,
-                   return_completed_L, return_completed_Y, max_iter, tol)
+        N, T = Y.shape
+        mask = random.bernoulli(random.PRNGKey(0), 0.8, (N,))
+        Y_train, Y_test = Y[mask], Y[~mask]
+        W_train, W_test = W[mask], W[~mask]
+        X_train, X_test = X[mask], X[~mask] if X is not None and X.shape[1] > 0 else (None, None)
+        Z_train, Z_test = Z, Z  # Z is time-specific, so it doesn't change
+        V_train, V_test = V[mask, :, :], V[~mask, :, :] if V is not None and V.shape[2] > 0 else (None, None)
+        return fit(Y_train, W_train, X=X_train, Z=Z_train, V=V_train, Omega=Omega, lambda_L=lambda_L, lambda_H=lambda_H,
+                   return_tau=return_tau, return_lambda=return_lambda,
+                   return_completed_L=return_completed_L, return_completed_Y=return_completed_Y,
+                   max_iter=max_iter, tol=tol)
 
-    return timed_fit(Y, W, X, Omega, lambda_L, lambda_H, return_tau, return_lambda,
+    return timed_fit(Y, W, X, Z, V, Omega, lambda_L, lambda_H, return_tau, return_lambda,
                      return_completed_L, return_completed_Y, max_iter, tol)

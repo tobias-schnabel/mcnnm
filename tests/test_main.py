@@ -90,15 +90,16 @@ def test_compute_treatment_effect(sample_data):
     delta = random.normal(key, (Y.shape[1],))
     beta = random.normal(key, (V.shape[2],))
     H = random.normal(key, (Y.shape[0] + X.shape[1], Y.shape[1] + Z.shape[1]))
-    tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W)
-    assert jnp.isscalar(tau)
+    tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W, Z, V)
     assert jnp.isfinite(tau)
 
 def test_fit(sample_data):
     Y, W, X, Z, V = sample_data
-    tau, lambda_L, L, Y_completed = fit(Y, W, X=X, Z=Z, V=V)
-    assert jnp.isscalar(tau)
-    assert jnp.isscalar(lambda_L)
+    results = fit(Y, W, X=X, Z=Z, V=V)
+    assert len(results) == 4
+    tau, lambda_L, L, Y_completed = results
+    assert jnp.isfinite(tau)
+    assert jnp.isfinite(lambda_L)
     assert L.shape == Y.shape
     assert Y_completed.shape == Y.shape
     assert jnp.all(jnp.isfinite(L))

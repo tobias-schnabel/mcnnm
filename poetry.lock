@@ -520,6 +520,17 @@ files = [
 ]
 
 [[package]]
+name = "timer"
+version = "0.3.0"
+description = "Python Code Timer"
+optional = false
+python-versions = "*"
+files = [
+    {file = "timer-0.3.0-py3-none-any.whl", hash = "sha256:7d97061be15de87d309697c3088a30af58712bd60c971536161fccc0e3d051f3"},
+    {file = "timer-0.3.0.tar.gz", hash = "sha256:9b11b71a48648f878dc4c29aa84387806d193ed9f71a39e84edb10f38ed6941f"},
+]
+
+[[package]]
 name = "typing-extensions"
 version = "4.12.2"
 description = "Backported and Experimental Type Hints for Python 3.8+"
@@ -544,4 +555,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "97c27cd84f1c9c3ccd930b1bb145a02d5b70f1975195cd01bf4d4cca30b9beda"
+content-hash = "a4c2199ed5e56da678b10d2d150095f204f956501ac589c0688f2a67d745940d"

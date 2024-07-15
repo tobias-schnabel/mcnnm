@@ -33,6 +33,7 @@ numpy = "^2.0.0"
 jax = "^0.4.30"
 jaxlib = "^0.4.30"
 pytest = "^8.2.2"
+timer = "^0.3.0"
 
 [tool.poetry.dev-dependencies]
 pytest-cov = "^5.0.0"
