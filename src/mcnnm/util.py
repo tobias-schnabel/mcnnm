@@ -6,6 +6,61 @@ from typing import Optional
 import time
 
 
+def p_o(A: Array, mask: Array) -> Array:
+    """
+    Projects the matrix A onto the observed entries specified by the binary mask mask.
+
+    Args:
+        A: The input matrix.
+        mask: The binary mask matrix, where 1 indicates an observed entry and 0 indicates an unobserved entry.
+
+    Returns:
+        The projected matrix.
+
+    Raises:
+        ValueError: If the shapes of A and mask do not match.
+    """
+    if A.shape != mask.shape:
+        raise ValueError("Shapes of A and mask must match.")
+    return jnp.where(mask, A, jnp.zeros_like(A))
+
+
+def p_perp_o(A: Array, mask: Array) -> Array:
+    """
+    Projects the matrix A onto the unobserved entries specified by the binary mask.
+
+    Args:
+        A: The input matrix.
+        mask: The binary mask matrix, where 1 indicates an observed entry and 0 indicates an unobserved entry.
+
+    Returns:
+        The projected matrix.
+
+    Raises:
+        ValueError: If the shapes of A and mask do not match.
+    """
+    if A.shape != mask.shape:
+        raise ValueError("Shapes of A and mask must match.")
+    return jnp.where(mask, jnp.zeros_like(A), A)
+
+
+@jax.jit
+def shrink_lambda(A: Array, lambda_: float) -> Array:
+    """
+    Applies the soft-thresholding operator to the singular values of a matrix A.
+
+    Args:
+        A: The input matrix.
+        lambda_: The shrinkage parameter.
+
+    Returns:
+        The matrix with soft-thresholded singular values.
+    """
+    u, s, v_transpose = jnp.linalg.svd(A, full_matrices=False)
+    s_shrunk = jnp.maximum(s - lambda_, 0)
+    return jnp.dot(u * s_shrunk, v_transpose)
+
+
 def frobenius_norm(A: Array) -> float:
     """
     Computes the Frobenius norm of a matrix A.
@@ -99,6 +154,7 @@ def timer(func):
         print(f"Execution time of {func.__name__}: {execution_time:.5f} seconds")
         return result
     return wrapper
+
 
 def time_fit(Y: Array, W: Array, X: Optional[Array] = None, Omega: Optional[Array] = None,
              lambda_L: Optional[float] = None, lambda_H: Optional[float] = None,
