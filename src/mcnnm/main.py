@@ -237,33 +237,42 @@ def cross_validation(
             for k in range(K):
                 key, subkey = random.split(key)
                 mask = random.bernoulli(subkey, 0.8, (N,))
-                Y_train, Y_test = Y[mask], Y[~mask]
-                W_train, W_test = W[mask], W[~mask]
-                X_train, X_test = X[mask], X[~mask] if X.shape[1] > 0 else (None, None)
+                train_idx = jnp.where(mask)[0]
+                test_idx = jnp.where(~mask)[0]
+
+                Y_train, Y_test = Y[train_idx], Y[test_idx]
+                W_train, W_test = W[train_idx], W[test_idx]
+                X_train, X_test = X[train_idx], X[test_idx] if X.shape[1] > 0 else (None, None)
                 Z_train, Z_test = Z, Z  # Z is time-specific, so it doesn't change
-                V_train, V_test = V[mask], V[~mask] if V.shape[2] > 0 else (None, None)
+                V_train, V_test = V[train_idx], V[test_idx] if V.shape[2] > 0 else (None, None)
 
                 O_train = (W_train == 0)
                 gamma_train, delta_train = compute_fixed_effects(Y_train, jnp.zeros_like(Y_train),
                                                                  X=X_train, Z=Z_train, V=V_train)
                 H_train = compute_H(Y_train, jnp.zeros_like(Y_train), gamma_train, delta_train,
                                     X=X_train, Z=Z_train, V=V_train)
-                beta_train = jnp.zeros(V_train.shape[2]) if V is not None else jnp.zeros(0)
+                beta_train = jnp.zeros(V_train.shape[2]) if V is not None and V.shape[2] > 0 else jnp.zeros(0)
                 L_train = compute_L(Y_train, O_train, lambda_L, gamma=gamma_train, delta=delta_train,
                                     beta=beta_train, H=H_train, X=X_train, Z=Z_train, V=V_train,
                                     Omega_inv=jnp.linalg.inv(Omega))
 
                 # Predict Y for test set
-                Y_pred = (L_train[~mask] +
-                          jnp.outer(gamma_train[~mask], jnp.ones(T)) +
-                          jnp.outer(jnp.ones(jnp.sum(~mask)), delta_train))
-                if X_test is not None and Z_test is not None and X_test.shape[1] > 0 and Z_test.shape[1] > 0:
-                    Y_pred += jnp.dot(X_test, H_train[:X.shape[1], :Z.shape[1]])
-                if V_test is not None:
-                    Y_pred += jnp.sum(V_test * beta_train, axis=2)
+                N_test = test_idx.shape[0]
+                if N_test > 0:
+                    Y_pred = (L_train +
+                              jnp.outer(gamma_train, jnp.ones(T)) +
+                              jnp.outer(jnp.ones(N_test), delta_train))
 
-                O_test = (W_test == 0)
-                loss += jnp.sum((Y_test - Y_pred) ** 2 * O_test) / jnp.sum(O_test)
+                    if X_test is not None and Z_test is not None and X_test.shape[1] > 0 and Z_test.shape[1] > 0:
+                        Y_pred += jnp.dot(X_test, H_train[:X.shape[1], :Z.shape[1]])
+                    if V_test is not None and V_test.shape[2] > 0:
+                        Y_pred += jnp.sum(V_test * beta_train, axis=2)
+
+                    O_test = (W_test == 0)
+                    loss += jnp.sum((Y_test - Y_pred) ** 2 * O_test) / jnp.sum(O_test)
+                else:
+                    # Skip this fold if there are no test samples
+                    continue
 
             loss /= K
             if loss < best_loss:
@@ -321,6 +330,8 @@ def fit(
         Y: The observed outcome matrix.
         W: The binary treatment matrix.
         X: The matrix of unit and time specific covariates. If None, covariates are not included.
+        Z: The time-specific covariates matrix. If None, time-specific covariates are not included.
+        V: The unit-time specific covariates tensor. If None, unit-time specific covariates are not included.
         Omega: The autocorrelation matrix. If None, no autocorrelation is assumed.
         lambda_L: The regularization parameter for the nuclear norm of L. If None, it is selected via cross-validation.
         lambda_H: The regularization parameter for the element-wise L1 norm of H. If None, it is selected via cross-validation.
@@ -336,7 +347,11 @@ def fit(
     """
     N, T = Y.shape
     if X is None:
-        X = jnp.zeros((N, T))
+        X = jnp.zeros((N, 0))
+    if Z is None:
+        Z = jnp.zeros((T, 0))
+    if V is None:
+        V = jnp.zeros((N, T, 0))
     if Omega is None:
         Omega = jnp.eye(T)
 
@@ -345,21 +360,25 @@ def fit(
 
     O = (W == 0)
     gamma, delta = compute_fixed_effects(Y, jnp.zeros_like(Y), X=X, Z=Z, V=V)
-    beta = jnp.zeros(V.shape[2]) if V is not None else jnp.zeros(0)
+    beta = jnp.zeros(V.shape[2]) if V is not None and V.shape[2] > 0 else jnp.zeros(0)
     H = compute_H(Y, jnp.zeros_like(Y), gamma, delta, beta=beta, X=X, Z=Z, V=V)
     L = compute_L(Y, O, lambda_L, gamma=gamma, delta=delta, beta=beta, H=H, X=X, Z=Z, V=V,
                   Omega_inv=jnp.linalg.inv(Omega), max_iter=max_iter, tol=tol)
 
     results = []
     if return_tau:
-        tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W)
+        tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W, Z, V)
         results.append(tau)
     if return_lambda:
         results.append(lambda_L)
     if return_completed_L:
         results.append(L)
     if return_completed_Y:
-        Y_completed = L + jnp.outer(gamma, jnp.ones(T)) + jnp.outer(jnp.ones(N), delta) + beta + jnp.dot(X, H)
+        Y_completed = L + jnp.outer(gamma, jnp.ones(T)) + jnp.outer(jnp.ones(N), delta)
+        if X.shape[1] > 0 and Z.shape[1] > 0:
+            Y_completed += jnp.dot(X, H[:X.shape[1], :Z.shape[1]])
+        if V.shape[2] > 0:
+            Y_completed += jnp.sum(V * beta, axis=2)
         results.append(Y_completed)
 
     return tuple(results)
