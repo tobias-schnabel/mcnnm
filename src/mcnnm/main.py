@@ -10,20 +10,22 @@ from mcnnm.util import *
 def objective_function(
         Y: Array, L: Array, Omega_inv: Optional[Array] = None, gamma: Optional[Array] = None,
         delta: Optional[Array] = None, beta: Optional[Array] = None, H: Optional[Array] = None,
-        X: Optional[Array] = None
+        X: Optional[Array] = None, Z: Optional[Array] = None, V: Optional[Array] = None
 ) -> float:
     """
     Computes the objective function value for the MC-NNM estimator (Equation 18).
 
     Args:
-        Y: The observed outcome matrix.
-        L: The low-rank matrix.
-        Omega_inv: The autocorrelation matrix. If None, no autocorrelation is assumed.
-        gamma: The unit fixed effects vector. If None, unit fixed effects are not included.
-        delta: The time fixed effects vector. If None, time fixed effects are not included.
-        beta: The coefficient vector for the covariates. If None, unit-time specific covariates are not included.
-        H: The coefficient matrix for the covariates. If None, unit and time specific covariates are not included.
-        X: The matrix of unit and time specific covariates. If None, unit and time specific covariates are not included.
+        Y: The observed outcome matrix of shape (N, T).
+        L: The low-rank matrix of shape (N, T).
+        Omega_inv: The inverse of the autocorrelation matrix of shape (T, T). If None, no autocorrelation is assumed.
+        gamma: The unit fixed effects vector of shape (N,). If None, unit fixed effects are not included.
+        delta: The time fixed effects vector of shape (T,). If None, time fixed effects are not included.
+        beta: The coefficient vector for the unit-time specific covariates of shape (J,). If None, unit-time specific covariates are not included.
+        H: The coefficient matrix for the covariates of shape (N+P, T+Q). If None, unit and time specific covariates are not included.
+        X: The unit-specific covariates matrix of shape (N, P). If None, unit-specific covariates are not included.
+        Z: The time-specific covariates matrix of shape (T, Q). If None, time-specific covariates are not included.
+        V: The unit-time specific covariates tensor of shape (N, T, J). If None, unit-time specific covariates are not included.
 
     Returns:
         The objective function value.
@@ -34,45 +36,56 @@ def objective_function(
     if delta is None:
         delta = jnp.zeros(T)
     if beta is None:
-        beta = jnp.zeros((N, T))
-    if H is None or X is None:
+        beta = jnp.zeros(V.shape[2]) if V is not None else jnp.zeros(0)
+    if H is None or X is None or Z is None:
         H = jnp.zeros((N, T))
-        X = jnp.zeros((N, T))
+        X_tilde = jnp.zeros((N, 0))
+        Z_tilde = jnp.zeros((T, 0))
+    else:
+        X_tilde = jnp.hstack((X, jnp.eye(N)))
+        Z_tilde = jnp.hstack((Z, jnp.eye(T)))
+    if V is None:
+        V = jnp.zeros((N, T, 0))
     if Omega_inv is None:
         Omega_inv = jnp.eye(T)
 
-    residual = Y - L - jnp.outer(gamma, jnp.ones(T)) - jnp.outer(jnp.ones(N), delta) - beta - jnp.dot(X, H)
+    residual = (Y - L - jnp.outer(gamma, jnp.ones(T)) - jnp.outer(jnp.ones(N), delta)
+                - jnp.dot(X_tilde, jnp.dot(H, Z_tilde.T)) - jnp.sum(V * beta, axis=2))
     return jnp.sum(jnp.dot(residual, Omega_inv) * residual) / (N * T)
 
 
 def compute_fixed_effects(Y: Array, L: Array, beta: Optional[Array] = None, H: Optional[Array] = None,
-                          X: Optional[Array] = None) -> tuple:
+                          X: Optional[Array] = None, Z: Optional[Array] = None, V: Optional[Array] = None) -> tuple:
     """
     Computes the unit and time fixed effects (gamma and delta) for the MC-NNM estimator.
 
     Args:
         Y: The observed outcome matrix of shape (N, T).
         L: The low-rank matrix of shape (N, T).
-        beta: The coefficient vector for the unit-time specific covariates. If None, covariates are not included.
-        H: The coefficient matrix for the unit and time specific covariates. If None, covariates are not included.
-        X: The matrix of unit and time specific covariates. Can be 2D (N, T) or 3D (N, T, P). If None, covariates are not included.
+        beta: The coefficient vector for the unit-time specific covariates of shape (J,). If None, unit-time specific covariates are not included.
+        H: The coefficient matrix for the covariates of shape (N+P, T+Q). If None, unit and time specific covariates are not included.
+        X: The unit-specific covariates matrix of shape (N, P). If None, unit-specific covariates are not included.
+        Z: The time-specific covariates matrix of shape (T, Q). If None, time-specific covariates are not included.
+        V: The unit-time specific covariates tensor of shape (N, T, J). If None, unit-time specific covariates are not included.
 
     Returns:
         A tuple containing the unit fixed effects vector (gamma) and the time fixed effects vector (delta).
     """
     N, T = Y.shape
     if beta is None:
-        beta = jnp.zeros((N, T))
-    if H is None or X is None:
-        X_dot_H = jnp.zeros((N, T))
+        beta = jnp.zeros(V.shape[2]) if V is not None else jnp.zeros(0)
+    if H is None or X is None or Z is None:
+        X_tilde_dot_H_dot_Z_tilde_T = jnp.zeros((N, T))
     else:
-        # Handle the case when X is a 3D array (N, T, P) and H is a 2D array (P, T)
-        if X.ndim == 3:
-            X_dot_H = jnp.einsum('ijp,pt->ijt', X, H)
-        else:
-            X_dot_H = jnp.dot(X, H)
+        X_tilde = jnp.hstack((X, jnp.eye(N)))
+        Z_tilde = jnp.hstack((Z, jnp.eye(T)))
+        X_tilde_dot_H_dot_Z_tilde_T = jnp.dot(X_tilde, jnp.dot(H, Z_tilde.T))
+    if V is None:
+        V_dot_beta = jnp.zeros((N, T))
+    else:
+        V_dot_beta = jnp.sum(V * beta, axis=2)
 
-    Y_adjusted = Y - L - beta - X_dot_H
+    Y_adjusted = Y - L - V_dot_beta - X_tilde_dot_H_dot_Z_tilde_T
 
     gamma = jnp.mean(Y_adjusted, axis=1)
     delta = jnp.mean(Y_adjusted - jnp.outer(gamma, jnp.ones(T)), axis=0)
@@ -82,8 +95,8 @@ def compute_fixed_effects(Y: Array, L: Array, beta: Optional[Array] = None, H: O
 
 def compute_L(
     Y: Array, O: Array, lambda_L: float, gamma: Optional[Array] = None, delta: Optional[Array] = None,
-    beta: Optional[Array] = None, H: Optional[Array] = None, X: Optional[Array] = None,
-    Omega_inv: Optional[Array] = None, max_iter: int = 1000, tol: float = 1e-4
+    beta: Optional[Array] = None, H: Optional[Array] = None, X: Optional[Array] = None, Z: Optional[Array] = None,
+    V: Optional[Array] = None, Omega_inv: Optional[Array] = None, max_iter: int = 1000, tol: float = 1e-4
 ) -> Array:
     """
     Computes the low-rank matrix L using the iterative algorithm (Equation 10).
@@ -94,9 +107,11 @@ def compute_L(
         lambda_L: The regularization parameter for the nuclear norm of L.
         gamma: The unit fixed effects vector of shape (N,). If None, it's initialized as zeros.
         delta: The time fixed effects vector of shape (T,). If None, it's initialized as zeros.
-        beta: The coefficient matrix for unit-time specific covariates of shape (N, T). If None, it's initialized as zeros.
-        H: The coefficient matrix for the covariates. Shape depends on X. If None, it's not used.
-        X: The matrix of unit and time specific covariates. Can be 2D (N, T) or 3D (N, T, P). If None, it's not used.
+        beta: The coefficient vector for the unit-time specific covariates of shape (J,). If None, it's initialized as zeros.
+        H: The coefficient matrix for the covariates of shape (N+P, T+Q). If None, it's initialized as zeros.
+        X: The unit-specific covariates matrix of shape (N, P). If None, it's not used.
+        Z: The time-specific covariates matrix of shape (T, Q). If None, it's not used.
+        V: The unit-time specific covariates tensor of shape (N, T, J). If None, it's not used.
         Omega_inv: The inverse of the autocorrelation matrix of shape (T, T). If None, it's set to identity.
         max_iter: The maximum number of iterations for the algorithm.
         tol: The tolerance for the convergence of the algorithm.
@@ -110,21 +125,24 @@ def compute_L(
     if delta is None:
         delta = jnp.zeros(T)
     if beta is None:
-        beta = jnp.zeros((N, T))
-    if H is None or X is None:
-        X_dot_H = jnp.zeros((N, T))
+        beta = jnp.zeros(V.shape[2]) if V is not None else jnp.zeros(0)
+    if H is None or X is None or Z is None:
+        X_tilde_dot_H_dot_Z_tilde_T = jnp.zeros((N, T))
     else:
-        # Handle the case when X is a 3D array (N, T, P) and H is a 2D array (P, T)
-        if X.ndim == 3:
-            X_dot_H = jnp.einsum('ijp,pt->ijt', X, H)
-        else:
-            X_dot_H = jnp.dot(X, H)
+        X_tilde = jnp.hstack((X, jnp.eye(N)))
+        Z_tilde = jnp.hstack((Z, jnp.eye(T)))
+        X_tilde_dot_H_dot_Z_tilde_T = jnp.dot(X_tilde, jnp.dot(H, Z_tilde.T))
+    if V is None:
+        V_dot_beta = jnp.zeros((N, T))
+    else:
+        V_dot_beta = jnp.sum(V * beta, axis=2)
     if Omega_inv is None:
         Omega_inv = jnp.eye(T)
 
     L = jnp.zeros_like(Y)
     for _ in range(max_iter):
-        Y_adj = Y - jnp.outer(gamma, jnp.ones(T)) - jnp.outer(jnp.ones(N), delta) - beta - X_dot_H
+        Y_adj = (Y - jnp.outer(gamma, jnp.ones(T)) - jnp.outer(jnp.ones(N), delta)
+                 - V_dot_beta - X_tilde_dot_H_dot_Z_tilde_T)
         L_new = shrink_lambda(p_o(jnp.dot(Y_adj, Omega_inv), O) + p_perp_o(L, O), lambda_L / jnp.sqrt(jnp.sum(O)))
         if jnp.linalg.norm(L_new - L, ord='fro') < tol:
             break
@@ -132,7 +150,9 @@ def compute_L(
 
     return L
 
-def compute_H(Y: Array, L: Array, gamma: Array, delta: Array, beta: Optional[Array] = None, X: Optional[Array] = None) -> Array:
+
+def compute_H(Y: Array, L: Array, gamma: Array, delta: Array, beta: Optional[Array] = None,
+              X: Optional[Array] = None, Z: Optional[Array] = None, V: Optional[Array] = None) -> Array:
     """
     Computes the coefficient matrix H for the unit and time specific covariates.
 
@@ -141,30 +161,30 @@ def compute_H(Y: Array, L: Array, gamma: Array, delta: Array, beta: Optional[Arr
         L: The low-rank matrix of shape (N, T).
         gamma: The unit fixed effects vector of shape (N,).
         delta: The time fixed effects vector of shape (T,).
-        beta: The coefficient matrix for unit-time specific covariates of shape (N, T). If None, it's initialized as zeros.
-        X: The matrix of unit and time specific covariates. Can be 2D (N, T) or 3D (N, T, P). If None, a zero matrix is returned.
+        beta: The coefficient vector for the unit-time specific covariates of shape (J,). If None, it's initialized as zeros.
+        X: The unit-specific covariates matrix of shape (N, P). If None, it's not used.
+        Z: The time-specific covariates matrix of shape (T, Q). If None, it's not used.
+        V: The unit-time specific covariates tensor of shape (N, T, J). If None, it's not used.
 
     Returns:
-        The coefficient matrix H. Shape is (T, T) if X is None, (1, T) if X is 2D, or (P, T) if X is 3D.
+        The coefficient matrix H of shape (N+P, T+Q).
     """
     N, T = Y.shape
     if beta is None:
-        beta = jnp.zeros((N, T))
-    if X is None:
-        return jnp.zeros((T, T))  # Or (T, P) if P is defined elsewhere
+        beta = jnp.zeros(V.shape[2]) if V is not None else jnp.zeros(0)
+    if X is None or Z is None:
+        return jnp.zeros((N, T))
 
-    Y_adjusted = Y - L - jnp.outer(gamma, jnp.ones(T)) - jnp.outer(jnp.ones(N), delta) - beta
-
-    if X.ndim == 3:
-        # If X is (N, T, P), reshape Y_adjusted to (N*T, 1) and X to (N*T, P)
-        Y_flat = Y_adjusted.reshape(-1, 1)
-        X_flat = X.reshape(-1, X.shape[2])
-        H = jnp.linalg.lstsq(X_flat, Y_flat)[0].T  # H will be (P, T)
+    X_tilde = jnp.hstack((X, jnp.eye(N)))
+    Z_tilde = jnp.hstack((Z, jnp.eye(T)))
+    if V is None:
+        V_dot_beta = jnp.zeros((N, T))
     else:
-        # If X is (N, T), reshape both X and Y_adjusted to (N*T, 1)
-        Y_flat = Y_adjusted.reshape(-1, 1)
-        X_flat = X.reshape(-1, 1)
-        H = jnp.linalg.lstsq(X_flat, Y_flat)[0].T  # H will be (1, T)
+        V_dot_beta = jnp.sum(V * beta, axis=2)
+
+    Y_adjusted = Y - L - jnp.outer(gamma, jnp.ones(T)) - jnp.outer(jnp.ones(N), delta) - V_dot_beta
+
+    H = jnp.linalg.lstsq(X_tilde, jnp.dot(Y_adjusted, Z_tilde))[0]
 
     return H
 
