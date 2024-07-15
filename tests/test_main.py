@@ -75,13 +75,38 @@ def test_compute_L(sample_data):
     assert L.shape == Y.shape
     assert jnp.all(jnp.isfinite(L))
 
+# def test_cross_validation(sample_data):
+#     Y, W, X, Z, V = sample_data
+#     lambda_L, lambda_H = cross_validation(Y, W, X=X, Z=Z, V=V)
+#     assert jnp.isscalar(lambda_L)
+#     assert jnp.isscalar(lambda_H)
+#     assert jnp.isfinite(lambda_L)
+#     assert jnp.isfinite(lambda_H)
 def test_cross_validation(sample_data):
     Y, W, X, Z, V = sample_data
+
+    # Test with all inputs
     lambda_L, lambda_H = cross_validation(Y, W, X=X, Z=Z, V=V)
-    assert jnp.isscalar(lambda_L)
-    assert jnp.isscalar(lambda_H)
-    assert jnp.isfinite(lambda_L)
-    assert jnp.isfinite(lambda_H)
+    assert jnp.isscalar(lambda_L) and jnp.isscalar(lambda_H)
+    assert jnp.isfinite(lambda_L) and jnp.isfinite(lambda_H)
+    assert lambda_L > 0 and lambda_H > 0
+
+    # Test without optional inputs
+    lambda_L, lambda_H = cross_validation(Y, W)
+    assert jnp.isscalar(lambda_L) and jnp.isscalar(lambda_H)
+    assert jnp.isfinite(lambda_L) and jnp.isfinite(lambda_H)
+
+    # Test with proposed lambda values
+    proposed_lambda_L, proposed_lambda_H = 0.1, 0.2
+    lambda_L, lambda_H = cross_validation(Y, W, proposed_lambda_L=proposed_lambda_L,
+                                          proposed_lambda_H=proposed_lambda_H)
+    assert jnp.isscalar(lambda_L) and jnp.isscalar(lambda_H)
+    assert jnp.isfinite(lambda_L) and jnp.isfinite(lambda_H)
+
+    # Test with different number of folds
+    lambda_L, lambda_H = cross_validation(Y, W, K=3)
+    assert jnp.isscalar(lambda_L) and jnp.isscalar(lambda_H)
+    assert jnp.isfinite(lambda_L) and jnp.isfinite(lambda_H)
 
 def test_compute_treatment_effect(sample_data):
     Y, W, X, Z, V = sample_data

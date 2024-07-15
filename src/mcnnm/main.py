@@ -189,6 +189,102 @@ def compute_H(Y: Array, L: Array, gamma: Array, delta: Array, beta: Optional[Arr
     return H
 
 
+# def cross_validation(
+#         Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] = None, V: Optional[Array] = None,
+#         proposed_lambda_L: Optional[float] = None, proposed_lambda_H: Optional[float] = None,
+#         n_lambdas: int = 10, Omega: Optional[Array] = None, K: int = 5
+# ) -> Tuple[float, float]:
+#     """
+#     Performs K-fold cross-validation to select the best regularization parameters lambda_L and lambda_H.
+#
+#     Args:
+#         Y: The observed outcome matrix of shape (N, T).
+#         W: The binary treatment matrix of shape (N, T).
+#         X: The unit-specific covariates matrix of shape (N, P). If None, unit-specific covariates are not included.
+#         Z: The time-specific covariates matrix of shape (T, Q). If None, time-specific covariates are not included.
+#         V: The unit-time specific covariates tensor of shape (N, T, J). If None, unit-time specific covariates are not included.
+#         proposed_lambda_L: The proposed lambda_L value. If None, a default sequence is generated.
+#         proposed_lambda_H: The proposed lambda_H value. If None, a default sequence is generated.
+#         n_lambdas: The number of lambda values to generate if proposed values are None.
+#         Omega: The autocorrelation matrix of shape (T, T). If None, no autocorrelation is assumed.
+#         K: The number of folds for cross-validation.
+#
+#     Returns:
+#         A tuple containing the best values of lambda_L and lambda_H.
+#     """
+#     N, T = Y.shape
+#     if X is None:
+#         X = jnp.zeros((N, 0))
+#     if Z is None:
+#         Z = jnp.zeros((T, 0))
+#     if V is None:
+#         V = jnp.zeros((N, T, 0))
+#     if Omega is None:
+#         Omega = jnp.eye(T)
+#
+#     lambda_L_seq = propose_lambda(proposed_lambda_L, n_lambdas)
+#     lambda_H_seq = propose_lambda(proposed_lambda_H, n_lambdas)
+#
+#     best_lambda_L = None
+#     best_lambda_H = None
+#     best_loss = jnp.inf
+#
+#     key = random.PRNGKey(0)
+#
+#     for lambda_L in lambda_L_seq:
+#         for lambda_H in lambda_H_seq:
+#             loss = 0.0
+#             for k in range(K):
+#                 key, subkey = random.split(key)
+#                 mask = random.bernoulli(subkey, 0.8, (N,))
+#                 train_idx = jnp.where(mask)[0]
+#                 test_idx = jnp.where(~mask)[0]
+#
+#                 Y_train, Y_test = Y[train_idx], Y[test_idx]
+#                 W_train, W_test = W[train_idx], W[test_idx]
+#                 X_train, X_test = X[train_idx], X[test_idx] if X.shape[1] > 0 else (None, None)
+#                 Z_train, Z_test = Z, Z  # Z is time-specific, so it doesn't change
+#                 V_train, V_test = V[train_idx], V[test_idx] if V.shape[2] > 0 else (None, None)
+#
+#                 O_train = (W_train == 0)
+#                 gamma_train, delta_train = compute_fixed_effects(Y_train, jnp.zeros_like(Y_train),
+#                                                                  X=X_train, Z=Z_train, V=V_train)
+#                 H_train = compute_H(Y_train, jnp.zeros_like(Y_train), gamma_train, delta_train,
+#                                     X=X_train, Z=Z_train, V=V_train)
+#                 beta_train = jnp.zeros(V_train.shape[2]) if V is not None and V.shape[2] > 0 else jnp.zeros(0)
+#                 L_train = compute_L(Y_train, O_train, lambda_L, gamma=gamma_train, delta=delta_train,
+#                                     beta=beta_train, H=H_train, X=X_train, Z=Z_train, V=V_train,
+#                                     Omega_inv=jnp.linalg.inv(Omega))
+#
+#                 N_test = test_idx.shape[0]
+#                 if N_test > 0:
+#                     gamma_test = gamma_train[test_idx]
+#                     L_test = L_train[test_idx]
+#
+#                     Y_pred = (L_test +
+#                               jnp.outer(gamma_test, jnp.ones(T)) +
+#                               jnp.outer(jnp.ones(N_test), delta_train))
+#
+#                     if X_test is not None and Z_test is not None:
+#                         if X_test.shape[1] > 0 and Z_test.shape[1] > 0:  # Check if X_test and Z_test have valid shapes
+#                             XHZ = jnp.dot(X_test, H_train[:X.shape[1], :Z.shape[1]])
+#                             Y_pred += jnp.dot(XHZ, Z_test.T).reshape(N_test, T)
+#                     if V_test is not None and V_test.shape[2] > 0:
+#                         Y_pred += jnp.sum(V_test * beta_train, axis=2)
+#
+#                     O_test = (W_test == 0)
+#                     loss += jnp.sum((Y_test - Y_pred) ** 2 * O_test) / jnp.sum(O_test)
+#                 else:
+#                     # Skip this fold if there are no test samples
+#                     continue
+#
+#             loss /= K
+#             if loss < best_loss:
+#                 best_lambda_L = lambda_L.item()  # Convert to scalar
+#                 best_lambda_H = lambda_H.item()  # Convert to scalar
+#                 best_loss = loss.item()  # Convert to scalar
+#
+#             return best_lambda_L, best_lambda_H
 def cross_validation(
         Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] = None, V: Optional[Array] = None,
         proposed_lambda_L: Optional[float] = None, proposed_lambda_H: Optional[float] = None,
@@ -242,43 +338,38 @@ def cross_validation(
 
                 Y_train, Y_test = Y[train_idx], Y[test_idx]
                 W_train, W_test = W[train_idx], W[test_idx]
-                X_train, X_test = X[train_idx], X[test_idx] if X.shape[1] > 0 else (None, None)
-                Z_train, Z_test = Z, Z  # Z is time-specific, so it doesn't change
-                V_train, V_test = V[train_idx], V[test_idx] if V.shape[2] > 0 else (None, None)
+                X_train, X_test = X[train_idx], X[test_idx]
+                V_train, V_test = V[train_idx], V[test_idx]
 
                 O_train = (W_train == 0)
                 gamma_train, delta_train = compute_fixed_effects(Y_train, jnp.zeros_like(Y_train),
-                                                                 X=X_train, Z=Z_train, V=V_train)
+                                                                 X=X_train, Z=Z, V=V_train)
                 H_train = compute_H(Y_train, jnp.zeros_like(Y_train), gamma_train, delta_train,
-                                    X=X_train, Z=Z_train, V=V_train)
-                beta_train = jnp.zeros(V_train.shape[2]) if V is not None and V.shape[2] > 0 else jnp.zeros(0)
+                                    X=X_train, Z=Z, V=V_train)
+                beta_train = jnp.zeros(V_train.shape[2]) if V_train.shape[2] > 0 else jnp.zeros(0)
                 L_train = compute_L(Y_train, O_train, lambda_L, gamma=gamma_train, delta=delta_train,
-                                    beta=beta_train, H=H_train, X=X_train, Z=Z_train, V=V_train,
+                                    beta=beta_train, H=H_train, X=X_train, Z=Z, V=V_train,
                                     Omega_inv=jnp.linalg.inv(Omega))
 
-                # Predict Y for test set
-                N_test = test_idx.shape[0]
-                if N_test > 0:
-                    Y_pred = (L_train +
-                              jnp.outer(gamma_train, jnp.ones(T)) +
-                              jnp.outer(jnp.ones(N_test), delta_train))
+                Y_pred = (L_train[test_idx] +
+                          jnp.outer(gamma_train[test_idx], jnp.ones(T)) +
+                          jnp.outer(jnp.ones(test_idx.shape[0]), delta_train))
 
-                    if X_test is not None and Z_test is not None and X_test.shape[1] > 0 and Z_test.shape[1] > 0:
-                        Y_pred += jnp.dot(X_test, H_train[:X.shape[1], :Z.shape[1]])
-                    if V_test is not None and V_test.shape[2] > 0:
-                        Y_pred += jnp.sum(V_test * beta_train, axis=2)
+                if X_test.shape[1] > 0 and Z.shape[1] > 0:
+                    XHZ = jnp.dot(X_test, H_train[:X.shape[1], :Z.shape[1]])
+                    Y_pred += jnp.dot(XHZ, Z.T)
 
-                    O_test = (W_test == 0)
-                    loss += jnp.sum((Y_test - Y_pred) ** 2 * O_test) / jnp.sum(O_test)
-                else:
-                    # Skip this fold if there are no test samples
-                    continue
+                if V_test.shape[2] > 0:
+                    Y_pred += jnp.sum(V_test * beta_train, axis=2)
+
+                O_test = (W_test == 0)
+                loss += jnp.sum((Y_test - Y_pred) ** 2 * O_test) / jnp.sum(O_test)
 
             loss /= K
             if loss < best_loss:
-                best_lambda_L = lambda_L
-                best_lambda_H = lambda_H
-                best_loss = loss
+                best_lambda_L = lambda_L.item()
+                best_lambda_H = lambda_H.item()
+                best_loss = loss.item()
 
     return best_lambda_L, best_lambda_H
 
@@ -376,7 +467,7 @@ def fit(
     if return_completed_Y:
         Y_completed = L + jnp.outer(gamma, jnp.ones(T)) + jnp.outer(jnp.ones(N), delta)
         if X.shape[1] > 0 and Z.shape[1] > 0:
-            Y_completed += jnp.dot(X, H[:X.shape[1], :Z.shape[1]])
+            Y_completed += jnp.dot(X, H[:X.shape[1], :Z.shape[1]]).dot(Z.T)
         if V.shape[2] > 0:
             Y_completed += jnp.sum(V * beta, axis=2)
         results.append(Y_completed)
