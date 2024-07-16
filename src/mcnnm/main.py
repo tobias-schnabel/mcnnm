@@ -252,9 +252,6 @@ def cross_validation(
     num_obs = jnp.sum(O)
     fold_size = num_obs // K
 
-    param_combinations = [(l1, l2) for l1 in lambda_L_seq for l2 in lambda_H_seq]
-    n_params = len(param_combinations)
-
     @jax.jit
     def _single_fold(fold_indices, lambda_L, lambda_H):
         mask = jnp.ones_like(W, dtype=bool)
@@ -267,9 +264,7 @@ def cross_validation(
 
         results = fit(Y_train, W_train, X=X_train, Z=Z, V=V_train, Omega=Omega,
                       lambda_L=lambda_L, lambda_H=lambda_H, max_iter=200, tol=1e-4,
-                      return_tau=False, return_lambda=False, return_completed_L=False,
-                      return_completed_Y=True, return_fixed_effects=True,
-                      return_covariate_coefficients=True, use_early_stopping=False)
+                      use_early_stopping=use_early_stopping)
 
         Y_pred = results.Y_completed
         if V.shape[2] > 0:
@@ -283,15 +278,19 @@ def cross_validation(
     fold_indices = random.permutation(key, jnp.arange(N * T)).reshape(K, -1)
 
     @jax.jit
-    def _eval_params(params):
-        lambda_L, lambda_H = params
+    def _eval_params(lambda_L_idx, lambda_H_idx):
+        lambda_L = lambda_L_seq[lambda_L_idx]
+        lambda_H = lambda_H_seq[lambda_H_idx]
         fold_losses = vmap(lambda fold_idx: _single_fold(fold_idx, lambda_L, lambda_H))(fold_indices)
         return jnp.mean(fold_losses)
 
-    losses = vmap(_eval_params)(jnp.array(param_combinations))
+    param_indices = jnp.array(jnp.meshgrid(jnp.arange(len(lambda_L_seq)), jnp.arange(len(lambda_H_seq)))).T.reshape(-1, 2)
+    losses = vmap(_eval_params)(param_indices[:, 0], param_indices[:, 1])
 
     best_index = jnp.argmin(losses)
-    best_lambda_L, best_lambda_H = param_combinations[best_index]
+    best_lambda_L_idx, best_lambda_H_idx = jax.lax.dynamic_slice(param_indices, (best_index, 0), (1, 2))[0]
+    best_lambda_L = lambda_L_seq[best_lambda_L_idx]
+    best_lambda_H = lambda_H_seq[best_lambda_H_idx]
 
     return best_lambda_L, best_lambda_H
 
@@ -461,14 +460,39 @@ class MCNNMResults(NamedTuple):
 #         results['H'] = H
 #
 #     return MCNNMResults(**results)
+def check_inputs(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] = None, V: Optional[Array] = None,
+                 Omega: Optional[Array] = None) -> None:
+    """
+    Checks the validity of the input arrays and raises appropriate errors if the inputs are invalid.
+
+    Args:
+        Y: The observed outcome matrix of shape (N, T).
+        W: The binary treatment matrix of shape (N, T).
+        X: The unit-specific covariates matrix of shape (N, P). If None, unit-specific covariates are not included.
+        Z: The time-specific covariates matrix of shape (T, Q). If None, time-specific covariates are not included.
+        V: The unit-time specific covariates tensor of shape (N, T, J). If None, unit-time specific covariates are not included.
+        Omega: The autocorrelation matrix of shape (T, T). If None, no autocorrelation is assumed.
+
+    Raises:
+        ValueError: If the shapes of the input arrays are invalid or inconsistent.
+    """
+    N, T = Y.shape
+    if W.shape != (N, T):
+        raise ValueError("The shape of W must match the shape of Y.")
+    if X is not None and X.shape[0] != N:
+        raise ValueError("The number of rows in X must match the number of rows in Y.")
+    if Z is not None and Z.shape[0] != T:
+        raise ValueError("The number of rows in Z must match the number of columns in Y.")
+    if V is not None and V.shape[:2] != (N, T):
+        raise ValueError("The first two dimensions of V must match the shape of Y.")
+    if Omega is not None and Omega.shape != (T, T):
+        raise ValueError("The shape of Omega must be (T, T).")
+
 
 @jax.jit
 def fit(
         Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] = None, V: Optional[Array] = None,
         Omega: Optional[Array] = None, lambda_L: Optional[float] = None, lambda_H: Optional[float] = None,
-        return_tau: bool = True, return_lambda: bool = True,
-        return_completed_L: bool = True, return_completed_Y: bool = True,
-        return_fixed_effects: bool = False, return_covariate_coefficients: bool = False,
         max_iter: int = 200, tol: float = 1e-4, use_early_stopping: bool = False
 ) -> MCNNMResults:
     """
@@ -483,18 +507,12 @@ def fit(
         Omega: The autocorrelation matrix of shape (T, T). If None, no autocorrelation is assumed.
         lambda_L: The regularization parameter for the nuclear norm of L. If None, it is selected via cross-validation.
         lambda_H: The regularization parameter for the element-wise L1 norm of H. If None, it is selected via cross-validation.
-        return_tau: Whether to return the average treatment effect (tau) for the treated units.
-        return_lambda: Whether to return the optimal regularization parameters lambda_L and lambda_H.
-        return_completed_L: Whether to return the completed low-rank matrix L.
-        return_completed_Y: Whether to return the completed outcome matrix Y.
-        return_fixed_effects: Whether to return the estimated fixed effects (gamma and delta).
-        return_covariate_coefficients: Whether to return the estimated covariate coefficients (beta and H).
         max_iter: The maximum number of iterations for the algorithm.
         tol: The tolerance for the convergence of the algorithm.
         use_early_stopping: Whether to use early stopping.
 
     Returns:
-        A named tuple (MCNNMResults) containing the selected outputs.
+        A named tuple (MCNNMResults) containing all the outputs.
     """
     N, T = Y.shape
     if X is None:
@@ -559,67 +577,23 @@ def fit(
     final_state = jax.lax.fori_loop(0, max_iter, body_fn, initial_state)
     L, H, gamma, delta, beta = final_state
 
-    results = {}
-    if return_tau:
-        tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W, Z, V)
-        results['tau'] = tau
-    if return_lambda:
-        results['lambda_L'] = lambda_L
-        results['lambda_H'] = lambda_H
-    if return_completed_L:
-        results['L'] = L
-    if return_completed_Y:
-        Y_completed = L + jnp.dot(X_tilde, jnp.dot(H, Z_tilde.T)) + jnp.outer(gamma, jnp.ones(T)) + jnp.outer(
-            jnp.ones(N), delta)
-        if V is not None and V.shape[2] > 0:
-            Y_completed += jnp.sum(V * beta, axis=2)
-        results['Y_completed'] = Y_completed
-    if return_fixed_effects:
-        results['gamma'] = gamma
-        results['delta'] = delta
-    if return_covariate_coefficients:
-        results['beta'] = beta
-        results['H'] = H
+    tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W, Z, V)
+    Y_completed = L + jnp.dot(X_tilde, jnp.dot(H, Z_tilde.T)) + jnp.outer(gamma, jnp.ones(T)) + jnp.outer(jnp.ones(N),
+                                                                                                          delta)
+    if V is not None and V.shape[2] > 0:
+        Y_completed += jnp.sum(V * beta, axis=2)
 
-    return MCNNMResults(**results)
-
-
-def check_inputs(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] = None, V: Optional[Array] = None,
-                 Omega: Optional[Array] = None) -> None:
-    """
-    Checks the validity of the input arrays and raises appropriate errors if the inputs are invalid.
-
-    Args:
-        Y: The observed outcome matrix of shape (N, T).
-        W: The binary treatment matrix of shape (N, T).
-        X: The unit-specific covariates matrix of shape (N, P). If None, unit-specific covariates are not included.
-        Z: The time-specific covariates matrix of shape (T, Q). If None, time-specific covariates are not included.
-        V: The unit-time specific covariates tensor of shape (N, T, J). If None, unit-time specific covariates are not included.
-        Omega: The autocorrelation matrix of shape (T, T). If None, no autocorrelation is assumed.
-
-    Raises:
-        ValueError: If the shapes of the input arrays are invalid or inconsistent.
-    """
-    N, T = Y.shape
-    if W.shape != (N, T):
-        raise ValueError("The shape of W must match the shape of Y.")
-    if X is not None and X.shape[0] != N:
-        raise ValueError("The number of rows in X must match the number of rows in Y.")
-    if Z is not None and Z.shape[0] != T:
-        raise ValueError("The number of rows in Z must match the number of columns in Y.")
-    if V is not None and V.shape[:2] != (N, T):
-        raise ValueError("The first two dimensions of V must match the shape of Y.")
-    if Omega is not None and Omega.shape != (T, T):
-        raise ValueError("The shape of Omega must be (T, T).")
+    return MCNNMResults(tau=tau, lambda_L=lambda_L, lambda_H=lambda_H, L=L, Y_completed=Y_completed,
+                        gamma=gamma, delta=delta, beta=beta, H=H)
 
 
 def estimate(
-    Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] = None, V: Optional[Array] = None,
-    Omega: Optional[Array] = None, lambda_L: Optional[float] = None, lambda_H: Optional[float] = None,
-    return_tau: bool = True, return_lambda: bool = True,
-    return_completed_L: bool = True, return_completed_Y: bool = True,
-    return_fixed_effects: bool = False, return_covariate_coefficients: bool = False,
-    max_iter: int = 1000, tol: float = 1e-4, verbose: bool = False
+        Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] = None, V: Optional[Array] = None,
+        Omega: Optional[Array] = None, lambda_L: Optional[float] = None, lambda_H: Optional[float] = None,
+        return_tau: bool = True, return_lambda: bool = True,
+        return_completed_L: bool = True, return_completed_Y: bool = True,
+        return_fixed_effects: bool = False, return_covariate_coefficients: bool = False,
+        max_iter: int = 1000, tol: float = 1e-4, verbose: bool = False
 ) -> MCNNMResults:
     """
     Estimates the MC-NNM model and returns the selected outputs.
@@ -651,10 +625,27 @@ def estimate(
     """
     check_inputs(Y, W, X, Z, V, Omega)
     if verbose:
-        print("Estimating MC-NNM model...")
-    return fit(Y, W, X, Z, V, Omega, lambda_L, lambda_H, return_tau, return_lambda,
-               return_completed_L, return_completed_Y, return_fixed_effects, return_covariate_coefficients,
-               max_iter, tol, verbose)
+        print_with_timestamp("Estimating MC-NNM model...")
+    results = fit(Y, W, X, Z, V, Omega, lambda_L, lambda_H, max_iter, tol, verbose)
+
+    output_results = {}
+    if return_tau:
+        output_results['tau'] = results.tau
+    if return_lambda:
+        output_results['lambda_L'] = results.lambda_L
+        output_results['lambda_H'] = results.lambda_H
+    if return_completed_L:
+        output_results['L'] = results.L
+    if return_completed_Y:
+        output_results['Y_completed'] = results.Y_completed
+    if return_fixed_effects:
+        output_results['gamma'] = results.gamma
+        output_results['delta'] = results.delta
+    if return_covariate_coefficients:
+        output_results['beta'] = results.beta
+        output_results['H'] = results.H
+
+    return MCNNMResults(**output_results)
 
 @jax.jit
 def complete_matrix(
