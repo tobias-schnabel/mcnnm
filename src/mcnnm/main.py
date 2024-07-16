@@ -119,43 +119,6 @@ def cross_validation(
     return best_lambda_L, best_lambda_H
 
 
-
-# def compute_treatment_effect(Y: Array, L: Array, gamma: Array, delta: Array, beta: Array, H: Array,
-#                              X: Array, W: Array, Z: Optional[Array] = None, V: Optional[Array] = None) -> float:
-#     """
-#     Computes the average treatment effect (tau) for the treated units.
-#
-#     Args:
-#         Y: The observed outcome matrix of shape (N, T).
-#         L: The completed low-rank matrix of shape (N, T).
-#         gamma: The unit fixed effects vector of shape (N,).
-#         delta: The time fixed effects vector of shape (T,).
-#         beta: The coefficient vector for the unit-time specific covariates of shape (J,).
-#         H: The coefficient matrix for the covariates of shape (P+N, Q+T).
-#         X: The matrix of unit-specific covariates of shape (N, P).
-#         W: The binary treatment matrix of shape (N, T).
-#         Z: The time-specific covariates matrix of shape (T, Q). If None, not included.
-#         V: The unit-time specific covariates tensor of shape (N, T, J). If None, not included.
-#
-#     Returns:
-#         The average treatment effect (tau) for the treated units.
-#     """
-#     print(f"Shape of X: {X.shape}")
-#     print(f"Shape of H: {H.shape}")
-#     print(f"Shape of Z: {Z.shape}")
-#     N, T = Y.shape
-#     Y_completed = L + jnp.outer(gamma, jnp.ones(T)) + jnp.outer(jnp.ones(N), delta)
-#
-#     if X is not None and Z is not None and X.shape[1] > 0 and Z.shape[1] > 0:
-#         # Y_completed += jnp.dot(X, jnp.dot(H[:X.shape[1], :Z.shape[1]], Z.T))
-#         Y_completed += jnp.dot(X, jnp.dot(H, Z.T))
-#
-#     if V is not None:
-#         Y_completed += jnp.sum(V * beta[None, None, :], axis=2)
-#
-#     treated_units = jnp.sum(W)
-#     tau = jnp.sum((Y - Y_completed) * W) / treated_units
-#     return tau
 def compute_treatment_effect(Y: Array, L: Array, gamma: Array, delta: Array, beta: Array, H: Array,
                              X: Array, W: Array, Z: Optional[Array] = None, V: Optional[Array] = None) -> float:
     N, T = Y.shape
@@ -210,9 +173,11 @@ def fit(
         Omega = jnp.eye(T)
 
     if lambda_L is None or lambda_H is None:
+        if verbose:
+            print_with_timestamp("Selecting optimal regularization parameters via cross-validation...")
         lambda_L, lambda_H = cross_validation(Y, W, X=X, Z=Z, V=V, Omega=Omega)
         if verbose:
-            print(f"Selected lambda_L: {lambda_L:.4f}, lambda_H: {lambda_H:.4f}")
+            print_with_timestamp(f"Selected lambda_L: {lambda_L:.4f}, lambda_H: {lambda_H:.4f}")
 
     O = (W == 0)
     X_tilde = jnp.hstack((X, jnp.eye(N)))
@@ -224,6 +189,10 @@ def fit(
     gamma = jnp.zeros(N)
     delta = jnp.zeros(T)
     beta = jnp.zeros(V.shape[2]) if V is not None and V.shape[2] > 0 else jnp.zeros(0)
+    if verbose:
+        obj_value = objective_function(Y, L, Omega_inv=jnp.linalg.inv(Omega), gamma=gamma, delta=delta,
+                                       beta=beta, H=H, X=X, Z=Z, V=V)
+        print_with_timestamp(f"Initial Objective value: {obj_value:.6f}")
 
     for iteration in range(max_iter):
         # Update L using shrinkage operator
@@ -236,7 +205,7 @@ def fit(
         # Check convergence
         if jnp.linalg.norm(L_new - L, ord='fro') < tol:
             if verbose:
-                print(f"Converged after {iteration + 1} iterations")
+                print_with_timestamp(f"Converged after {iteration + 1} iterations")
             break
 
         L = L_new
@@ -260,14 +229,14 @@ def fit(
         if verbose:
             obj_value = objective_function(Y, L, Omega_inv=jnp.linalg.inv(Omega), gamma=gamma, delta=delta,
                                            beta=beta, H=H, X=X, Z=Z, V=V)
-            print(f"Iteration {iteration + 1}, Objective value: {obj_value:.6f}")
+            print_with_timestamp(f"Iteration {iteration + 1}, Objective value: {obj_value:.6f}")
 
     results = {}
     if return_tau:
         tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W, Z, V)
         results['tau'] = tau
         if verbose:
-            print(f"Estimated treatment effect (tau): {tau:.4f}")
+            print_with_timestamp(f"Estimated treatment effect (tau): {tau:.4f}")
     if return_lambda:
         results['lambda_L'] = lambda_L
         results['lambda_H'] = lambda_H
@@ -324,7 +293,7 @@ def estimate(
     return_tau: bool = True, return_lambda: bool = True,
     return_completed_L: bool = True, return_completed_Y: bool = True,
     return_fixed_effects: bool = False, return_covariate_coefficients: bool = False,
-    max_iter: int = 1000, tol: float = 1e-4
+    max_iter: int = 1000, tol: float = 1e-4, verbose: bool = False
 ) -> MCNNMResults:
     """
     Estimates the MC-NNM model and returns the selected outputs.
@@ -346,6 +315,7 @@ def estimate(
         return_covariate_coefficients: Whether to return the estimated covariate coefficients (beta and H).
         max_iter: The maximum number of iterations for the algorithm.
         tol: The tolerance for the convergence of the algorithm.
+        verbose: Whether to print the objective function value at each iteration.
 
     Returns:
         A named tuple (MCNNMResults) containing the selected outputs.
@@ -354,9 +324,11 @@ def estimate(
         ValueError: If the shapes of the input arrays are invalid or inconsistent.
     """
     check_inputs(Y, W, X, Z, V, Omega)
+    if verbose:
+        print("Estimating MC-NNM model...")
     return fit(Y, W, X, Z, V, Omega, lambda_L, lambda_H, return_tau, return_lambda,
                return_completed_L, return_completed_Y, return_fixed_effects, return_covariate_coefficients,
-               max_iter, tol)
+               max_iter, tol, verbose)
 
 @jax.jit
 def complete_matrix(

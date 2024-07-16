@@ -1,8 +1,9 @@
 import pytest
 import jax.numpy as jnp
 from jax import random
-from typing import Optional, Tuple
-from mcnnm.main import objective_function, cross_validation, compute_treatment_effect, fit, MCNNMResults
+# from typing import Optional, Tuple
+from mcnnm.main import objective_function, cross_validation, compute_treatment_effect, fit, estimate
+from mcnnm.simulate import generate_data_factor
 import jax
 jax.config.update('jax_platforms', 'cpu')
 jax.config.update('jax_enable_x64', True)
@@ -88,6 +89,39 @@ def test_fit(sample_data):
 
     assert jnp.isfinite(tau)
     assert jnp.isfinite(lambda_L)
+    assert L.shape == Y.shape
+    assert Y_completed.shape == Y.shape
+    assert gamma.shape == (Y.shape[0],)
+    assert delta.shape == (Y.shape[1],)
+    assert beta.shape == (V.shape[2],)
+    assert H.shape == (X.shape[1] + Y.shape[0], Z.shape[1] + Y.shape[1])
+
+    assert jnp.all(jnp.isfinite(L))
+    assert jnp.all(jnp.isfinite(Y_completed))
+    assert jnp.all(jnp.isfinite(gamma))
+    assert jnp.all(jnp.isfinite(delta))
+    assert jnp.all(jnp.isfinite(beta))
+    assert jnp.all(jnp.isfinite(H))
+
+
+@pytest.mark.timeout(180)
+def test_estimate():
+    nobs, nperiods = 50, 10
+    data, true_params = generate_data_factor(nobs=nobs, nperiods=nperiods, seed=42)
+
+    Y = jnp.array(data.pivot(index='unit', columns='period', values='y').values)
+    W = jnp.array(data.pivot(index='unit', columns='period', values='treat').values)
+
+    X, Z, V = jnp.array(true_params['X']), jnp.array(true_params['Z']), jnp.array(true_params['V'])
+
+    results = estimate(Y, W, X=X, Z=Z, V=V, return_fixed_effects=True, return_covariate_coefficients=True)
+
+    assert len(results) == 9
+    tau, lambda_L, lambda_H, L, Y_completed, gamma, delta, beta, H = results
+
+    assert jnp.isfinite(tau)
+    assert jnp.isfinite(lambda_L)
+    assert jnp.isfinite(lambda_H)
     assert L.shape == Y.shape
     assert Y_completed.shape == Y.shape
     assert gamma.shape == (Y.shape[0],)
