@@ -134,7 +134,7 @@ def propose_lambda(proposed_lambda: Optional[float] = None, n_lambdas: int = 6) 
         The sequence of proposed lambda values.
     """
     if proposed_lambda is None:
-        return jnp.logspace(-3, 1, n_lambdas)
+        return jnp.logspace(-3, 0, n_lambdas)
     else:
         log_proposed_lambda = jnp.log10(proposed_lambda)
         log_min = log_proposed_lambda - 2

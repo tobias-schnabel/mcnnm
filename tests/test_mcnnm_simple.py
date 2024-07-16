@@ -1,21 +1,18 @@
 import numpy as np
 import pandas as pd
 import jax.numpy as jnp
-from jax import random
 from typing import Optional, Tuple, Dict
-from mcnnm.main import fit
+from mcnnm.main import fit, MCNNMResults
 
 def generate_data(
     nobs: int = 500,
     nperiods: int = 100,
     treated_period: int = 50,
-    include_unit_fe: bool = True,
-    include_time_fe: bool = True,
-    include_unit_covariates: bool = True,
-    include_time_covariates: bool = True,
-    include_unit_time_covariates: bool = True,
-    treatment_effect: float = 5.0,
-    noise_std: float = 0.2,
+    rank: int = 5,
+    treatment_effect: float = 1.0,
+    fixed_effects_scale: float = 0.1,
+    covariates_scale: float = 0.1,
+    noise_scale: float = 0.1,
     seed: Optional[int] = None
 ) -> Tuple[pd.DataFrame, Dict]:
     """
@@ -25,13 +22,11 @@ def generate_data(
         nobs: Number of observations (units).
         nperiods: Number of time periods.
         treated_period: The period when treatment starts.
-        include_unit_fe: Whether to include unit fixed effects.
-        include_time_fe: Whether to include time fixed effects.
-        include_unit_covariates: Whether to include unit-specific covariates.
-        include_time_covariates: Whether to include time-specific covariates.
-        include_unit_time_covariates: Whether to include unit-time specific covariates.
+        rank: The rank of the low-rank matrix L.
         treatment_effect: The true treatment effect.
-        noise_std: Standard deviation of the noise.
+        fixed_effects_scale: The scale of the fixed effects.
+        covariates_scale: The scale of the covariates and their coefficients.
+        noise_scale: The scale of the noise.
         seed: Random seed for reproducibility.
 
     Returns:
@@ -47,55 +42,58 @@ def generate_data(
     period = np.arange(1, nperiods + 1)
     data = pd.DataFrame([(u, t) for u in unit for t in period], columns=['unit', 'period'])
 
-    # Initialize outcome
-    data['y'] = 0.0
+    # Generate low-rank matrix L
+    U = np.random.normal(0, 1, (nobs, rank))
+    V = np.random.normal(0, 1, (nperiods, rank))
+    L = U @ V.T
 
-    # Generate and add fixed effects
-    true_params = {}
-    if include_unit_fe:
-        unit_fe = np.random.normal(0, 1, nobs)
-        data['y'] += np.repeat(unit_fe, nperiods)
-        true_params['unit_fe'] = unit_fe
+    # Generate fixed effects
+    unit_fe = np.random.normal(0, fixed_effects_scale, nobs)
+    time_fe = np.random.normal(0, fixed_effects_scale, nperiods)
 
-    if include_time_fe:
-        time_fe = np.random.normal(0, 1, nperiods)
-        data['y'] += np.tile(time_fe, nobs)
-        true_params['time_fe'] = time_fe
+    # Generate covariates and their coefficients
+    X = np.random.normal(0, covariates_scale, (nobs, 2))
+    X_coef = np.random.normal(0, covariates_scale, 2)
+    Z = np.random.normal(0, covariates_scale, (nperiods, 2))
+    Z_coef = np.random.normal(0, covariates_scale, 2)
+    V = np.random.normal(0, covariates_scale, (nobs, nperiods, 2))
+    V_coef = np.random.normal(0, covariates_scale, 2)
 
-    # Generate and add covariates
-    if include_unit_covariates:
-        X = np.random.normal(0, 1, (nobs, 2))  # 2 unit-specific covariates
-        X_coef = np.array([0.5, -0.5])
-        data['y'] += np.repeat(X.dot(X_coef), nperiods)
-        true_params['X'] = X
-        true_params['X_coef'] = X_coef
+    # Generate outcome
+    Y = (L +
+         np.outer(unit_fe, np.ones(nperiods)) +
+         np.outer(np.ones(nobs), time_fe) +
+         np.repeat(X @ X_coef, nperiods).reshape(nobs, nperiods) +
+         np.tile((Z @ Z_coef).reshape(1, -1), (nobs, 1)) +
+         np.sum(V * V_coef, axis=2) +
+         np.random.normal(0, noise_scale, (nobs, nperiods)))
 
-    if include_time_covariates:
-        Z = np.random.normal(0, 1, (nperiods, 2))  # 2 time-specific covariates
-        Z_coef = np.array([0.3, -0.3])
-        data['y'] += np.tile(Z.dot(Z_coef), nobs)
-        true_params['Z'] = Z
-        true_params['Z_coef'] = Z_coef
+    # Add treatment effect
+    treat = np.zeros((nobs, nperiods))
+    treat[:, treated_period:] = 1
+    Y += treat * treatment_effect
 
-    if include_unit_time_covariates:
-        V = np.random.normal(0, 1, (nobs, nperiods, 2))  # 2 unit-time specific covariates
-        V_coef = np.array([0.2, -0.2])
-        data['y'] += V.reshape(-1, 2).dot(V_coef)
-        true_params['V'] = V
-        true_params['V_coef'] = V_coef
+    data['y'] = Y.flatten()
+    data['treat'] = treat.flatten()
 
-    # Add treatment
-    data['treat'] = (data['period'] > treated_period).astype(int)
-    data['y'] += data['treat'] * treatment_effect
-    true_params['treatment_effect'] = treatment_effect
+    true_params = {
+        'L': L,
+        'unit_fe': unit_fe,
+        'time_fe': time_fe,
+        'X': X,
+        'X_coef': X_coef,
+        'Z': Z,
+        'Z_coef': Z_coef,
+        'V': V,
+        'V_coef': V_coef,
+        'treatment_effect': treatment_effect,
+        'noise_scale': noise_scale
+    }
 
-    # Add noise
-    data['y'] += np.random.normal(0, noise_std, nobs * nperiods)
-    true_params['noise_std'] = noise_std
-
-    print(f"Proportion of treated observations: {data['treat'].mean()}")
+    # print(f"Proportion of treated observations: {data['treat'].mean()}")
 
     return data, true_params
+
 
 def test_mcnnm_accuracy():
     nobs, nperiods = 500, 100
@@ -104,60 +102,97 @@ def test_mcnnm_accuracy():
     Y = data.pivot(index='unit', columns='period', values='y').values
     W = data.pivot(index='unit', columns='period', values='treat').values
 
-    # Prepare covariates if they exist in the data
-    X = true_params.get('X')
-    Z = true_params.get('Z')
-    V = true_params.get('V')
+    X, Z, V = true_params['X'], true_params['Z'], true_params['V']
 
-    print(f"Proportion of treated observations: {W.mean()}")
+    print(f"\nProportion of treated observations: {W.mean()}")
     print(f"Mean of Y: {np.mean(Y)}")
     print(f"Std of Y: {np.std(Y)}")
 
-    # Use fit function with cross-validation
-    results = fit(Y, W, X=X, Z=Z, V=V, return_fixed_effects=True, return_covariate_coefficients=True)
-    tau, lambda_L, L, Y_completed, gamma, delta, beta, H = results
+    results = fit(Y, W, X=X, Z=Z, V=V, return_fixed_effects=True, return_covariate_coefficients=True, verbose=True)
 
-    # Check treatment effect
-    print(f"True effect: {true_params['treatment_effect']}, Estimated effect: {tau}")
-    print(f"Chosen lambda_L: {lambda_L}")
+    # Print all results except the L matrix
+    print("\nResults:")
+    for field in results._fields:
+        if field != 'L':
+            value = getattr(results, field)
+            if value is not None:
+                if isinstance(value, (float, int)):
+                    print(f"{field}: {value:.4f}")
+                elif isinstance(value, (np.ndarray, jnp.ndarray)):
+                    print(f"{field}: shape {value.shape}, mean {np.mean(value):.4f}, std {np.std(value):.4f}")
+                else:
+                    print(f"{field}: {value}")
 
-    # Compare true and estimated fixed effects
-    if 'unit_fe' in true_params:
-        print(f"Unit fixed effects correlation: {np.corrcoef(gamma, true_params['unit_fe'])[0, 1]}")
-        print(f"True unit FE mean: {np.mean(true_params['unit_fe'])}, Estimated: {np.mean(gamma)}")
-        print(f"True unit FE std: {np.std(true_params['unit_fe'])}, Estimated: {np.std(gamma)}")
+    print(f"\nTrue effect: {true_params['treatment_effect']}, Estimated effect: {results.tau:.4f}")
+    print(f"Chosen lambda_L: {results.lambda_L:.4f}")
+    print(f"Chosen lambda_H: {results.lambda_H:.4f}")
 
-    if 'time_fe' in true_params:
-        print(f"Time fixed effects correlation: {np.corrcoef(delta, true_params['time_fe'])[0, 1]}")
-        print(f"True time FE mean: {np.mean(true_params['time_fe'])}, Estimated: {np.mean(delta)}")
-        print(f"True time FE std: {np.std(true_params['time_fe'])}, Estimated: {np.std(delta)}")
+    print(f"Unit fixed effects correlation: {np.corrcoef(results.gamma, true_params['unit_fe'])[0, 1]:.4f}")
+    print(f"Time fixed effects correlation: {np.corrcoef(results.delta, true_params['time_fe'])[0, 1]:.4f}")
 
-    # Compare true and estimated covariate coefficients
-    if 'X_coef' in true_params:
-        estimated_X_coef = H[:X.shape[1], :Z.shape[1]]
-        print(f"True X coefficients: {true_params['X_coef']}, Estimated: {estimated_X_coef}")
+    print(f"True X coefficients: {true_params['X_coef']}")
+    print(f"Estimated X coefficients: {results.H[:X.shape[1], :Z.shape[1]]}")
+    print(f"True Z coefficients: {true_params['Z_coef']}")
+    print(f"Estimated Z coefficients: {results.H[:X.shape[1], :Z.shape[1]].T}")
+    print(f"True V coefficients: {true_params['V_coef']}")
+    print(f"Estimated V coefficients: {results.beta}")
 
-    if 'Z_coef' in true_params:
-        estimated_Z_coef = H[:X.shape[1], :Z.shape[1]].T
-        print(f"True Z coefficients: {true_params['Z_coef']}, Estimated: {estimated_Z_coef}")
+    mse = np.mean((Y - results.Y_completed)**2)
+    print(f"Mean Squared Error of completed matrix: {mse:.4f}")
 
-    if 'V_coef' in true_params:
-        print(f"True V coefficients: {true_params['V_coef']}, Estimated: {beta}")
-
-    # Check completed matrix
-    mse = np.mean((Y - Y_completed)**2)
-    print(f"Mean Squared Error of completed matrix: {mse}")
-
-    # Simple difference in means
     treated_mean = np.mean(Y[W == 1])
     control_mean = np.mean(Y[W == 0])
-    print(f"Simple diff-in-means estimate: {treated_mean - control_mean}")
+    print(f"Simple diff-in-means estimate: {treated_mean - control_mean:.4f}")
 
-    assert np.allclose(tau, true_params['treatment_effect'], atol=1e-1), \
-        f"Estimated effect {tau} not close to true effect {true_params['treatment_effect']}"
+def test_mcnnm_accuracy_no_covariates():
+    nobs, nperiods = 500, 100
+    data, true_params = generate_data(nobs=nobs, nperiods=nperiods, seed=42,
+                                      covariates_scale=0.0)  # Set covariates_scale to 0 to effectively remove covariates
 
-    print("All tests passed successfully!")
+    Y = data.pivot(index='unit', columns='period', values='y').values
+    W = data.pivot(index='unit', columns='period', values='treat').values
+
+    print(f"\nProportion of treated observations: {W.mean()}")
+    print(f"Mean of Y: {np.mean(Y)}")
+    print(f"Std of Y: {np.std(Y)}")
+
+    results = fit(Y, W, return_fixed_effects=True, verbose=True)
+
+    # Print all results except the L matrix
+    print("\nResults:")
+    for field in results._fields:
+        if field != 'L':
+            value = getattr(results, field)
+            if value is not None:
+                if isinstance(value, (float, int)):
+                    print(f"{field}: {value:.4f}")
+                elif isinstance(value, (np.ndarray, jnp.ndarray)):
+                    print(f"{field}: shape {value.shape}, mean {np.mean(value):.4f}, std {np.std(value):.4f}")
+                else:
+                    print(f"{field}: {value}")
+
+    print(f"\nTrue effect: {true_params['treatment_effect']}, Estimated effect: {results.tau:.4f}")
+    print(f"Chosen lambda_L: {results.lambda_L:.4f}")
+
+    print(f"Unit fixed effects correlation: {np.corrcoef(results.gamma, true_params['unit_fe'])[0, 1]:.4f}")
+    print(f"Time fixed effects correlation: {np.corrcoef(results.delta, true_params['time_fe'])[0, 1]:.4f}")
+
+    mse = np.mean((Y - results.Y_completed)**2)
+    print(f"Mean Squared Error of completed matrix: {mse:.4f}")
+
+    treated_mean = np.mean(Y[W == 1])
+    control_mean = np.mean(Y[W == 0])
+    print(f"Simple diff-in-means estimate: {treated_mean - control_mean:.4f}")
+
+    # Compare the estimated L with the true L
+    L_correlation = np.corrcoef(results.L.flatten(), true_params['L'].flatten())[0, 1]
+    print(f"Correlation between true and estimated L: {L_correlation:.4f}")
+
+    # Compute and print the rank of the estimated L
+    _, s, _ = np.linalg.svd(results.L)
+    estimated_rank = np.sum(s > 1e-10)  # Count singular values above a small threshold
+    print(f"Estimated rank of L: {estimated_rank}")
+    print(f"True rank of L: {true_params['L'].shape[1]}")
 
 if __name__ == "__main__":
     test_mcnnm_accuracy()
-

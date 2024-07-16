@@ -2,7 +2,8 @@ import pytest
 import jax.numpy as jnp
 from jax import random
 from typing import Optional, Tuple
-from mcnnm.main import p_o, p_perp_o, shrink_lambda, objective_function, compute_fixed_effects, compute_H, compute_L, cross_validation, compute_treatment_effect, fit
+from mcnnm.main import (p_o, p_perp_o, shrink_lambda, objective_function, compute_fixed_effects, compute_H, compute_L,
+                        cross_validation, compute_treatment_effect, fit, MCNNMResults)
 
 # Set a fixed seed for reproducibility
 key = random.PRNGKey(2024)
@@ -108,6 +109,7 @@ def test_cross_validation(sample_data):
     assert jnp.isscalar(lambda_L) and jnp.isscalar(lambda_H)
     assert jnp.isfinite(lambda_L) and jnp.isfinite(lambda_H)
 
+
 def test_compute_treatment_effect(sample_data):
     Y, W, X, Z, V = sample_data
     L = random.normal(key, Y.shape)
@@ -115,34 +117,51 @@ def test_compute_treatment_effect(sample_data):
     delta = random.normal(key, (Y.shape[1],))
     beta = random.normal(key, (V.shape[2],))
     H = random.normal(key, (Y.shape[0] + X.shape[1], Y.shape[1] + Z.shape[1]))
-    tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W, Z, V)
-    assert jnp.isfinite(tau)
+
+    results = fit(Y, W, X=X, Z=Z, V=V, return_fixed_effects=True, return_covariate_coefficients=True)
+
+    assert isinstance(results.tau, (float, jnp.ndarray)), f"tau should be a float or JAX array, got {type(results.tau)}"
+    if isinstance(results.tau, jnp.ndarray):
+        assert results.tau.shape == (), f"tau should be a scalar, got shape {results.tau.shape}"
+    assert jnp.isfinite(results.tau)
 
 
 def test_fit(sample_data):
     Y, W, X, Z, V = sample_data
     results = fit(Y, W, X=X, Z=Z, V=V, return_fixed_effects=True, return_covariate_coefficients=True)
 
-    assert len(results) == 8, f"Expected 8 return values from fit function, got {len(results)}"
-    tau, lambda_L, L, Y_completed, gamma, delta, beta, H = results
+    assert isinstance(results, MCNNMResults), f"Expected MCNNMResults, got {type(results)}"
 
-    assert isinstance(tau, (float, jnp.ndarray)), f"tau should be a float or JAX array, got {type(tau)}"
-    if isinstance(tau, jnp.ndarray):
-        assert tau.shape == (), f"tau should be a scalar, got shape {tau.shape}"
-    assert isinstance(lambda_L, (float, jnp.ndarray)), f"lambda_L should be a float or JAX array, got {type(lambda_L)}"
-    assert isinstance(L, jnp.ndarray), f"L should be a JAX array, got {type(L)}"
-    assert isinstance(Y_completed, jnp.ndarray), f"Y_completed should be a JAX array, got {type(Y_completed)}"
-    assert isinstance(gamma, jnp.ndarray), f"gamma should be a JAX array, got {type(gamma)}"
-    assert isinstance(delta, jnp.ndarray), f"delta should be a JAX array, got {type(delta)}"
-    assert isinstance(beta, jnp.ndarray), f"beta should be a JAX array, got {type(beta)}"
-    assert isinstance(H, jnp.ndarray), f"H should be a JAX array, got {type(H)}"
+    # Check that all expected fields are present
+    expected_fields = ['tau', 'lambda_L', 'lambda_H', 'L', 'Y_completed', 'gamma', 'delta', 'beta', 'H']
+    for field in expected_fields:
+        assert hasattr(results, field), f"MCNNMResults is missing the '{field}' attribute"
 
-    assert L.shape == Y.shape, f"L shape {L.shape} should match Y shape {Y.shape}"
-    assert Y_completed.shape == Y.shape, f"Y_completed shape {Y_completed.shape} should match Y shape {Y.shape}"
-    assert gamma.shape == (Y.shape[0],), f"gamma shape {gamma.shape} should be ({Y.shape[0]},)"
-    assert delta.shape == (Y.shape[1],), f"delta shape {delta.shape} should be ({Y.shape[1]},)"
-    assert beta.shape == (V.shape[2],), f"beta shape {beta.shape} should be ({V.shape[2]},)"
-    assert H.shape == (X.shape[1] + Y.shape[0], Z.shape[1] + Y.shape[
-        1]), f"H shape {H.shape} should be ({X.shape[1] + Y.shape[0]}, {Z.shape[1] + Y.shape[1]})"
+    # Check types and shapes of the results
+    assert isinstance(results.tau, (float, jnp.ndarray)), f"tau should be a float or JAX array, got {type(results.tau)}"
+    if isinstance(results.tau, jnp.ndarray):
+        assert results.tau.shape == (), f"tau should be a scalar, got shape {results.tau.shape}"
+
+    assert isinstance(results.lambda_L,
+                      (float, jnp.ndarray)), f"lambda_L should be a float or JAX array, got {type(results.lambda_L)}"
+    assert isinstance(results.lambda_H,
+                      (float, jnp.ndarray)), f"lambda_H should be a float or JAX array, got {type(results.lambda_H)}"
+
+    assert isinstance(results.L, jnp.ndarray), f"L should be a JAX array, got {type(results.L)}"
+    assert isinstance(results.Y_completed,
+                      jnp.ndarray), f"Y_completed should be a JAX array, got {type(results.Y_completed)}"
+    assert isinstance(results.gamma, jnp.ndarray), f"gamma should be a JAX array, got {type(results.gamma)}"
+    assert isinstance(results.delta, jnp.ndarray), f"delta should be a JAX array, got {type(results.delta)}"
+    assert isinstance(results.beta, jnp.ndarray), f"beta should be a JAX array, got {type(results.beta)}"
+    assert isinstance(results.H, jnp.ndarray), f"H should be a JAX array, got {type(results.H)}"
+
+    # Check shapes of the results
+    assert results.L.shape == Y.shape, f"L shape {results.L.shape} should match Y shape {Y.shape}"
+    assert results.Y_completed.shape == Y.shape, f"Y_completed shape {results.Y_completed.shape} should match Y shape {Y.shape}"
+    assert results.gamma.shape == (Y.shape[0],), f"gamma shape {results.gamma.shape} should be ({Y.shape[0]},)"
+    assert results.delta.shape == (Y.shape[1],), f"delta shape {results.delta.shape} should be ({Y.shape[1]},)"
+    assert results.beta.shape == (V.shape[2],), f"beta shape {results.beta.shape} should be ({V.shape[2]},)"
+    assert results.H.shape == (X.shape[1] + Y.shape[0], Z.shape[1] + Y.shape[
+        1]), f"H shape {results.H.shape} should be ({X.shape[1] + Y.shape[0]}, {Z.shape[1] + Y.shape[1]})"
 
     print("All assertions passed!")
