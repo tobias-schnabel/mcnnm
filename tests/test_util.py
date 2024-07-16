@@ -2,6 +2,39 @@ import pytest
 from typing import Optional, Tuple
 import jax.numpy as jnp
 from mcnnm.util import *
+import jax
+
+jax.config.update('jax_platforms', 'cpu')
+jax.config.update('jax_enable_x64', True)
+
+key = jax.random.PRNGKey(2024)
+
+@pytest.fixture
+def sample_data():
+    N, T, P, Q, J = 10, 5, 3, 2, 4
+    Y = random.normal(key, (N, T))
+    W = random.bernoulli(key, 0.2, (N, T))
+    X = random.normal(key, (N, P))
+    Z = random.normal(key, (T, Q))
+    V = random.normal(key, (N, T, J))
+    return Y, W, X, Z, V
+
+def test_p_o(sample_data):
+    Y, W, _, _, _ = sample_data
+    mask = (W == 0)
+    assert jnp.allclose(p_o(Y, mask), Y * mask)
+
+def test_p_perp_o(sample_data):
+    Y, W, _, _, _ = sample_data
+    mask = (W == 0)
+    assert jnp.allclose(p_perp_o(Y, mask), Y * (1 - mask))
+
+def test_shrink_lambda(sample_data):
+    Y, _, _, _, _ = sample_data
+    lambda_ = 0.1
+    Y_shrunk = shrink_lambda(Y, lambda_)
+    assert Y_shrunk.shape == Y.shape
+    assert jnp.all(jnp.isfinite(Y_shrunk))
 
 def test_frobenius_norm():
     A = jnp.array([[1, 2], [3, 4]])
