@@ -48,6 +48,9 @@ pythonpath = [
   "src"
 ]
 addopts = "--doctest-modules"
+markers = [
+    "timeout: specify timeout for tests"
+]
 
 [tool.ruff]
 select = ["A", "ANN", "ARG", "B", "BLE", "C4", "C90", "COM", "D1", "D2", "D3", "D4", "DTZ", "EM", "ERA", "EXE", "F", "FA", "FLY", "G", "I", "ICN", "INP", "INT", "ISC", "N", "NPY", "PERF", "PGH", "PIE", "PL", "PT", "PTH", "PYI", "Q", "RET", "RUF", "RSE", "S", "SIM", "SLF", "SLOT", "T10", "T20", "TCH", "TID", "TRY", "UP", "W", "YTT"]
