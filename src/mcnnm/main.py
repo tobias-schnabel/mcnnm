@@ -6,7 +6,7 @@ from . import Array
 from mcnnm.util import *
 # from .util import propose_lambda
 
-
+@jax.jit
 def objective_function(
         Y: Array, L: Array, Omega_inv: Optional[Array] = None, gamma: Optional[Array] = None,
         delta: Optional[Array] = None, beta: Optional[Array] = None, H: Optional[Array] = None,
@@ -57,7 +57,7 @@ def objective_function(
 def cross_validation(
         Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] = None, V: Optional[Array] = None,
         proposed_lambda_L: Optional[float] = None, proposed_lambda_H: Optional[float] = None,
-        n_lambdas: int = 8, Omega: Optional[Array] = None, K: int = 5
+        n_lambdas: int = 6, Omega: Optional[Array] = None, K: int = 5
 ) -> Tuple[float, float]:
     """
     Performs K-fold cross-validation to select optimal regularization parameters lambda_L and lambda_H.
@@ -121,7 +121,7 @@ def cross_validation(
                     prev_results = fit(Y_train, W_train, X=X_train, Z=Z, V=V_train, Omega=Omega,
                                        lambda_L=lambda_L_seq[prev_lambda_L_idx],
                                        lambda_H=lambda_H_seq[prev_lambda_H_idx],
-                                       max_iter=1, tol=1e-4,
+                                       max_iter=1, tol=1e-3,
                                        return_tau=False, return_lambda=False, return_completed_L=True,
                                        return_completed_Y=False, return_fixed_effects=False,
                                        return_covariate_coefficients=False)
@@ -130,7 +130,7 @@ def cross_validation(
                     initial_L = None
 
                 results = fit(Y_train, W_train, X=X_train, Z=Z, V=V_train, Omega=Omega,
-                              lambda_L=lambda_L, lambda_H=lambda_H, max_iter=50, tol=1e-4,
+                              lambda_L=lambda_L, lambda_H=lambda_H, max_iter=50, tol=1e-3,
                               return_tau=False, return_lambda=False, return_completed_L=False,
                               return_completed_Y=True, return_fixed_effects=True,
                               return_covariate_coefficients=True, initial_L=initial_L)
