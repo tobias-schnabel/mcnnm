@@ -57,7 +57,7 @@ def objective_function(
 def cross_validation(
         Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] = None, V: Optional[Array] = None,
         proposed_lambda_L: Optional[float] = None, proposed_lambda_H: Optional[float] = None,
-        n_lambdas: int = 6, Omega: Optional[Array] = None, K: int = 3
+        n_lambdas: int = 8, Omega: Optional[Array] = None, K: int = 5
 ) -> Tuple[float, float]:
     """
     Performs K-fold cross-validation to select optimal regularization parameters lambda_L and lambda_H.
@@ -100,8 +100,8 @@ def cross_validation(
 
     key = random.PRNGKey(0)
 
-    for lambda_L in lambda_L_seq:
-        for lambda_H in lambda_H_seq:
+    for lambda_L_idx, lambda_L in enumerate(lambda_L_seq):
+        for lambda_H_idx, lambda_H in enumerate(lambda_H_seq):
             loss = 0.0
             for k in range(K):
                 key, subkey = random.split(key)
@@ -114,11 +114,26 @@ def cross_validation(
                 X_train, X_test = X[train_idx], X[test_idx]
                 V_train, V_test = V[train_idx], V[test_idx]
 
+                # Initialize L with the previously computed value if available
+                if lambda_L_idx > 0 or lambda_H_idx > 0:
+                    prev_lambda_L_idx = max(0, lambda_L_idx - 1)
+                    prev_lambda_H_idx = lambda_H_idx if lambda_L_idx > 0 else max(0, lambda_H_idx - 1)
+                    prev_results = fit(Y_train, W_train, X=X_train, Z=Z, V=V_train, Omega=Omega,
+                                       lambda_L=lambda_L_seq[prev_lambda_L_idx],
+                                       lambda_H=lambda_H_seq[prev_lambda_H_idx],
+                                       max_iter=1, tol=1e-4,
+                                       return_tau=False, return_lambda=False, return_completed_L=True,
+                                       return_completed_Y=False, return_fixed_effects=False,
+                                       return_covariate_coefficients=False)
+                    initial_L = prev_results.L
+                else:
+                    initial_L = None
+
                 results = fit(Y_train, W_train, X=X_train, Z=Z, V=V_train, Omega=Omega,
                               lambda_L=lambda_L, lambda_H=lambda_H, max_iter=50, tol=1e-4,
                               return_tau=False, return_lambda=False, return_completed_L=False,
                               return_completed_Y=True, return_fixed_effects=True,
-                              return_covariate_coefficients=True)
+                              return_covariate_coefficients=True, initial_L=initial_L)
 
                 Y_pred = (results.Y_completed[test_idx] +
                           jnp.outer(results.gamma[test_idx], jnp.ones(T)) +
@@ -202,7 +217,7 @@ def fit(
         return_tau: bool = True, return_lambda: bool = True,
         return_completed_L: bool = True, return_completed_Y: bool = True,
         return_fixed_effects: bool = False, return_covariate_coefficients: bool = False,
-        max_iter: int = 1000, tol: float = 1e-4, verbose: bool = False
+        max_iter: int = 1000, tol: float = 1e-4, verbose: bool = False, initial_L: Optional[Array] = None
 ) -> MCNNMResults:
     N, T = Y.shape
     if X is None:
@@ -226,7 +241,7 @@ def fit(
     Z_tilde = jnp.hstack((Z, jnp.eye(T)))
 
     # Initialize parameters
-    L = jnp.zeros_like(Y)
+    L = initial_L if initial_L is not None else jnp.zeros_like(Y)
     H = jnp.zeros((X_tilde.shape[1], Z_tilde.shape[1]))
     gamma = jnp.zeros(N)
     delta = jnp.zeros(T)
