@@ -6,6 +6,7 @@ from . import Array
 from typing import Optional
 import time
 from .timer import timer
+from datetime import datetime
 
 @jax.jit
 def p_o(A: Array, mask: Array) -> Array:
@@ -209,3 +210,17 @@ def time_fit(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] =
 
     return timed_fit(Y, W, X, Z, V, Omega, lambda_L, lambda_H, return_tau, return_lambda,
                      return_completed_L, return_completed_Y, max_iter, tol)
+
+
+def print_with_timestamp(message: str) -> None:
+    """
+    Print a message with a human-readable timestamp (hhmmss) prefix.
+
+    Args:
+        message (str): The message to be printed.
+
+    Returns:
+        None
+    """
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    print(f"[{timestamp}] {message}")
