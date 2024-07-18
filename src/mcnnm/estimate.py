@@ -552,9 +552,9 @@ def complete_matrix(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[A
                     lambda_H: Optional[float] = None, n_lambda_L: int = 10, n_lambda_H: int = 10,
                     max_iter: int = 1000, tol: float = 1e-4, verbose: bool = False,
                     validation_method: str = 'cv', window_size: Optional[int] = None,
-                    expanding_window: bool = False, max_window_size: Optional[int] = None) -> Array:
+                    expanding_window: bool = False, max_window_size: Optional[int] = None) -> Tuple[Array, float, float]:
     """
-    Complete the matrix Y using the MC-NNM model.
+    Complete the matrix Y using the MC-NNM model and return the optimal regularization parameters.
 
     Args:
         Y (Array): The observed outcome matrix.
@@ -576,11 +576,14 @@ def complete_matrix(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[A
         max_window_size (Optional[int]): Maximum size of the expanding window for time-based validation. Default is None.
 
     Returns:
-        Array: The completed outcome matrix.
+        Tuple[Array, float, float]: A tuple containing:
+            - The completed outcome matrix
+            - The optimal lambda_L value
+            - The optimal lambda_H value
     """
     results = estimate(Y, W, X, Z, V, Omega, lambda_L, lambda_H, n_lambda_L, n_lambda_H,
-                       return_tau=False, return_lambda=False, return_completed_L=False, return_completed_Y=True,
+                       return_tau=False, return_lambda=True, return_completed_L=False, return_completed_Y=True,
                        return_fixed_effects=False, return_covariate_coefficients=False,
                        max_iter=max_iter, tol=tol, verbose=verbose, validation_method=validation_method,
                        window_size=window_size, expanding_window=expanding_window, max_window_size=max_window_size)
-    return results.Y_completed
+    return results.Y_completed, results.lambda_L, results.lambda_H
