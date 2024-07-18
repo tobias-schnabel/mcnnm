@@ -54,25 +54,12 @@ def test_propose_lambda():
     assert jnp.allclose(lambdas[0], 0.01)
     assert jnp.allclose(lambdas[-1], 100.0)
 
-def test_timer():
-    @timer
-    def dummy_function():
-        return 42
 
-    assert dummy_function() == 42
-
-# def test_time_fit():
-#     Y = jnp.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-#     W = jnp.array([[0, 0, 1], [0, 0, 0], [0, 0, 0]])
-#     X = jnp.zeros((3, 2))
-#     Z = jnp.zeros((3, 1))
-#     V = jnp.zeros((3, 3, 1))
-#     results = time_fit(Y, W, X=X, Z=Z, V=V)
-#     assert len(results) == 4
-#     tau, lambda_L, L, Y_completed = results
-#     assert jnp.isfinite(tau)
-#     assert jnp.isfinite(lambda_L)
-#     assert L.shape == (2, 3)
-#     assert Y_completed.shape == (2, 3)
-#     assert jnp.all(jnp.isfinite(L))
-#     assert jnp.all(jnp.isfinite(Y_completed))
+def test_check_inputs():
+    Y = jnp.array([[1, 2], [3, 4]])
+    W = jnp.array([[0, 1], [0, 0]])
+    X, Z, V, Omega = check_inputs(Y, W)
+    assert X.shape == (2, 0)
+    assert Z.shape == (2, 0)
+    assert V.shape == (2, 2, 0)
+    assert Omega.shape == (2, 2)

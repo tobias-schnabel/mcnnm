@@ -3,7 +3,8 @@ import pandas as pd
 import jax.numpy as jnp
 from typing import Optional, Tuple, Dict
 import pytest
-from mcnnm.main import estimate, MCNNMResults
+from mcnnm.estimate import estimate, MCNNMResults
+from mcnnm.simulate import generate_data
 import jax
 
 
@@ -15,102 +16,11 @@ jax.config.update('jax_platforms', 'cpu')
 jax.config.update('jax_enable_x64', True)
 
 
-def generate_data(
-        nobs: int = 500,
-        nperiods: int = 100,
-        treated_period: int = 50,
-        rank: int = 5,
-        treatment_effect: float = 1.0,
-        fixed_effects_scale: float = 0.1,
-        covariates_scale: float = 0.1,
-        noise_scale: float = 0.1,
-        seed: Optional[int] = None
-) -> Tuple[pd.DataFrame, Dict]:
-    """
-    Generate synthetic data for testing the MC-NNM model.
-
-    Args:
-        nobs: Number of observations (units).
-        nperiods: Number of time periods.
-        treated_period: The period when treatment starts.
-        rank: The rank of the low-rank matrix L.
-        treatment_effect: The true treatment effect.
-        fixed_effects_scale: The scale of the fixed effects.
-        covariates_scale: The scale of the covariates and their coefficients.
-        noise_scale: The scale of the noise.
-        seed: Random seed for reproducibility.
-
-    Returns:
-        A tuple containing:
-        - pandas DataFrame with the generated data
-        - Dictionary with true parameter values
-    """
-    if seed is not None:
-        np.random.seed(seed)
-
-    # Generate basic structure
-    unit = np.arange(1, nobs + 1)
-    period = np.arange(1, nperiods + 1)
-    data = pd.DataFrame([(u, t) for u in unit for t in period], columns=['unit', 'period'])
-
-    # Generate low-rank matrix L
-    U = np.random.normal(0, 1, (nobs, rank))
-    V = np.random.normal(0, 1, (nperiods, rank))
-    L = U @ V.T
-
-    # Generate fixed effects
-    unit_fe = np.random.normal(0, fixed_effects_scale, nobs)
-    time_fe = np.random.normal(0, fixed_effects_scale, nperiods)
-
-    # Generate covariates and their coefficients
-    X = np.random.normal(0, covariates_scale, (nobs, 2))
-    X_coef = np.random.normal(0, covariates_scale, 2)
-    Z = np.random.normal(0, covariates_scale, (nperiods, 2))
-    Z_coef = np.random.normal(0, covariates_scale, 2)
-    V = np.random.normal(0, covariates_scale, (nobs, nperiods, 2))
-    V_coef = np.random.normal(0, covariates_scale, 2)
-
-    # Generate outcome
-    Y = (L +
-         np.outer(unit_fe, np.ones(nperiods)) +
-         np.outer(np.ones(nobs), time_fe) +
-         np.repeat(X @ X_coef, nperiods).reshape(nobs, nperiods) +
-         np.tile((Z @ Z_coef).reshape(1, -1), (nobs, 1)) +
-         np.sum(V * V_coef, axis=2) +
-         np.random.normal(0, noise_scale, (nobs, nperiods)))
-
-    # Add treatment effect
-    treat = np.zeros((nobs, nperiods))
-    treat[:, treated_period:] = 1
-    Y += treat * treatment_effect
-
-    data['y'] = Y.flatten()
-    data['treat'] = treat.flatten()
-
-    true_params = {
-        'L': L,
-        'unit_fe': unit_fe,
-        'time_fe': time_fe,
-        'X': X,
-        'X_coef': X_coef,
-        'Z': Z,
-        'Z_coef': Z_coef,
-        'V': V,
-        'V_coef': V_coef,
-        'treatment_effect': treatment_effect,
-        'noise_scale': noise_scale
-    }
-
-    # print(f"Proportion of treated observations: {data['treat'].mean()}")
-
-    return data, true_params
-
-
-@pytest.mark.timeout(120)
+@pytest.mark.timeout(300)
 def test_mcnnm_accuracy_no_covariates(tolerance=0.1):
-    nobs, nperiods = 500, 100
+    nobs, nperiods = 1000, 100
     data, true_params = generate_data(nobs=nobs, nperiods=nperiods, seed=42,
-                                      covariates_scale=0.0)  # Set covariates_scale to 0 to effectively remove covariates
+                                      unit_fe=True, time_fe=True,X_cov=False, Z_cov=False, V_cov=False)
 
     Y = jnp.array(data.pivot(index='unit', columns='period', values='y').values)
     W = jnp.array(data.pivot(index='unit', columns='period', values='treat').values)
@@ -151,10 +61,6 @@ def test_mcnnm_accuracy(tolerance=0.2):
     W = jnp.array(data.pivot(index='unit', columns='period', values='treat').values)
 
     X, Z, V = jnp.array(true_params['X']), jnp.array(true_params['Z']), jnp.array(true_params['V'])
-
-    print(f"\nProportion of treated observations: {W.mean()}")
-    print(f"Mean of Y: {jnp.mean(Y)}")
-    print(f"Std of Y: {jnp.std(Y)}")
 
     results = estimate(Y, W, X=X, Z=Z, V=V, return_fixed_effects=True, return_covariate_coefficients=True)
 
