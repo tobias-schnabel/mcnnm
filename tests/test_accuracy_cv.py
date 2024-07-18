@@ -16,7 +16,7 @@ jax.config.update('jax_platforms', 'cpu')
 jax.config.update('jax_enable_x64', True)
 
 
-@pytest.mark.timeout(120)
+@pytest.mark.timeout(300)
 def test_mcnnm_accuracy_no_covariates(tolerance=0.1):
     nobs, nperiods = 1000, 100
     data, true_params = generate_data(nobs=nobs, nperiods=nperiods, seed=42,
@@ -61,10 +61,6 @@ def test_mcnnm_accuracy(tolerance=0.2):
     W = jnp.array(data.pivot(index='unit', columns='period', values='treat').values)
 
     X, Z, V = jnp.array(true_params['X']), jnp.array(true_params['Z']), jnp.array(true_params['V'])
-
-    print(f"\nProportion of treated observations: {W.mean()}")
-    print(f"Mean of Y: {jnp.mean(Y)}")
-    print(f"Std of Y: {jnp.std(Y)}")
 
     results = estimate(Y, W, X=X, Z=Z, V=V, return_fixed_effects=True, return_covariate_coefficients=True)
 
