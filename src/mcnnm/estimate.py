@@ -7,15 +7,50 @@ from jax import jit, vmap, lax
 
 @jit
 def update_L(Y_adj: Array, L: Array, Omega: Array, O: Array, lambda_L: float) -> Array:
+    """
+    Update the low-rank matrix L in the MC-NNM algorithm.
+
+    Args:
+        Y_adj (Array): The adjusted outcome matrix.
+        L (Array): The current estimate of the low-rank matrix.
+        Omega (Array): The autocorrelation matrix.
+        O (Array): The binary mask for observed entries.
+        lambda_L (float): The regularization parameter for L.
+
+    Returns:
+        Array: The updated low-rank matrix L.
+    """
     return shrink_lambda(p_o(jnp.dot(Y_adj, Omega), O) + p_perp_o(L, O), lambda_L * jnp.sum(O) / 2)
 
 @jit
 def update_H(X_tilde: Array, Y_adj: Array, Z_tilde: Array, lambda_H: float) -> Array:
+    """
+    Update the covariate coefficient matrix H in the MC-NNM algorithm.
+
+    Args:
+        X_tilde (Array): The augmented unit-specific covariates matrix.
+        Y_adj (Array): The adjusted outcome matrix.
+        Z_tilde (Array): The augmented time-specific covariates matrix.
+        lambda_H (float): The regularization parameter for H.
+
+    Returns:
+        Array: The updated covariate coefficient matrix H.
+    """
     return shrink_lambda(jnp.linalg.lstsq(X_tilde, jnp.dot(Y_adj, Z_tilde))[0], lambda_H)
 
 
 @jit
 def update_gamma_delta_beta(Y_adj: Array, V: Array) -> Tuple[Array, Array, Array]:
+    """
+    Update the fixed effects (gamma, delta) and unit-time specific covariate coefficients (beta).
+
+    Args:
+        Y_adj (Array): The adjusted outcome matrix.
+        V (Array): The unit-time specific covariates tensor.
+
+    Returns:
+        Tuple[Array, Array, Array]: Updated gamma, delta, and beta arrays.
+    """
     N, T = Y_adj.shape
     gamma = jnp.mean(Y_adj, axis=1)
     delta = jnp.mean(Y_adj - gamma[:, jnp.newaxis], axis=0)
@@ -37,6 +72,27 @@ def update_gamma_delta_beta(Y_adj: Array, V: Array) -> Tuple[Array, Array, Array
 @jit
 def fit_step(Y: Array, W: Array, X_tilde: Array, Z_tilde: Array, V: Array, Omega: Array,
              lambda_L: float, lambda_H: float, L: Array, H: Array, gamma: Array, delta: Array, beta: Array) -> Tuple:
+    """
+    Perform one step of the MC-NNM fitting algorithm.
+
+    Args:
+        Y (Array): The observed outcome matrix.
+        W (Array): The binary treatment matrix.
+        X_tilde (Array): The augmented unit-specific covariates matrix.
+        Z_tilde (Array): The augmented time-specific covariates matrix.
+        V (Array): The unit-time specific covariates tensor.
+        Omega (Array): The autocorrelation matrix.
+        lambda_L (float): The regularization parameter for L.
+        lambda_H (float): The regularization parameter for H.
+        L (Array): The current estimate of the low-rank matrix.
+        H (Array): The current estimate of the covariate coefficient matrix.
+        gamma (Array): The current estimate of unit fixed effects.
+        delta (Array): The current estimate of time fixed effects.
+        beta (Array): The current estimate of unit-time specific covariate coefficients.
+
+    Returns:
+        Tuple: Updated estimates of L, H, gamma, delta, and beta.
+    """
     N, T = Y.shape
     O = (W == 0)
 
@@ -58,6 +114,25 @@ def fit_step(Y: Array, W: Array, X_tilde: Array, Z_tilde: Array, V: Array, Omega
 def fit(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
         lambda_L: float, lambda_H: float, initial_params: Tuple,
         max_iter: int, tol: float) -> Tuple:
+    """
+    Fit the MC-NNM model using the given parameters and data.
+
+    Args:
+        Y (Array): The observed outcome matrix.
+        W (Array): The binary treatment matrix.
+        X (Array): The unit-specific covariates matrix.
+        Z (Array): The time-specific covariates matrix.
+        V (Array): The unit-time specific covariates tensor.
+        Omega (Array): The autocorrelation matrix.
+        lambda_L (float): The regularization parameter for L.
+        lambda_H (float): The regularization parameter for H.
+        initial_params (Tuple): Initial parameter estimates.
+        max_iter (int): Maximum number of iterations.
+        tol (float): Convergence tolerance.
+
+    Returns:
+        Tuple: Final estimates of L, H, gamma, delta, and beta.
+    """
     # Unpack initial parameters
     L, H, gamma, delta, beta = initial_params
 
@@ -93,6 +168,24 @@ def fit(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
 
 def compute_cv_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
                     lambda_L: float, lambda_H: float, max_iter: int, tol: float) -> float:
+    """
+    Compute the cross-validation loss for given regularization parameters.
+
+    Args:
+        Y (Array): The observed outcome matrix.
+        W (Array): The binary treatment matrix.
+        X (Array): The unit-specific covariates matrix.
+        Z (Array): The time-specific covariates matrix.
+        V (Array): The unit-time specific covariates tensor.
+        Omega (Array): The autocorrelation matrix.
+        lambda_L (float): The regularization parameter for L.
+        lambda_H (float): The regularization parameter for H.
+        max_iter (int): Maximum number of iterations for fitting.
+        tol (float): Convergence tolerance for fitting.
+
+    Returns:
+        float: The computed cross-validation loss.
+    """
     N = Y.shape[0]
     loss = 0.0
 
@@ -123,6 +216,24 @@ def compute_cv_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Arr
 
 def cross_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array,
                    Omega: Array, lambda_grid: Array, max_iter: int, tol: float, K: int = 5) -> Tuple[float, float]:
+    """
+    Perform K-fold cross-validation to select optimal regularization parameters.
+
+    Args:
+        Y (Array): The observed outcome matrix.
+        W (Array): The binary treatment matrix.
+        X (Array): The unit-specific covariates matrix.
+        Z (Array): The time-specific covariates matrix.
+        V (Array): The unit-time specific covariates tensor.
+        Omega (Array): The autocorrelation matrix.
+        lambda_grid (Array): Grid of (lambda_L, lambda_H) pairs to search over.
+        max_iter (int): Maximum number of iterations for fitting.
+        tol (float): Convergence tolerance for fitting.
+        K (int): Number of folds for cross-validation. Default is 5.
+
+    Returns:
+        Tuple[float, float]: The optimal lambda_L and lambda_H values.
+    """
     best_lambda_L = None
     best_lambda_H = None
     best_loss = jnp.inf
@@ -141,43 +252,30 @@ def cross_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array,
     return best_lambda_L, best_lambda_H
 
 
-# def check_inputs(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] = None,
-#                  V: Optional[Array] = None, Omega: Optional[Array] = None) -> Tuple:
-#     N, T = Y.shape
-#     if W.shape != (N, T):
-#         raise ValueError("The shape of W must match the shape of Y.")
-#     X = jnp.zeros((N, 0)) if X is None else X
-#     Z = jnp.zeros((T, 0)) if Z is None else Z
-#     V = jnp.zeros((N, T, 0)) if V is None else V
-#     Omega = jnp.eye(T) if Omega is None else Omega
-#     return X, Z, V, Omega
-
-# @jit
-# def compute_time_based_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
-#                             lambda_L: float, lambda_H: float, max_iter: int, tol: float,
-#                             train_idx: Array, test_idx: Array) -> float:
-#     Y_train, Y_test = Y[train_idx], Y[test_idx]
-#     W_train, W_test = W[train_idx], W[test_idx]
-#     X_train, X_test = X[train_idx], X[test_idx]
-#     V_train, V_test = V[train_idx], V[test_idx]
-#
-#     initial_params = initialize_params(Y_train, W_train, X_train, Z, V_train)
-#     L, H, gamma, delta, beta = fit(Y_train, W_train, X_train, Z, V_train, Omega,
-#                                    lambda_L, lambda_H, initial_params, max_iter, tol)
-#
-#     Y_pred = (L[test_idx] + jnp.outer(gamma[test_idx], jnp.ones(Z.shape[0])) +
-#               jnp.outer(jnp.ones(test_idx.shape[0]), delta))
-#
-#     if V_test.shape[2] > 0:
-#         Y_pred += jnp.sum(V_test * beta, axis=2)
-#
-#     O_test = (W_test == 0)
-#     loss = jnp.sum((Y_test - Y_pred) ** 2 * O_test) / jnp.sum(O_test)
-#     return loss
 @jit
 def compute_time_based_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
                             lambda_L: float, lambda_H: float, max_iter: int, tol: float,
                             train_idx: Array, test_idx: Array) -> float:
+    """
+    Compute the time-based holdout loss for given regularization parameters.
+
+    Args:
+        Y (Array): The observed outcome matrix.
+        W (Array): The binary treatment matrix.
+        X (Array): The unit-specific covariates matrix.
+        Z (Array): The time-specific covariates matrix.
+        V (Array): The unit-time specific covariates tensor.
+        Omega (Array): The autocorrelation matrix.
+        lambda_L (float): The regularization parameter for L.
+        lambda_H (float): The regularization parameter for H.
+        max_iter (int): Maximum number of iterations for fitting.
+        tol (float): Convergence tolerance for fitting.
+        train_idx (Array): Indices of training data.
+        test_idx (Array): Indices of test data.
+
+    Returns:
+        float: The computed time-based holdout loss.
+    """
     Y_train, Y_test = Y[train_idx], Y[test_idx]
     W_train, W_test = W[train_idx], W[test_idx]
     X_train, X_test = X[train_idx], X[test_idx]
@@ -223,6 +321,27 @@ def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega:
                         lambda_grid: Array, max_iter: int, tol: float,
                         window_size: Optional[int] = None, expanding_window: bool = False,
                         max_window_size: Optional[int] = None, n_folds: int = 5) -> Tuple[float, float]:
+    """
+    Perform time-based validation to select optimal regularization parameters.
+
+    Args:
+        Y (Array): The observed outcome matrix.
+        W (Array): The binary treatment matrix.
+        X (Array): The unit-specific covariates matrix.
+        Z (Array): The time-specific covariates matrix.
+        V (Array): The unit-time specific covariates tensor.
+        Omega (Array): The autocorrelation matrix.
+        lambda_grid (Array): Grid of (lambda_L, lambda_H) pairs to search over.
+        max_iter (int): Maximum number of iterations for fitting.
+        tol (float): Convergence tolerance for fitting.
+        window_size (Optional[int]): Size of the rolling window. Default is None.
+        expanding_window (bool): Whether to use an expanding window. Default is False.
+        max_window_size (Optional[int]): Maximum size of the expanding window. Default is None.
+        n_folds (int): Number of folds for time-based validation. Default is 5.
+
+    Returns:
+        Tuple[float, float]: The optimal lambda_L and lambda_H values.
+    """
     N, T = Y.shape
 
     if window_size is None:
@@ -291,6 +410,24 @@ def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega:
     return best_lambda_L, best_lambda_H
 def compute_treatment_effect(Y: Array, L: Array, gamma: Array, delta: Array, beta: Array, H: Array,
                              X: Array, W: Array, Z: Array, V: Array) -> float:
+    """
+    Compute the average treatment effect.
+
+    Args:
+        Y (Array): The observed outcome matrix.
+        L (Array): The estimated low-rank matrix.
+        gamma (Array): The estimated unit fixed effects.
+        delta (Array): The estimated time fixed effects.
+        beta (Array): The estimated unit-time specific covariate coefficients.
+        H (Array): The estimated covariate coefficient matrix.
+        X (Array): The unit-specific covariates matrix.
+        W (Array): The binary treatment matrix.
+        Z (Array): The time-specific covariates matrix.
+        V (Array): The unit-time specific covariates tensor.
+
+    Returns:
+        float: The estimated average treatment effect.
+    """
     N, T = Y.shape
     X_tilde = jnp.hstack((X, jnp.eye(N)))
     Z_tilde = jnp.hstack((Z, jnp.eye(T)))
@@ -326,6 +463,37 @@ def estimate(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] =
              return_covariate_coefficients: bool = False, max_iter: int = 1000, tol: float = 1e-4,
              verbose: bool = False, validation_method: str = 'cv', window_size: Optional[int] = None,
              expanding_window: bool = False, max_window_size: Optional[int] = None) -> MCNNMResults:
+    """
+    Estimate the MC-NNM model and return results.
+
+    Args:
+        Y (Array): The observed outcome matrix.
+        W (Array): The binary treatment matrix.
+        X (Optional[Array]): The unit-specific covariates matrix. Default is None.
+        Z (Optional[Array]): The time-specific covariates matrix. Default is None.
+        V (Optional[Array]): The unit-time specific covariates tensor. Default is None.
+        Omega (Optional[Array]): The autocorrelation matrix. Default is None.
+        lambda_L (Optional[float]): The regularization parameter for L. If None, it will be selected via validation.
+        lambda_H (Optional[float]): The regularization parameter for H. If None, it will be selected via validation.
+        n_lambda_L (int): Number of lambda_L values to consider in grid search. Default is 10.
+        n_lambda_H (int): Number of lambda_H values to consider in grid search. Default is 10.
+        return_tau (bool): Whether to return the estimated treatment effect. Default is True.
+        return_lambda (bool): Whether to return the selected lambda values. Default is True.
+        return_completed_L (bool): Whether to return the completed low-rank matrix. Default is True.
+        return_completed_Y (bool): Whether to return the completed outcome matrix. Default is True.
+        return_fixed_effects (bool): Whether to return the estimated fixed effects. Default is False.
+        return_covariate_coefficients (bool): Whether to return the estimated covariate coefficients. Default is False.
+        max_iter (int): Maximum number of iterations for fitting. Default is 1000.
+        tol (float): Convergence tolerance for fitting. Default is 1e-4.
+        verbose (bool): Whether to print progress messages. Default is False.
+        validation_method (str): Method for selecting lambda values. Either 'cv' or 'holdout'. Default is 'cv'.
+        window_size (Optional[int]): Size of the rolling window for time-based validation. Default is None.
+        expanding_window (bool): Whether to use an expanding window for time-based validation. Default is False.
+        max_window_size (Optional[int]): Maximum size of the expanding window for time-based validation. Default is None.
+
+    Returns:
+        MCNNMResults: A named tuple containing the requested results.
+    """
     X, Z, V, Omega = check_inputs(Y, W, X, Z, V, Omega)
     N, T = Y.shape
 
@@ -385,6 +553,31 @@ def complete_matrix(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[A
                     max_iter: int = 1000, tol: float = 1e-4, verbose: bool = False,
                     validation_method: str = 'cv', window_size: Optional[int] = None,
                     expanding_window: bool = False, max_window_size: Optional[int] = None) -> Array:
+    """
+    Complete the matrix Y using the MC-NNM model.
+
+    Args:
+        Y (Array): The observed outcome matrix.
+        W (Array): The binary treatment matrix.
+        X (Optional[Array]): The unit-specific covariates matrix. Default is None.
+        Z (Optional[Array]): The time-specific covariates matrix. Default is None.
+        V (Optional[Array]): The unit-time specific covariates tensor. Default is None.
+        Omega (Optional[Array]): The autocorrelation matrix. Default is None.
+        lambda_L (Optional[float]): The regularization parameter for L. If None, it will be selected via validation.
+        lambda_H (Optional[float]): The regularization parameter for H. If None, it will be selected via validation.
+        n_lambda_L (int): Number of lambda_L values to consider in grid search. Default is 10.
+        n_lambda_H (int): Number of lambda_H values to consider in grid search. Default is 10.
+        max_iter (int): Maximum number of iterations for fitting. Default is 1000.
+        tol (float): Convergence tolerance for fitting. Default is 1e-4.
+        verbose (bool): Whether to print progress messages. Default is False.
+        validation_method (str): Method for selecting lambda values. Either 'cv' or 'holdout'. Default is 'cv'.
+        window_size (Optional[int]): Size of the rolling window for time-based validation. Default is None.
+        expanding_window (bool): Whether to use an expanding window for time-based validation. Default is False.
+        max_window_size (Optional[int]): Maximum size of the expanding window for time-based validation. Default is None.
+
+    Returns:
+        Array: The completed outcome matrix.
+    """
     results = estimate(Y, W, X, Z, V, Omega, lambda_L, lambda_H, n_lambda_L, n_lambda_H,
                        return_tau=False, return_lambda=False, return_completed_L=False, return_completed_Y=True,
                        return_fixed_effects=False, return_covariate_coefficients=False,
