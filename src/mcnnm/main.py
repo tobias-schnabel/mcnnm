@@ -180,14 +180,14 @@ def estimate(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] =
              lambda_H: Optional[float] = None, return_tau: bool = True, return_lambda: bool = True,
              return_completed_L: bool = True, return_completed_Y: bool = True, return_fixed_effects: bool = False,
              return_covariate_coefficients: bool = False, max_iter: int = 1000, tol: float = 1e-4,
-             verbose: bool = False, K: int = 5) -> MCNNMResults:
+             verbose: bool = False, K: int = 5, n_lambda_L = 6, n_lambda_H = 6) -> MCNNMResults:
     X, Z, V, Omega = check_inputs(Y, W, X, Z, V, Omega)
     N, T = Y.shape
 
     if lambda_L is None or lambda_H is None:
         if verbose:
             print_with_timestamp("Cross-validating lambda_L, lambda_H")
-        lambda_grid = jnp.array(jnp.meshgrid(propose_lambda(None, 6), propose_lambda(None, 6))).T.reshape(-1, 2)
+        lambda_grid = jnp.array(jnp.meshgrid(propose_lambda(None, n_lambda_L), propose_lambda(None, n_lambda_H))).T.reshape(-1, 2)
         lambda_L, lambda_H = cross_validate(Y, W, X, Z, V, Omega, lambda_grid, max_iter // 10, tol * 10, K)
         if verbose:
             print_with_timestamp(f"Selected lambda_L: {lambda_L:.4f}, lambda_H: {lambda_H:.4f}")
@@ -199,8 +199,6 @@ def estimate(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] =
     if return_tau:
         tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W, Z, V)
         results['tau'] = tau
-        if verbose:
-            print(f"Estimated treatment effect (tau): {tau:.4f}")
     if return_lambda:
         results['lambda_L'] = lambda_L
         results['lambda_H'] = lambda_H
