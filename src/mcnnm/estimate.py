@@ -219,57 +219,6 @@ def compute_time_based_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Om
     return loss
 
 
-# def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
-#                         lambda_grid: Array, max_iter: int, tol: float,
-#                         window_size: Optional[int] = None, expanding_window: bool = False,
-#                         max_window_size: Optional[int] = None, n_folds: int = 5) -> Tuple[float, float]:
-#     N, T = Y.shape
-#
-#     if window_size is None:
-#         window_size = (T * 4) // 5
-#
-#     if expanding_window and max_window_size is None:
-#         max_window_size = window_size
-#
-#     best_lambda_L = None
-#     best_lambda_H = None
-#     best_loss = jnp.inf
-#
-#     for lambda_L, lambda_H in lambda_grid:
-#         loss = 0.0
-#         t = window_size
-#
-#         while t < T:
-#             if expanding_window:
-#                 train_idx = jnp.arange(max(0, t - max_window_size), t)
-#             else:
-#                 train_idx = jnp.arange(max(0, t - window_size), t)
-#
-#             test_idx = jnp.arange(t, min(t + (T - window_size) // n_folds, T))
-#             fold_loss = 0.0
-#
-#             for _ in range(n_folds):
-#                 if test_idx[-1] == T:
-#                     break
-#                 fold_loss += compute_time_based_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H,
-#                                                      max_iter, tol, train_idx, test_idx)
-#                 test_idx = jnp.arange(test_idx[-1], min(test_idx[-1] + (T - window_size) // n_folds, T))
-#
-#             loss += fold_loss / n_folds
-#             t += (T - window_size) // n_folds
-#
-#         loss /= (T - window_size) // ((T - window_size) // n_folds)
-#
-#         if loss < best_loss:
-#             best_lambda_L = lambda_L
-#             best_lambda_H = lambda_H
-#             best_loss = loss
-#
-#     if best_loss == jnp.inf:
-#         print("Warning: No valid loss found in time_based_validate")
-#         return lambda_grid[0][0], lambda_grid[0][1]
-#
-#     return best_lambda_L, best_lambda_H
 def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
                         lambda_grid: Array, max_iter: int, tol: float,
                         window_size: Optional[int] = None, expanding_window: bool = False,
