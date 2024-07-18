@@ -3,18 +3,56 @@ import jax.numpy as jnp
 from typing import Optional, Tuple, NamedTuple
 from . import Array
 from mcnnm.util import *
+from jax import jit, vmap, lax
 
+@jit
 def update_L(Y_adj: Array, L: Array, Omega: Array, O: Array, lambda_L: float) -> Array:
     return shrink_lambda(p_o(jnp.dot(Y_adj, Omega), O) + p_perp_o(L, O), lambda_L * jnp.sum(O) / 2)
 
+@jit
 def update_H(X_tilde: Array, Y_adj: Array, Z_tilde: Array, lambda_H: float) -> Array:
     return shrink_lambda(jnp.linalg.lstsq(X_tilde, jnp.dot(Y_adj, Z_tilde))[0], lambda_H)
 
-def update_gamma_delta_beta(Y_adj: Array, V: Array, N: int, T: int) -> Tuple[Array, Array, Array]:
+
+@jit
+def update_gamma_delta_beta(Y_adj: Array, V: Array) -> Tuple[Array, Array, Array]:
+    N, T = Y_adj.shape
     gamma = jnp.mean(Y_adj, axis=1)
-    delta = jnp.mean(Y_adj - jnp.outer(gamma, jnp.ones(T)), axis=0)
-    beta = jnp.linalg.lstsq(V.reshape(N * T, -1), Y_adj.reshape(N * T))[0] if V.shape[2] > 0 else jnp.zeros(0)
+    delta = jnp.mean(Y_adj - gamma[:, jnp.newaxis], axis=0)
+
+    def true_fun(_):
+        return jnp.linalg.lstsq(V.reshape(N * T, -1), Y_adj.reshape(N * T))[0]
+
+    def false_fun(_):
+        return jnp.zeros((V.shape[-1],))  # Ensure this matches the shape of true_fun output
+
+    beta = jax.lax.cond(
+        V.size > 0,
+        true_fun,
+        false_fun,
+        operand=None
+    )
     return gamma, delta, beta
+
+@jit
+def fit_step(Y: Array, W: Array, X_tilde: Array, Z_tilde: Array, V: Array, Omega: Array,
+             lambda_L: float, lambda_H: float, L: Array, H: Array, gamma: Array, delta: Array, beta: Array) -> Tuple:
+    N, T = Y.shape
+    O = (W == 0)
+
+    Y_adj = Y - jnp.dot(X_tilde, jnp.dot(H, Z_tilde.T)) - gamma[:, jnp.newaxis] - delta[jnp.newaxis, :]
+    Y_adj = Y_adj - jnp.sum(V * beta, axis=-1) if V.size > 0 else Y_adj
+    L_new = update_L(Y_adj, L, Omega, O, lambda_L)
+
+    Y_adj = Y - L_new - gamma[:, jnp.newaxis] - delta[jnp.newaxis, :]
+    Y_adj = Y_adj - jnp.sum(V * beta, axis=-1) if V.size > 0 else Y_adj
+    H_new = update_H(X_tilde, Y_adj, Z_tilde, lambda_H)
+
+    Y_adj = Y - L_new - jnp.dot(X_tilde, jnp.dot(H_new, Z_tilde.T))
+    Y_adj = Y_adj - jnp.sum(V * beta, axis=-1) if V.size > 0 else Y_adj
+    gamma_new, delta_new, beta_new = update_gamma_delta_beta(Y_adj, V)
+
+    return L_new, H_new, gamma_new, delta_new, beta_new
 
 def fit(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
         lambda_L: float, lambda_H: float, initial_params: Tuple,
@@ -23,24 +61,21 @@ def fit(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
     N, T = Y.shape
     X_tilde = jnp.hstack((X, jnp.eye(N)))
     Z_tilde = jnp.hstack((Z, jnp.eye(T)))
-    O = (W == 0)
 
-    for iteration in range(max_iter):
-        Y_adj = Y - jnp.dot(X_tilde, jnp.dot(H, Z_tilde.T)) - jnp.outer(gamma, jnp.ones(T)) - jnp.outer(jnp.ones(N), delta)
-        Y_adj -= jnp.sum(V * beta, axis=2)
-        L_new = update_L(Y_adj, L, Omega, O, lambda_L)
+    # Ensure beta has the correct shape
+    beta = jnp.zeros((V.shape[-1],)) if V.size > 0 else jnp.zeros((0,))
 
-        if jnp.linalg.norm(L_new - L, ord='fro') < tol:
-            break
+    def cond_fn(state):
+        i, L, _, _, _, _, prev_L = state
+        return (i < max_iter) & (jnp.linalg.norm(L - prev_L, ord='fro') >= tol)
 
-        L = L_new
-        Y_adj = Y - L - jnp.outer(gamma, jnp.ones(T)) - jnp.outer(jnp.ones(N), delta)
-        Y_adj -= jnp.sum(V * beta, axis=2)
-        H = update_H(X_tilde, Y_adj, Z_tilde, lambda_H)
+    def body_fn(state):
+        i, L, H, gamma, delta, beta, prev_L = state
+        L_new, H_new, gamma_new, delta_new, beta_new = fit_step(Y, W, X_tilde, Z_tilde, V, Omega, lambda_L, lambda_H, L, H, gamma, delta, beta)
+        return i + 1, L_new, H_new, gamma_new, delta_new, beta_new, L
 
-        Y_adj = Y - L - jnp.dot(X_tilde, jnp.dot(H, Z_tilde.T))
-        Y_adj -= jnp.sum(V * beta, axis=2)
-        gamma, delta, beta = update_gamma_delta_beta(Y_adj, V, N, T)
+    initial_state = (0, L, H, gamma, delta, beta, jnp.zeros_like(L))
+    _, L, H, gamma, delta, beta, _ = jax.lax.while_loop(cond_fn, body_fn, initial_state)
 
     return L, H, gamma, delta, beta
 
