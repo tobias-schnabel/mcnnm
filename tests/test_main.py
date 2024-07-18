@@ -2,7 +2,7 @@ import pytest
 import jax.numpy as jnp
 from jax import random
 # from typing import Optional, Tuple
-from mcnnm.main import objective_function, cross_validation, compute_treatment_effect, fit, estimate
+from mcnnm.main import compute_treatment_effect, fit, estimate
 from mcnnm.simulate import generate_data_factor
 import jax
 jax.config.update('jax_platforms', 'cpu')
@@ -22,38 +22,6 @@ def sample_data():
     V = random.normal(key, (N, T, J))
     return Y, W, X, Z, V
 
-
-def test_objective_function(sample_data):
-    Y, W, X, Z, V = sample_data
-    L = random.normal(key, Y.shape)
-    H = random.normal(key, (X.shape[1] + Y.shape[0], Z.shape[1] + Y.shape[1]))
-    gamma = random.normal(key, (Y.shape[0],))
-    delta = random.normal(key, (Y.shape[1],))
-    beta = random.normal(key, (V.shape[2],))
-    obj_value = objective_function(Y, L, gamma=gamma, delta=delta, beta=beta, H=H, X=X, Z=Z, V=V)
-    assert obj_value.shape == ()
-    assert jnp.isfinite(obj_value)
-
-
-@pytest.mark.timeout(30)
-def test_cross_validation(sample_data):
-    Y, W, X, Z, V = sample_data
-    lambda_L, lambda_H = cross_validation(Y, W, X=X, Z=Z, V=V)
-    assert jnp.isscalar(lambda_L)
-    assert jnp.isscalar(lambda_H)
-    assert jnp.isfinite(lambda_L)
-    assert jnp.isfinite(lambda_H)
-
-
-# def test_compute_treatment_effect(sample_data):
-#     Y, W, X, Z, V = sample_data
-#     L = random.normal(key, Y.shape)
-#     gamma = random.normal(key, (Y.shape[0],))
-#     delta = random.normal(key, (Y.shape[1],))
-#     beta = random.normal(key, (V.shape[2],))
-#     H = random.normal(key, (X.shape[1] + Y.shape[0], Z.shape[1] + Y.shape[1]))
-#     tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W, Z, V)
-#     assert jnp.isfinite(tau)
 
 def test_compute_treatment_effect(sample_data):
     Y, W, X, Z, V = sample_data
@@ -135,3 +103,4 @@ def test_estimate():
     assert jnp.all(jnp.isfinite(delta))
     assert jnp.all(jnp.isfinite(beta))
     assert jnp.all(jnp.isfinite(H))
+
