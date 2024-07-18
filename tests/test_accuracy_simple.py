@@ -3,7 +3,7 @@ import pandas as pd
 import jax.numpy as jnp
 from typing import Optional, Tuple, Dict
 import pytest
-from mcnnm.main import fit, MCNNMResults
+from mcnnm.main import estimate, MCNNMResults
 import jax
 
 
@@ -119,7 +119,7 @@ def test_mcnnm_accuracy_no_covariates(tolerance=0.1):
     print(f"Mean of Y: {jnp.mean(Y)}")
     print(f"Std of Y: {jnp.std(Y)}")
 
-    results = fit(Y, W, return_fixed_effects=True)
+    results = estimate(Y, W, return_fixed_effects=True)
 
     print(f"\nTrue effect: {true_params['treatment_effect']}, Estimated effect: {results.tau:.4f}")
     assert_close(true_params['treatment_effect'], results.tau, tolerance, "Estimated treatment effect")
@@ -156,7 +156,7 @@ def test_mcnnm_accuracy(tolerance=0.2):
     print(f"Mean of Y: {jnp.mean(Y)}")
     print(f"Std of Y: {jnp.std(Y)}")
 
-    results = fit(Y, W, X=X, Z=Z, V=V, return_fixed_effects=True, return_covariate_coefficients=True)
+    results = estimate(Y, W, X=X, Z=Z, V=V, return_fixed_effects=True, return_covariate_coefficients=True)
 
     print(f"\nTrue effect: {true_params['treatment_effect']}, Estimated effect: {results.tau:.4f}")
     assert_close(true_params['treatment_effect'], results.tau, tolerance, "Estimated treatment effect")
