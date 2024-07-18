@@ -181,7 +181,8 @@ def check_inputs(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Arra
 
 def estimate(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] = None,
              V: Optional[Array] = None, Omega: Optional[Array] = None, lambda_L: Optional[float] = None,
-             lambda_H: Optional[float] = None, return_tau: bool = True, return_lambda: bool = True,
+             lambda_H: Optional[float] = None, n_lambda_L: int = 10, n_lambda_H: int = 10,
+             return_tau: bool = True, return_lambda: bool = True,
              return_completed_L: bool = True, return_completed_Y: bool = True, return_fixed_effects: bool = False,
              return_covariate_coefficients: bool = False, max_iter: int = 1000, tol: float = 1e-4,
              verbose: bool = False, validation_method: str = 'cv', window_size: Optional[int] = None,
@@ -193,12 +194,12 @@ def estimate(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] =
         if validation_method == 'cv':
             if verbose:
                 print_with_timestamp("Cross-validating lambda_L, lambda_H")
-            lambda_grid = jnp.array(jnp.meshgrid(propose_lambda(None, 6), propose_lambda(None, 6))).T.reshape(-1, 2)
+            lambda_grid = jnp.array(jnp.meshgrid(propose_lambda(None, n_lambda_L), propose_lambda(None, n_lambda_L))).T.reshape(-1, 2)
             lambda_L, lambda_H = cross_validate(Y, W, X, Z, V, Omega, lambda_grid, max_iter // 10, tol * 10)
         elif validation_method == 'time':
             if verbose:
-                print_with_timestamp("Selecting lambda_L, lambda_H using time-based validation")
-            lambda_grid = jnp.array(jnp.meshgrid(propose_lambda(None, 6), propose_lambda(None, 6))).T.reshape(-1, 2)
+                print_with_timestamp("Selecting lambda_L, lambda_H using time-based holdout validation")
+            lambda_grid = jnp.array(jnp.meshgrid(propose_lambda(None, n_lambda_L), propose_lambda(None, n_lambda_H))).T.reshape(-1, 2)
             lambda_L, lambda_H = time_based_validate(Y, W, X, Z, V, Omega, lambda_grid, max_iter // 10, tol * 10,
                                                      window_size, expanding_window, max_window_size)
         else:
@@ -261,14 +262,14 @@ def compute_time_based_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Om
 def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
                         lambda_grid: Array, max_iter: int, tol: float,
                         window_size: Optional[int] = None, expanding_window: bool = False,
-                        max_window_size: Optional[int] = None) -> Tuple[float, float]:
+                        max_window_size: Optional[int] = None, n_folds: int = 5) -> Tuple[float, float]:
     N, T = Y.shape
 
     if window_size is None:
-        window_size = T // 5
+        window_size = (T * 4) // 5
 
     if expanding_window and max_window_size is None:
-        max_window_size = T - window_size
+        max_window_size = window_size
 
     best_lambda_L = None
     best_lambda_H = None
@@ -284,12 +285,20 @@ def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega:
             else:
                 train_idx = jnp.arange(max(0, t - window_size), t)
 
-            test_idx = jnp.arange(t, min(t + window_size, T))
-            loss += compute_time_based_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H,
-                                            max_iter, tol, train_idx, test_idx)
-            t += window_size
+            test_idx = jnp.arange(t, min(t + (T - window_size) // n_folds, T))
+            fold_loss = 0.0
 
-        loss /= (T - window_size) // window_size
+            for _ in range(n_folds):
+                if test_idx[-1] == T:
+                    break
+                fold_loss += compute_time_based_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H,
+                                                     max_iter, tol, train_idx, test_idx)
+                test_idx = jnp.arange(test_idx[-1], min(test_idx[-1] + (T - window_size) // n_folds, T))
+
+            loss += fold_loss / n_folds
+            t += (T - window_size) // n_folds
+
+        loss /= (T - window_size) // ((T - window_size) // n_folds)
 
         if loss < best_loss:
             best_lambda_L = lambda_L

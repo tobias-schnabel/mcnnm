@@ -13,7 +13,7 @@ jax.config.update('jax_enable_x64', True)
 
 # Generate sample data
 nobs, nperiods = 1000, 100
-data, true_params = generate_data(nobs=nobs, nperiods=nperiods, seed=0, treatment_probability=0.2)
+data, true_params = generate_data(nobs=nobs, nperiods=nperiods, seed=0, assignment_mechanism='last_periods')
 
 Y = jnp.array(data.pivot(index='unit', columns='period', values='y').values)
 W = jnp.array(data.pivot(index='unit', columns='period', values='treat').values)
