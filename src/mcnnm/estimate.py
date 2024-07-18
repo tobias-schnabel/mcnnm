@@ -152,6 +152,28 @@ def cross_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array,
 #     Omega = jnp.eye(T) if Omega is None else Omega
 #     return X, Z, V, Omega
 
+# @jit
+# def compute_time_based_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
+#                             lambda_L: float, lambda_H: float, max_iter: int, tol: float,
+#                             train_idx: Array, test_idx: Array) -> float:
+#     Y_train, Y_test = Y[train_idx], Y[test_idx]
+#     W_train, W_test = W[train_idx], W[test_idx]
+#     X_train, X_test = X[train_idx], X[test_idx]
+#     V_train, V_test = V[train_idx], V[test_idx]
+#
+#     initial_params = initialize_params(Y_train, W_train, X_train, Z, V_train)
+#     L, H, gamma, delta, beta = fit(Y_train, W_train, X_train, Z, V_train, Omega,
+#                                    lambda_L, lambda_H, initial_params, max_iter, tol)
+#
+#     Y_pred = (L[test_idx] + jnp.outer(gamma[test_idx], jnp.ones(Z.shape[0])) +
+#               jnp.outer(jnp.ones(test_idx.shape[0]), delta))
+#
+#     if V_test.shape[2] > 0:
+#         Y_pred += jnp.sum(V_test * beta, axis=2)
+#
+#     O_test = (W_test == 0)
+#     loss = jnp.sum((Y_test - Y_pred) ** 2 * O_test) / jnp.sum(O_test)
+#     return loss
 @jit
 def compute_time_based_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
                             lambda_L: float, lambda_H: float, max_iter: int, tol: float,
@@ -161,9 +183,13 @@ def compute_time_based_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Om
     X_train, X_test = X[train_idx], X[test_idx]
     V_train, V_test = V[train_idx], V[test_idx]
 
+    print(f"Shapes: Y_train {Y_train.shape}, Y_test {Y_test.shape}, W_test {W_test.shape}")
+
     initial_params = initialize_params(Y_train, W_train, X_train, Z, V_train)
     L, H, gamma, delta, beta = fit(Y_train, W_train, X_train, Z, V_train, Omega,
                                    lambda_L, lambda_H, initial_params, max_iter, tol)
+
+    print(f"Fit results: L shape {L.shape}, gamma shape {gamma.shape}, delta shape {delta.shape}")
 
     Y_pred = (L[test_idx] + jnp.outer(gamma[test_idx], jnp.ones(Z.shape[0])) +
               jnp.outer(jnp.ones(test_idx.shape[0]), delta))
@@ -171,10 +197,79 @@ def compute_time_based_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Om
     if V_test.shape[2] > 0:
         Y_pred += jnp.sum(V_test * beta, axis=2)
 
+    print(f"Y_pred shape {Y_pred.shape}, Y_test shape {Y_test.shape}")
+
     O_test = (W_test == 0)
-    loss = jnp.sum((Y_test - Y_pred) ** 2 * O_test) / jnp.sum(O_test)
+    print(f"O_test shape {O_test.shape}, sum {jnp.sum(O_test)}")
+
+    def true_fun(_):
+        return jnp.inf
+
+    def false_fun(_):
+        return jnp.sum((Y_test - Y_pred) ** 2 * O_test) / jnp.sum(O_test)
+
+    loss = jax.lax.cond(
+        jnp.sum(O_test) == 0,
+        true_fun,
+        false_fun,
+        operand=None
+    )
+
+    print(f"Computed loss: {loss}")
     return loss
 
+
+# def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
+#                         lambda_grid: Array, max_iter: int, tol: float,
+#                         window_size: Optional[int] = None, expanding_window: bool = False,
+#                         max_window_size: Optional[int] = None, n_folds: int = 5) -> Tuple[float, float]:
+#     N, T = Y.shape
+#
+#     if window_size is None:
+#         window_size = (T * 4) // 5
+#
+#     if expanding_window and max_window_size is None:
+#         max_window_size = window_size
+#
+#     best_lambda_L = None
+#     best_lambda_H = None
+#     best_loss = jnp.inf
+#
+#     for lambda_L, lambda_H in lambda_grid:
+#         loss = 0.0
+#         t = window_size
+#
+#         while t < T:
+#             if expanding_window:
+#                 train_idx = jnp.arange(max(0, t - max_window_size), t)
+#             else:
+#                 train_idx = jnp.arange(max(0, t - window_size), t)
+#
+#             test_idx = jnp.arange(t, min(t + (T - window_size) // n_folds, T))
+#             fold_loss = 0.0
+#
+#             for _ in range(n_folds):
+#                 if test_idx[-1] == T:
+#                     break
+#                 fold_loss += compute_time_based_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H,
+#                                                      max_iter, tol, train_idx, test_idx)
+#                 test_idx = jnp.arange(test_idx[-1], min(test_idx[-1] + (T - window_size) // n_folds, T))
+#
+#             loss += fold_loss / n_folds
+#             t += (T - window_size) // n_folds
+#
+#         loss /= (T - window_size) // ((T - window_size) // n_folds)
+#
+#         if loss < best_loss:
+#             best_lambda_L = lambda_L
+#             best_lambda_H = lambda_H
+#             best_loss = loss
+#
+#     if best_loss == jnp.inf:
+#         print("Warning: No valid loss found in time_based_validate")
+#         return lambda_grid[0][0], lambda_grid[0][1]
+#
+#     return best_lambda_L, best_lambda_H
 def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
                         lambda_grid: Array, max_iter: int, tol: float,
                         window_size: Optional[int] = None, expanding_window: bool = False,
@@ -193,6 +288,7 @@ def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega:
 
     for lambda_L, lambda_H in lambda_grid:
         loss = 0.0
+        valid_folds = 0
         t = window_size
 
         while t < T:
@@ -207,8 +303,14 @@ def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega:
             for _ in range(n_folds):
                 if test_idx[-1] == T:
                     break
-                fold_loss += compute_time_based_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H,
-                                                     max_iter, tol, train_idx, test_idx)
+                fold_loss = compute_time_based_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H,
+                                                    max_iter, tol, train_idx, test_idx)
+                print(f"Fold loss for lambda_L={lambda_L}, lambda_H={lambda_H}: {fold_loss}")
+                if jnp.isfinite(fold_loss):
+                    loss += fold_loss
+                    valid_folds += 1
+                else:
+                    print(f"Non-finite loss for lambda_L={lambda_L}, lambda_H={lambda_H}")
                 test_idx = jnp.arange(test_idx[-1], min(test_idx[-1] + (T - window_size) // n_folds, T))
 
             loss += fold_loss / n_folds
@@ -216,14 +318,22 @@ def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega:
 
         loss /= (T - window_size) // ((T - window_size) // n_folds)
 
-        if loss < best_loss:
-            best_lambda_L = lambda_L
-            best_lambda_H = lambda_H
-            best_loss = loss
+        if valid_folds > 0:
+            loss /= valid_folds
+            print(f"Average loss for lambda_L={lambda_L}, lambda_H={lambda_H}: {loss}")
+            if loss < best_loss:
+                best_lambda_L = lambda_L
+                best_lambda_H = lambda_H
+                best_loss = loss
+                print(f"New best loss: {best_loss} for lambda_L={best_lambda_L}, lambda_H={best_lambda_H}")
+        else:
+            print(f"No valid folds for lambda_L={lambda_L}, lambda_H={lambda_H}")
+
+    if best_loss == jnp.inf:
+        print("Warning: No valid loss found in time_based_validate")
+        return lambda_grid[0][0], lambda_grid[0][1]
 
     return best_lambda_L, best_lambda_H
-
-
 def compute_treatment_effect(Y: Array, L: Array, gamma: Array, delta: Array, beta: Array, H: Array,
                              X: Array, W: Array, Z: Array, V: Array) -> float:
     N, T = Y.shape
@@ -270,8 +380,8 @@ def estimate(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] =
                 print_with_timestamp("Cross-validating lambda_L, lambda_H")
             lambda_grid = jnp.array(jnp.meshgrid(propose_lambda(None, n_lambda_L), propose_lambda(None, n_lambda_L))).T.reshape(-1, 2)
             lambda_L, lambda_H = cross_validate(Y, W, X, Z, V, Omega, lambda_grid, max_iter // 10, tol * 10)
-        elif validation_method == 'time':
-            if T < 2 * window_size:
+        elif validation_method == 'holdout':
+            if T < 5:
                 raise ValueError("The matrix does not have enough columns for time-based validation. "
                                  "Please increase the number of time periods or use cross-validation")
             if verbose:

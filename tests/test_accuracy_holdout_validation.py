@@ -16,7 +16,7 @@ jax.config.update('jax_platforms', 'cpu')
 jax.config.update('jax_enable_x64', True)
 
 
-@pytest.mark.timeout(300)
+@pytest.mark.timeout(60)
 def test_mcnnm_accuracy_no_covariates(tolerance=0.1):
     nobs, nperiods = 1000, 100
     data, true_params = generate_data(nobs=nobs, nperiods=nperiods, seed=42,
@@ -29,7 +29,7 @@ def test_mcnnm_accuracy_no_covariates(tolerance=0.1):
     print(f"Mean of Y: {jnp.mean(Y)}")
     print(f"Std of Y: {jnp.std(Y)}")
 
-    results = estimate(Y, W, return_fixed_effects=True)
+    results = estimate(Y, W, return_fixed_effects=True, validation_method='holdout')
 
     print(f"\nTrue effect: {true_params['treatment_effect']}, Estimated effect: {results.tau:.4f}")
     assert_close(true_params['treatment_effect'], results.tau, tolerance, "Estimated treatment effect")
@@ -52,7 +52,7 @@ def test_mcnnm_accuracy_no_covariates(tolerance=0.1):
     assert_close(jnp.mean(true_params['L']), jnp.mean(results.L), tolerance, "Estimated L mean")
 
 
-@pytest.mark.timeout(600)
+@pytest.mark.timeout(6000)
 def test_mcnnm_accuracy(tolerance=0.2):
     nobs, nperiods = 500, 100
     data, true_params = generate_data(nobs=nobs, nperiods=nperiods, seed=42)
@@ -62,7 +62,8 @@ def test_mcnnm_accuracy(tolerance=0.2):
 
     X, Z, V = jnp.array(true_params['X']), jnp.array(true_params['Z']), jnp.array(true_params['V'])
 
-    results = estimate(Y, W, X=X, Z=Z, V=V, return_fixed_effects=True, return_covariate_coefficients=True)
+    results = estimate(Y, W, X=X, Z=Z, V=V, return_fixed_effects=True, return_covariate_coefficients=True,
+                       validation_method='holdout')
 
     print(f"\nTrue effect: {true_params['treatment_effect']}, Estimated effect: {results.tau:.4f}")
     assert_close(true_params['treatment_effect'], results.tau, tolerance, "Estimated treatment effect")

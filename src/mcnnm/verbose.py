@@ -21,7 +21,7 @@ W = jnp.array(data.pivot(index='unit', columns='period', values='treat').values)
 X, Z, V = jnp.array(true_params['X']), jnp.array(true_params['Z']), jnp.array(true_params['V'])
 print_with_timestamp("Data converted, begin fitting")
 # Fit the MC-NNM model
-results = estimate(Y, W, X=X, Z=Z, V=V, return_fixed_effects=True, return_covariate_coefficients=True, verbose=True, validation_method='time')
+results = estimate(Y, W, X=X, Z=Z, V=V, return_fixed_effects=True, return_covariate_coefficients=True, verbose=True, validation_method='holdout')
 print_with_timestamp("Fitting completed")
 print(f"\nTrue effect: {true_params['treatment_effect']}, Estimated effect: {results.tau:.4f}")
 print(f"Chosen lambda_L: {results.lambda_L:.4f}")

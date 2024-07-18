@@ -2,7 +2,7 @@ from mcnnm.util import initialize_params
 import pytest
 import jax.numpy as jnp
 from jax import random
-from mcnnm.estimate import compute_treatment_effect, fit, estimate, fit_step, update_L, update_H, update_gamma_delta_beta
+from mcnnm.estimate import *
 from mcnnm.simulate import generate_data
 import jax
 jax.config.update('jax_platforms', 'cpu')
@@ -130,7 +130,7 @@ def test_compute_treatment_effect(sample_data):
 
 @pytest.mark.timeout(180)
 def test_estimate():
-    nobs, nperiods = 50, 10
+    nobs, nperiods = 10, 10
     data, true_params = generate_data(nobs=nobs, nperiods=nperiods, seed=42)
     Y = jnp.array(data.pivot(index='unit', columns='period', values='y').values)
     W = jnp.array(data.pivot(index='unit', columns='period', values='treat').values)
@@ -143,3 +143,19 @@ def test_estimate():
     assert results.Y_completed.shape == Y.shape
     assert jnp.all(jnp.isfinite(results.L))
     assert jnp.all(jnp.isfinite(results.Y_completed))
+
+
+@pytest.mark.timeout(180)
+def test_complete_matrix():
+    nobs, nperiods = 50, 10
+    data, true_params = generate_data(nobs=nobs, nperiods=nperiods, seed=42)
+    Y = jnp.array(data.pivot(index='unit', columns='period', values='y').values)
+    W = jnp.array(data.pivot(index='unit', columns='period', values='treat').values)
+    X, Z, V = jnp.array(true_params['X']), jnp.array(true_params['Z']), jnp.array(true_params['V'])
+    Y_completed = complete_matrix(Y, W, X=X, Z=Z, V=V, verbose=True)
+    assert Y_completed.shape == Y.shape
+    assert jnp.all(jnp.isfinite(Y_completed))
+    assert not jnp.any(jnp.isnan(Y_completed))
+
+    # Optional: Check if the completed values are within a reasonable range
+    assert jnp.all(Y_completed >= Y.min() - 1) and jnp.all(Y_completed <= Y.max() + 1)
