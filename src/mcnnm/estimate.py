@@ -184,15 +184,26 @@ def estimate(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] =
              lambda_H: Optional[float] = None, return_tau: bool = True, return_lambda: bool = True,
              return_completed_L: bool = True, return_completed_Y: bool = True, return_fixed_effects: bool = False,
              return_covariate_coefficients: bool = False, max_iter: int = 1000, tol: float = 1e-4,
-             verbose: bool = False, K: int = 5, n_lambda_L = 6, n_lambda_H = 6) -> MCNNMResults:
+             verbose: bool = False, validation_method: str = 'cv', window_size: Optional[int] = None,
+             expanding_window: bool = False, max_window_size: Optional[int] = None) -> MCNNMResults:
     X, Z, V, Omega = check_inputs(Y, W, X, Z, V, Omega)
     N, T = Y.shape
 
     if lambda_L is None or lambda_H is None:
-        if verbose:
-            print_with_timestamp("Cross-validating lambda_L, lambda_H")
-        lambda_grid = jnp.array(jnp.meshgrid(propose_lambda(None, n_lambda_L), propose_lambda(None, n_lambda_H))).T.reshape(-1, 2)
-        lambda_L, lambda_H = cross_validate(Y, W, X, Z, V, Omega, lambda_grid, max_iter // 10, tol * 10, K)
+        if validation_method == 'cv':
+            if verbose:
+                print_with_timestamp("Cross-validating lambda_L, lambda_H")
+            lambda_grid = jnp.array(jnp.meshgrid(propose_lambda(None, 6), propose_lambda(None, 6))).T.reshape(-1, 2)
+            lambda_L, lambda_H = cross_validate(Y, W, X, Z, V, Omega, lambda_grid, max_iter // 10, tol * 10)
+        elif validation_method == 'time':
+            if verbose:
+                print_with_timestamp("Selecting lambda_L, lambda_H using time-based validation")
+            lambda_grid = jnp.array(jnp.meshgrid(propose_lambda(None, 6), propose_lambda(None, 6))).T.reshape(-1, 2)
+            lambda_L, lambda_H = time_based_validate(Y, W, X, Z, V, Omega, lambda_grid, max_iter // 10, tol * 10,
+                                                     window_size, expanding_window, max_window_size)
+        else:
+            raise ValueError("Invalid validation_method. Choose 'cv' or 'time'.")
+
         if verbose:
             print_with_timestamp(f"Selected lambda_L: {lambda_L:.4f}, lambda_H: {lambda_H:.4f}")
 
@@ -222,3 +233,67 @@ def estimate(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] =
         results['H'] = H
 
     return MCNNMResults(**results)
+
+
+@jit
+def compute_time_based_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
+                            lambda_L: float, lambda_H: float, max_iter: int, tol: float,
+                            train_idx: Array, test_idx: Array) -> float:
+    Y_train, Y_test = Y[train_idx], Y[test_idx]
+    W_train, W_test = W[train_idx], W[test_idx]
+    X_train, X_test = X[train_idx], X[test_idx]
+    V_train, V_test = V[train_idx], V[test_idx]
+
+    initial_params = initialize_params(Y_train, W_train, X_train, Z, V_train)
+    L, H, gamma, delta, beta = fit(Y_train, W_train, X_train, Z, V_train, Omega,
+                                   lambda_L, lambda_H, initial_params, max_iter, tol)
+
+    Y_pred = (L[test_idx] + jnp.outer(gamma[test_idx], jnp.ones(Z.shape[0])) +
+              jnp.outer(jnp.ones(test_idx.shape[0]), delta))
+
+    if V_test.shape[2] > 0:
+        Y_pred += jnp.sum(V_test * beta, axis=2)
+
+    O_test = (W_test == 0)
+    loss = jnp.sum((Y_test - Y_pred) ** 2 * O_test) / jnp.sum(O_test)
+    return loss
+
+def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
+                        lambda_grid: Array, max_iter: int, tol: float,
+                        window_size: Optional[int] = None, expanding_window: bool = False,
+                        max_window_size: Optional[int] = None) -> Tuple[float, float]:
+    N, T = Y.shape
+
+    if window_size is None:
+        window_size = T // 5
+
+    if expanding_window and max_window_size is None:
+        max_window_size = T - window_size
+
+    best_lambda_L = None
+    best_lambda_H = None
+    best_loss = jnp.inf
+
+    for lambda_L, lambda_H in lambda_grid:
+        loss = 0.0
+        t = window_size
+
+        while t < T:
+            if expanding_window:
+                train_idx = jnp.arange(max(0, t - max_window_size), t)
+            else:
+                train_idx = jnp.arange(max(0, t - window_size), t)
+
+            test_idx = jnp.arange(t, min(t + window_size, T))
+            loss += compute_time_based_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H,
+                                            max_iter, tol, train_idx, test_idx)
+            t += window_size
+
+        loss /= (T - window_size) // window_size
+
+        if loss < best_loss:
+            best_lambda_L = lambda_L
+            best_lambda_H = lambda_H
+            best_loss = loss
+
+    return best_lambda_L, best_lambda_H
