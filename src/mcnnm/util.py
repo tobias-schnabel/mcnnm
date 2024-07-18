@@ -144,6 +144,19 @@ def propose_lambda(proposed_lambda: Optional[float] = None, n_lambdas: int = 6) 
 
 
 def initialize_params(Y: Array, W: Array, X: Array, Z: Array, V: Array) -> Tuple:
+    """
+    Initialize parameters for the MC-NNM model.
+
+    Args:
+        Y (Array): The observed outcome matrix of shape (N, T).
+        W (Array): The binary treatment matrix of shape (N, T).
+        X (Array): The unit-specific covariates matrix of shape (N, P).
+        Z (Array): The time-specific covariates matrix of shape (T, Q).
+        V (Array): The unit-time specific covariates tensor of shape (N, T, J).
+
+    Returns:
+        Tuple: A tuple containing initial values for L, H, gamma, delta, and beta.
+    """
     N, T = Y.shape
     L = jnp.zeros_like(Y)
     H = jnp.zeros((X.shape[1] + N, Z.shape[1] + T))
@@ -155,6 +168,23 @@ def initialize_params(Y: Array, W: Array, X: Array, Z: Array, V: Array) -> Tuple
 
 def check_inputs(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] = None,
                  V: Optional[Array] = None, Omega: Optional[Array] = None) -> Tuple:
+    """
+    Check and preprocess input arrays for the MC-NNM model.
+
+    Args:
+        Y (Array): The observed outcome matrix of shape (N, T).
+        W (Array): The binary treatment matrix of shape (N, T).
+        X (Optional[Array]): The unit-specific covariates matrix of shape (N, P). Default is None.
+        Z (Optional[Array]): The time-specific covariates matrix of shape (T, Q). Default is None.
+        V (Optional[Array]): The unit-time specific covariates tensor of shape (N, T, J). Default is None.
+        Omega (Optional[Array]): The autocorrelation matrix of shape (T, T). Default is None.
+
+    Returns:
+        Tuple: A tuple containing preprocessed X, Z, V, and Omega arrays.
+
+    Raises:
+        ValueError: If the shape of W does not match the shape of Y.
+    """
     N, T = Y.shape
     if W.shape != (N, T):
         raise ValueError("The shape of W must match the shape of Y.")
