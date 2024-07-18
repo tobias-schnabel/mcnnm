@@ -183,13 +183,13 @@ def compute_time_based_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Om
     X_train, X_test = X[train_idx], X[test_idx]
     V_train, V_test = V[train_idx], V[test_idx]
 
-    print(f"Shapes: Y_train {Y_train.shape}, Y_test {Y_test.shape}, W_test {W_test.shape}")
+    # print(f"Shapes: Y_train {Y_train.shape}, Y_test {Y_test.shape}, W_test {W_test.shape}")
 
     initial_params = initialize_params(Y_train, W_train, X_train, Z, V_train)
     L, H, gamma, delta, beta = fit(Y_train, W_train, X_train, Z, V_train, Omega,
                                    lambda_L, lambda_H, initial_params, max_iter, tol)
 
-    print(f"Fit results: L shape {L.shape}, gamma shape {gamma.shape}, delta shape {delta.shape}")
+    # print(f"Fit results: L shape {L.shape}, gamma shape {gamma.shape}, delta shape {delta.shape}")
 
     Y_pred = (L[test_idx] + jnp.outer(gamma[test_idx], jnp.ones(Z.shape[0])) +
               jnp.outer(jnp.ones(test_idx.shape[0]), delta))
@@ -197,10 +197,10 @@ def compute_time_based_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Om
     if V_test.shape[2] > 0:
         Y_pred += jnp.sum(V_test * beta, axis=2)
 
-    print(f"Y_pred shape {Y_pred.shape}, Y_test shape {Y_test.shape}")
+    # print(f"Y_pred shape {Y_pred.shape}, Y_test shape {Y_test.shape}")
 
     O_test = (W_test == 0)
-    print(f"O_test shape {O_test.shape}, sum {jnp.sum(O_test)}")
+    # print(f"O_test shape {O_test.shape}, sum {jnp.sum(O_test)}")
 
     def true_fun(_):
         return jnp.inf
@@ -215,7 +215,7 @@ def compute_time_based_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Om
         operand=None
     )
 
-    print(f"Computed loss: {loss}")
+    # print(f"Computed loss: {loss}")
     return loss
 
 
@@ -303,14 +303,20 @@ def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega:
             for _ in range(n_folds):
                 if test_idx[-1] == T:
                     break
+
+                if jnp.sum(W[test_idx] == 0) == 0:
+                    # print(f"Warning: No untreated units in test set for fold {_ + 1}, skipping fold")
+                    continue
+
                 fold_loss = compute_time_based_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H,
                                                     max_iter, tol, train_idx, test_idx)
-                print(f"Fold loss for lambda_L={lambda_L}, lambda_H={lambda_H}: {fold_loss}")
+                # print(f"Fold loss for lambda_L={lambda_L}, lambda_H={lambda_H}: {fold_loss}")
                 if jnp.isfinite(fold_loss):
                     loss += fold_loss
                     valid_folds += 1
                 else:
-                    print(f"Non-finite loss for lambda_L={lambda_L}, lambda_H={lambda_H}")
+                    # print(f"Non-finite loss for lambda_L={lambda_L}, lambda_H={lambda_H}")
+                    pass
                 test_idx = jnp.arange(test_idx[-1], min(test_idx[-1] + (T - window_size) // n_folds, T))
 
             loss += fold_loss / n_folds
@@ -320,15 +326,15 @@ def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega:
 
         if valid_folds > 0:
             loss /= valid_folds
-            print(f"Average loss for lambda_L={lambda_L}, lambda_H={lambda_H}: {loss}")
+            # print(f"Average loss for lambda_L={lambda_L}, lambda_H={lambda_H}: {loss}")
             if loss < best_loss:
                 best_lambda_L = lambda_L
                 best_lambda_H = lambda_H
                 best_loss = loss
-                print(f"New best loss: {best_loss} for lambda_L={best_lambda_L}, lambda_H={best_lambda_H}")
+                # print(f"New best loss: {best_loss} for lambda_L={best_lambda_L}, lambda_H={best_lambda_H}")
         else:
-            print(f"No valid folds for lambda_L={lambda_L}, lambda_H={lambda_H}")
-
+            # print(f"No valid folds for lambda_L={lambda_L}, lambda_H={lambda_H}")
+            pass
     if best_loss == jnp.inf:
         print("Warning: No valid loss found in time_based_validate")
         return lambda_grid[0][0], lambda_grid[0][1]
