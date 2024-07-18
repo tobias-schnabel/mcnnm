@@ -7,6 +7,7 @@ from typing import Optional
 import time
 from .timer import timer
 from datetime import datetime
+from typing import Optional, Tuple, NamedTuple
 
 @jax.jit
 def p_o(A: Array, mask: Array) -> Array:
@@ -143,6 +144,16 @@ def propose_lambda(proposed_lambda: Optional[float] = None, n_lambdas: int = 6) 
         return jnp.logspace(log_min, log_max, n_lambdas)
 
 
+def initialize_params(Y: Array, W: Array, X: Array, Z: Array, V: Array) -> Tuple:
+    N, T = Y.shape
+    L = jnp.zeros_like(Y)
+    H = jnp.zeros((X.shape[1] + N, Z.shape[1] + T))
+    gamma = jnp.zeros(N)
+    delta = jnp.zeros(T)
+    beta = jnp.zeros(V.shape[2]) if V.shape[2] > 0 else jnp.zeros(0)
+    return L, H, gamma, delta, beta
+
+
 def timer(func):
     """
     A decorator that times the execution of a function.
@@ -191,7 +202,7 @@ def time_fit(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] =
     Returns:
         The result of the fit function.
     """
-    from .main import fit  # Import fit locally
+    from .estimate import fit  # Import fit locally
 
     @timer
     def timed_fit(Y, W, X, Z, V, Omega, lambda_L, lambda_H, return_tau, return_lambda,

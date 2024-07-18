@@ -3,12 +3,17 @@ import pandas as pd
 from typing import Optional, Tuple, Dict
 
 
-def generate_data_factor(
+def generate_data(
         nobs: int = 500,
         nperiods: int = 100,
-        treated_period: int = 50,
+        treatment_probability: float = 0.5,
         rank: int = 5,
         treatment_effect: float = 1.0,
+        unit_fe: bool = True,
+        time_fe: bool = True,
+        X_cov: bool = True,
+        Z_cov: bool = True,
+        V_cov: bool = True,
         fixed_effects_scale: float = 0.1,
         covariates_scale: float = 0.1,
         noise_scale: float = 0.1,
@@ -20,9 +25,14 @@ def generate_data_factor(
     Args:
         nobs: Number of observations (units).
         nperiods: Number of time periods.
-        treated_period: The period when treatment starts.
+        treatment_probability: The probability of a unit being treated.
         rank: The rank of the low-rank matrix L.
         treatment_effect: The true treatment effect.
+        unit_fe: Whether to include unit fixed effects.
+        time_fe: Whether to include time fixed effects.
+        X_cov: Whether to include unit-specific covariates.
+        Z_cov: Whether to include time-specific covariates.
+        V_cov: Whether to include unit-time specific covariates.
         fixed_effects_scale: The scale of the fixed effects.
         covariates_scale: The scale of the covariates and their coefficients.
         noise_scale: The scale of the noise.
@@ -47,29 +57,28 @@ def generate_data_factor(
     L = U @ V.T
 
     # Generate fixed effects
-    unit_fe = np.random.normal(0, fixed_effects_scale, nobs)
-    time_fe = np.random.normal(0, fixed_effects_scale, nperiods)
+    unit_fe_values = np.random.normal(0, fixed_effects_scale, nobs) if unit_fe else np.zeros(nobs)
+    time_fe_values = np.random.normal(0, fixed_effects_scale, nperiods) if time_fe else np.zeros(nperiods)
 
     # Generate covariates and their coefficients
-    X = np.random.normal(0, covariates_scale, (nobs, 2))
-    X_coef = np.random.normal(0, covariates_scale, 2)
-    Z = np.random.normal(0, covariates_scale, (nperiods, 2))
-    Z_coef = np.random.normal(0, covariates_scale, 2)
-    V = np.random.normal(0, covariates_scale, (nobs, nperiods, 2))
-    V_coef = np.random.normal(0, covariates_scale, 2)
+    X = np.random.normal(0, covariates_scale, (nobs, 2)) if X_cov else np.zeros((nobs, 0))
+    X_coef = np.random.normal(0, covariates_scale, 2) if X_cov else np.array([])
+    Z = np.random.normal(0, covariates_scale, (nperiods, 2)) if Z_cov else np.zeros((nperiods, 0))
+    Z_coef = np.random.normal(0, covariates_scale, 2) if Z_cov else np.array([])
+    V = np.random.normal(0, covariates_scale, (nobs, nperiods, 2)) if V_cov else np.zeros((nobs, nperiods, 0))
+    V_coef = np.random.normal(0, covariates_scale, 2) if V_cov else np.array([])
 
     # Generate outcome
     Y = (L +
-         np.outer(unit_fe, np.ones(nperiods)) +
-         np.outer(np.ones(nobs), time_fe) +
+         np.outer(unit_fe_values, np.ones(nperiods)) +
+         np.outer(np.ones(nobs), time_fe_values) +
          np.repeat(X @ X_coef, nperiods).reshape(nobs, nperiods) +
          np.tile((Z @ Z_coef).reshape(1, -1), (nobs, 1)) +
          np.sum(V * V_coef, axis=2) +
          np.random.normal(0, noise_scale, (nobs, nperiods)))
 
-    # Add treatment effect
-    treat = np.zeros((nobs, nperiods))
-    treat[:, treated_period:] = 1
+    # Generate treatment assignment
+    treat = np.random.binomial(1, treatment_probability, (nobs, nperiods))
     Y += treat * treatment_effect
 
     data['y'] = Y.flatten()
@@ -77,8 +86,8 @@ def generate_data_factor(
 
     true_params = {
         'L': L,
-        'unit_fe': unit_fe,
-        'time_fe': time_fe,
+        'unit_fe': unit_fe_values,
+        'time_fe': time_fe_values,
         'X': X,
         'X_coef': X_coef,
         'Z': Z,

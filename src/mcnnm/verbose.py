@@ -1,17 +1,19 @@
-# Description: Example of how to use the MC-NNM model with verbose output
-# import numpy as np
 import jax
 import jax.numpy as jnp
-from mcnnm.main import estimate
-from mcnnm.simulate import generate_data_factor
+from mcnnm import Array  # Add this import for consistency
+from mcnnm.estimate import estimate
+from mcnnm.simulate import generate_data
 from mcnnm.util import print_with_timestamp
+
+jax.config.update('jax_platforms', 'cpu')
+jax.config.update('jax_enable_x64', True)
 
 jax.config.update('jax_platforms', 'cpu')
 jax.config.update('jax_enable_x64', True)
 
 # Generate sample data
 nobs, nperiods = 1000, 100
-data, true_params = generate_data_factor(nobs=nobs, nperiods=nperiods, seed=42)
+data, true_params = generate_data(nobs=nobs, nperiods=nperiods, seed=0, treatment_probability=0.2)
 
 Y = jnp.array(data.pivot(index='unit', columns='period', values='y').values)
 W = jnp.array(data.pivot(index='unit', columns='period', values='treat').values)

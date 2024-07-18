@@ -54,10 +54,14 @@ def fit_step(Y: Array, W: Array, X_tilde: Array, Z_tilde: Array, V: Array, Omega
 
     return L_new, H_new, gamma_new, delta_new, beta_new
 
+
 def fit(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
         lambda_L: float, lambda_H: float, initial_params: Tuple,
         max_iter: int, tol: float) -> Tuple:
+    # Unpack initial parameters
     L, H, gamma, delta, beta = initial_params
+
+    # Compute dimensions and augmented covariate matrices
     N, T = Y.shape
     X_tilde = jnp.hstack((X, jnp.eye(N)))
     Z_tilde = jnp.hstack((Z, jnp.eye(T)))
@@ -65,28 +69,27 @@ def fit(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
     # Ensure beta has the correct shape
     beta = jnp.zeros((V.shape[-1],)) if V.size > 0 else jnp.zeros((0,))
 
+    # Define the condition function for the while loop
     def cond_fn(state):
         i, L, _, _, _, _, prev_L = state
         return (i < max_iter) & (jnp.linalg.norm(L - prev_L, ord='fro') >= tol)
 
+    # Define the body function for the while loop
     def body_fn(state):
         i, L, H, gamma, delta, beta, prev_L = state
-        L_new, H_new, gamma_new, delta_new, beta_new = fit_step(Y, W, X_tilde, Z_tilde, V, Omega, lambda_L, lambda_H, L, H, gamma, delta, beta)
+        L_new, H_new, gamma_new, delta_new, beta_new = fit_step(Y, W, X_tilde, Z_tilde, V, Omega, lambda_L, lambda_H, L,
+                                                                H, gamma, delta, beta)
         return i + 1, L_new, H_new, gamma_new, delta_new, beta_new, L
 
+    # Set the initial state of the while loop
     initial_state = (0, L, H, gamma, delta, beta, jnp.zeros_like(L))
+
+    # Run the while loop until convergence or max iterations
     _, L, H, gamma, delta, beta, _ = jax.lax.while_loop(cond_fn, body_fn, initial_state)
 
     return L, H, gamma, delta, beta
 
-def initialize_params(Y: Array, W: Array, X: Array, Z: Array, V: Array) -> Tuple:
-    N, T = Y.shape
-    L = jnp.zeros_like(Y)
-    H = jnp.zeros((X.shape[1] + N, Z.shape[1] + T))
-    gamma = jnp.zeros(N)
-    delta = jnp.zeros(T)
-    beta = jnp.zeros(V.shape[2]) if V.shape[2] > 0 else jnp.zeros(0)
-    return L, H, gamma, delta, beta
+
 
 def compute_cv_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
                     lambda_L: float, lambda_H: float, max_iter: int, tol: float) -> float:
@@ -104,6 +107,7 @@ def compute_cv_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Arr
     V_train, V_test = V[train_idx], V[test_idx]
 
     initial_params = initialize_params(Y_train, W_train, X_train, Z, V_train)
+
     L, H, gamma, delta, beta = fit(Y_train, W_train, X_train, Z, V_train, Omega,
                                    lambda_L, lambda_H, initial_params, max_iter, tol)
 
