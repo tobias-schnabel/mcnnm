@@ -140,101 +140,17 @@ def cross_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array,
 
     return best_lambda_L, best_lambda_H
 
-def compute_treatment_effect(Y: Array, L: Array, gamma: Array, delta: Array, beta: Array, H: Array,
-                             X: Array, W: Array, Z: Array, V: Array) -> float:
-    N, T = Y.shape
-    X_tilde = jnp.hstack((X, jnp.eye(N)))
-    Z_tilde = jnp.hstack((Z, jnp.eye(T)))
-    Y_completed = L + jnp.outer(gamma, jnp.ones(T)) + jnp.outer(jnp.ones(N), delta)
 
-    if X.shape[1] > 0 and Z.shape[1] > 0:
-        Y_completed += jnp.dot(X_tilde, jnp.dot(H, Z_tilde.T))
-
-    if V.shape[2] > 0:
-        Y_completed += jnp.sum(V * beta[None, None, :], axis=2)
-
-    treated_units = jnp.sum(W)
-    tau = jnp.sum((Y - Y_completed) * W) / treated_units
-    return tau
-
-class MCNNMResults(NamedTuple):
-    tau: Optional[float] = None
-    lambda_L: Optional[float] = None
-    lambda_H: Optional[float] = None
-    L: Optional[Array] = None
-    Y_completed: Optional[Array] = None
-    gamma: Optional[Array] = None
-    delta: Optional[Array] = None
-    beta: Optional[Array] = None
-    H: Optional[Array] = None
-
-def check_inputs(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] = None,
-                 V: Optional[Array] = None, Omega: Optional[Array] = None) -> Tuple:
-    N, T = Y.shape
-    if W.shape != (N, T):
-        raise ValueError("The shape of W must match the shape of Y.")
-    X = jnp.zeros((N, 0)) if X is None else X
-    Z = jnp.zeros((T, 0)) if Z is None else Z
-    V = jnp.zeros((N, T, 0)) if V is None else V
-    Omega = jnp.eye(T) if Omega is None else Omega
-    return X, Z, V, Omega
-
-def estimate(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] = None,
-             V: Optional[Array] = None, Omega: Optional[Array] = None, lambda_L: Optional[float] = None,
-             lambda_H: Optional[float] = None, n_lambda_L: int = 10, n_lambda_H: int = 10,
-             return_tau: bool = True, return_lambda: bool = True,
-             return_completed_L: bool = True, return_completed_Y: bool = True, return_fixed_effects: bool = False,
-             return_covariate_coefficients: bool = False, max_iter: int = 1000, tol: float = 1e-4,
-             verbose: bool = False, validation_method: str = 'cv', window_size: Optional[int] = None,
-             expanding_window: bool = False, max_window_size: Optional[int] = None) -> MCNNMResults:
-    X, Z, V, Omega = check_inputs(Y, W, X, Z, V, Omega)
-    N, T = Y.shape
-
-    if lambda_L is None or lambda_H is None:
-        if validation_method == 'cv':
-            if verbose:
-                print_with_timestamp("Cross-validating lambda_L, lambda_H")
-            lambda_grid = jnp.array(jnp.meshgrid(propose_lambda(None, n_lambda_L), propose_lambda(None, n_lambda_L))).T.reshape(-1, 2)
-            lambda_L, lambda_H = cross_validate(Y, W, X, Z, V, Omega, lambda_grid, max_iter // 10, tol * 10)
-        elif validation_method == 'time':
-            if verbose:
-                print_with_timestamp("Selecting lambda_L, lambda_H using time-based holdout validation")
-            lambda_grid = jnp.array(jnp.meshgrid(propose_lambda(None, n_lambda_L), propose_lambda(None, n_lambda_H))).T.reshape(-1, 2)
-            lambda_L, lambda_H = time_based_validate(Y, W, X, Z, V, Omega, lambda_grid, max_iter // 10, tol * 10,
-                                                     window_size, expanding_window, max_window_size)
-        else:
-            raise ValueError("Invalid validation_method. Choose 'cv' or 'time'.")
-
-        if verbose:
-            print_with_timestamp(f"Selected lambda_L: {lambda_L:.4f}, lambda_H: {lambda_H:.4f}")
-
-    initial_params = initialize_params(Y, W, X, Z, V)
-    L, H, gamma, delta, beta = fit(Y, W, X, Z, V, Omega, lambda_L, lambda_H, initial_params, max_iter, tol)
-
-    results = {}
-    if return_tau:
-        tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W, Z, V)
-        results['tau'] = tau
-    if return_lambda:
-        results['lambda_L'] = lambda_L
-        results['lambda_H'] = lambda_H
-    if return_completed_L:
-        results['L'] = L
-    if return_completed_Y:
-        Y_completed = L + jnp.dot(jnp.hstack((X, jnp.eye(N))), jnp.dot(H, jnp.hstack((Z, jnp.eye(T))).T))
-        Y_completed += jnp.outer(gamma, jnp.ones(T)) + jnp.outer(jnp.ones(N), delta)
-        if V.shape[2] > 0:
-            Y_completed += jnp.sum(V * beta, axis=2)
-        results['Y_completed'] = Y_completed
-    if return_fixed_effects:
-        results['gamma'] = gamma
-        results['delta'] = delta
-    if return_covariate_coefficients:
-        results['beta'] = beta
-        results['H'] = H
-
-    return MCNNMResults(**results)
-
+# def check_inputs(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] = None,
+#                  V: Optional[Array] = None, Omega: Optional[Array] = None) -> Tuple:
+#     N, T = Y.shape
+#     if W.shape != (N, T):
+#         raise ValueError("The shape of W must match the shape of Y.")
+#     X = jnp.zeros((N, 0)) if X is None else X
+#     Z = jnp.zeros((T, 0)) if Z is None else Z
+#     V = jnp.zeros((N, T, 0)) if V is None else V
+#     Omega = jnp.eye(T) if Omega is None else Omega
+#     return X, Z, V, Omega
 
 @jit
 def compute_time_based_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
@@ -306,3 +222,107 @@ def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega:
             best_loss = loss
 
     return best_lambda_L, best_lambda_H
+
+
+def compute_treatment_effect(Y: Array, L: Array, gamma: Array, delta: Array, beta: Array, H: Array,
+                             X: Array, W: Array, Z: Array, V: Array) -> float:
+    N, T = Y.shape
+    X_tilde = jnp.hstack((X, jnp.eye(N)))
+    Z_tilde = jnp.hstack((Z, jnp.eye(T)))
+    Y_completed = L + jnp.outer(gamma, jnp.ones(T)) + jnp.outer(jnp.ones(N), delta)
+
+    if X.shape[1] > 0 and Z.shape[1] > 0:
+        Y_completed += jnp.dot(X_tilde, jnp.dot(H, Z_tilde.T))
+
+    if V.shape[2] > 0:
+        Y_completed += jnp.sum(V * beta[None, None, :], axis=2)
+
+    treated_units = jnp.sum(W)
+    tau = jnp.sum((Y - Y_completed) * W) / treated_units
+    return tau
+
+class MCNNMResults(NamedTuple):
+    tau: Optional[float] = None
+    lambda_L: Optional[float] = None
+    lambda_H: Optional[float] = None
+    L: Optional[Array] = None
+    Y_completed: Optional[Array] = None
+    gamma: Optional[Array] = None
+    delta: Optional[Array] = None
+    beta: Optional[Array] = None
+    H: Optional[Array] = None
+
+
+def estimate(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] = None,
+             V: Optional[Array] = None, Omega: Optional[Array] = None, lambda_L: Optional[float] = None,
+             lambda_H: Optional[float] = None, n_lambda_L: int = 10, n_lambda_H: int = 10,
+             return_tau: bool = True, return_lambda: bool = True,
+             return_completed_L: bool = True, return_completed_Y: bool = True, return_fixed_effects: bool = False,
+             return_covariate_coefficients: bool = False, max_iter: int = 1000, tol: float = 1e-4,
+             verbose: bool = False, validation_method: str = 'cv', window_size: Optional[int] = None,
+             expanding_window: bool = False, max_window_size: Optional[int] = None) -> MCNNMResults:
+    X, Z, V, Omega = check_inputs(Y, W, X, Z, V, Omega)
+    N, T = Y.shape
+
+    if lambda_L is None or lambda_H is None:
+        if validation_method == 'cv':
+            if verbose:
+                print_with_timestamp("Cross-validating lambda_L, lambda_H")
+            lambda_grid = jnp.array(jnp.meshgrid(propose_lambda(None, n_lambda_L), propose_lambda(None, n_lambda_L))).T.reshape(-1, 2)
+            lambda_L, lambda_H = cross_validate(Y, W, X, Z, V, Omega, lambda_grid, max_iter // 10, tol * 10)
+        elif validation_method == 'time':
+            if T < 2 * window_size:
+                raise ValueError("The matrix does not have enough columns for time-based validation. "
+                                 "Please increase the number of time periods or use cross-validation")
+            if verbose:
+                print_with_timestamp("Selecting lambda_L, lambda_H using time-based holdout validation")
+            lambda_grid = jnp.array(
+                jnp.meshgrid(propose_lambda(None, n_lambda_L), propose_lambda(None, n_lambda_H))).T.reshape(-1, 2)
+            lambda_L, lambda_H = time_based_validate(Y, W, X, Z, V, Omega, lambda_grid, max_iter // 10, tol * 10,
+                                                     window_size, expanding_window, max_window_size)
+        else:
+            raise ValueError("Invalid validation_method. Choose 'cv' or 'time'.")
+
+        if verbose:
+            print_with_timestamp(f"Selected lambda_L: {lambda_L:.4f}, lambda_H: {lambda_H:.4f}")
+
+    initial_params = initialize_params(Y, W, X, Z, V)
+    L, H, gamma, delta, beta = fit(Y, W, X, Z, V, Omega, lambda_L, lambda_H, initial_params, max_iter, tol)
+
+    results = {}
+    if return_tau:
+        tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W, Z, V)
+        results['tau'] = tau
+    if return_lambda:
+        results['lambda_L'] = lambda_L
+        results['lambda_H'] = lambda_H
+    if return_completed_L:
+        results['L'] = L
+    if return_completed_Y:
+        Y_completed = L + jnp.dot(jnp.hstack((X, jnp.eye(N))), jnp.dot(H, jnp.hstack((Z, jnp.eye(T))).T))
+        Y_completed += jnp.outer(gamma, jnp.ones(T)) + jnp.outer(jnp.ones(N), delta)
+        if V.shape[2] > 0:
+            Y_completed += jnp.sum(V * beta, axis=2)
+        results['Y_completed'] = Y_completed
+    if return_fixed_effects:
+        results['gamma'] = gamma
+        results['delta'] = delta
+    if return_covariate_coefficients:
+        results['beta'] = beta
+        results['H'] = H
+
+    return MCNNMResults(**results)
+
+
+def complete_matrix(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] = None,
+                    V: Optional[Array] = None, Omega: Optional[Array] = None, lambda_L: Optional[float] = None,
+                    lambda_H: Optional[float] = None, n_lambda_L: int = 10, n_lambda_H: int = 10,
+                    max_iter: int = 1000, tol: float = 1e-4, verbose: bool = False,
+                    validation_method: str = 'cv', window_size: Optional[int] = None,
+                    expanding_window: bool = False, max_window_size: Optional[int] = None) -> Array:
+    results = estimate(Y, W, X, Z, V, Omega, lambda_L, lambda_H, n_lambda_L, n_lambda_H,
+                       return_tau=False, return_lambda=False, return_completed_L=False, return_completed_Y=True,
+                       return_fixed_effects=False, return_covariate_coefficients=False,
+                       max_iter=max_iter, tol=tol, verbose=verbose, validation_method=validation_method,
+                       window_size=window_size, expanding_window=expanding_window, max_window_size=max_window_size)
+    return results.Y_completed

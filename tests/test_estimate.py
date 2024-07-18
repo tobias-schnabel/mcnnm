@@ -2,7 +2,7 @@ from mcnnm.util import initialize_params
 import pytest
 import jax.numpy as jnp
 from jax import random
-from mcnnm.estimate import compute_treatment_effect, fit, estimate, fit_step, update_L, update_H, update_gamma_delta_beta, check_inputs
+from mcnnm.estimate import compute_treatment_effect, fit, estimate, fit_step, update_L, update_H, update_gamma_delta_beta
 from mcnnm.simulate import generate_data
 import jax
 jax.config.update('jax_platforms', 'cpu')
@@ -103,14 +103,7 @@ def test_fit():
     assert jnp.all(jnp.isfinite(delta))
     assert jnp.all(jnp.isfinite(beta))
 
-def test_check_inputs():
-    Y = jnp.array([[1, 2], [3, 4]])
-    W = jnp.array([[0, 1], [0, 0]])
-    X, Z, V, Omega = check_inputs(Y, W)
-    assert X.shape == (2, 0)
-    assert Z.shape == (2, 0)
-    assert V.shape == (2, 2, 0)
-    assert Omega.shape == (2, 2)
+
 
 def test_compute_treatment_effect(sample_data):
     Y, W, X, Z, V = sample_data
