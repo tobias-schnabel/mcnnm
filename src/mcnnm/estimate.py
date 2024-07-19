@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from typing import Optional, Tuple, NamedTuple
 from . import Array
 from mcnnm.util import *
-from jax import jit, vmap, lax
+from jax import jit, lax
 
 @jit
 def update_L(Y_adj: Array, L: Array, Omega: Array, O: Array, lambda_L: float) -> Array:
@@ -334,7 +334,7 @@ def compute_time_based_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Om
     def false_fun(_):
         return jnp.sum((Y_test - Y_pred) ** 2 * O_test) / jnp.sum(O_test)
 
-    loss = jax.lax.cond(
+    loss = lax.cond(
         jnp.sum(O_test) == 0,
         true_fun,
         false_fun,
@@ -523,8 +523,9 @@ def estimate(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] =
         return_lambda (bool): Whether to return the selected lambda values. Default is True.
         return_completed_L (bool): Whether to return the completed low-rank matrix. Default is True.
         return_completed_Y (bool): Whether to return the completed outcome matrix. Default is True.
-        return_fixed_effects (bool): Whether to return the estimated fixed effects. Default is False.
-        return_covariate_coefficients (bool): Whether to return the estimated covariate coefficients. Default is False.
+        return_fixed_effects (bool): (For debugging) Whether to return the estimated fixed effects. Default is False.
+        return_covariate_coefficients (bool): (For debugging) Whether to return the estimated covariate coefficients.
+        Default is False.
         max_iter (int): Maximum number of iterations for fitting. Default is 1000.
         tol (float): Convergence tolerance for fitting. Default is 1e-4.
         verbose (bool): Whether to print progress messages. Default is False.
