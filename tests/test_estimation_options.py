@@ -1,6 +1,6 @@
 import pytest, jax
 from mcnnm.estimate import estimate
-from mcnnm.simulate import generate_data
+from mcnnm.util import generate_data
 import jax.numpy as jnp
 jax.config.update('jax_platforms', 'cpu')
 jax.config.update('jax_enable_x64', True)

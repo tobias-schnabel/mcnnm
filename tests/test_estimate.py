@@ -3,7 +3,7 @@ import pytest
 import jax.numpy as jnp
 from jax import random
 from mcnnm.estimate import *
-from mcnnm.simulate import generate_data
+from mcnnm.util import generate_data
 import jax
 jax.config.update('jax_platforms', 'cpu')
 jax.config.update('jax_enable_x64', True)

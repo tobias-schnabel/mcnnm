@@ -4,7 +4,7 @@ import jax.numpy as jnp
 from typing import Optional, Tuple, Dict
 import pytest
 from mcnnm.estimate import estimate, MCNNMResults
-from mcnnm.simulate import generate_data
+from mcnnm.util import generate_data
 import jax
 
 
