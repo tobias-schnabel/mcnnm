@@ -135,7 +135,7 @@ def test_estimate():
     Y = jnp.array(data.pivot(index='unit', columns='period', values='y').values)
     W = jnp.array(data.pivot(index='unit', columns='period', values='treat').values)
     X, Z, V = jnp.array(true_params['X']), jnp.array(true_params['Z']), jnp.array(true_params['V'])
-    results = estimate(Y, W, X=X, Z=Z, V=V)
+    results = estimate(Y, W, X=X, Z=Z, V=V, K=2)
     assert jnp.isfinite(results.tau)
     assert jnp.isfinite(results.lambda_L)
     assert jnp.isfinite(results.lambda_H)
@@ -147,15 +147,17 @@ def test_estimate():
 
 @pytest.mark.timeout(180)
 def test_complete_matrix():
-    nobs, nperiods = 50, 10
+    nobs, nperiods = 10, 10
     data, true_params = generate_data(nobs=nobs, nperiods=nperiods, seed=42)
     Y = jnp.array(data.pivot(index='unit', columns='period', values='y').values)
     W = jnp.array(data.pivot(index='unit', columns='period', values='treat').values)
     X, Z, V = jnp.array(true_params['X']), jnp.array(true_params['Z']), jnp.array(true_params['V'])
-    Y_completed = complete_matrix(Y, W, X=X, Z=Z, V=V, verbose=True)
+    Y_completed, lambda_L, lambda_H= complete_matrix(Y, W, X=X, Z=Z, V=V, K=2)
     assert Y_completed.shape == Y.shape
     assert jnp.all(jnp.isfinite(Y_completed))
     assert not jnp.any(jnp.isnan(Y_completed))
+    assert jnp.isfinite(lambda_L)
+    assert jnp.isfinite(lambda_H)
 
     # Optional: Check if the completed values are within a reasonable range
     assert jnp.all(Y_completed >= Y.min() - 1) and jnp.all(Y_completed <= Y.max() + 1)

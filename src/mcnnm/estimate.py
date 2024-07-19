@@ -240,14 +240,42 @@ def cross_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array,
 
     for lambda_L, lambda_H in lambda_grid:
         loss = 0.0
-        for k in range(K):
-            loss += compute_cv_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H, max_iter, tol)
-        loss /= K
+        valid_folds = 0
+        key = jax.random.PRNGKey(0)
 
-        if loss < best_loss:
-            best_lambda_L = lambda_L
-            best_lambda_H = lambda_H
-            best_loss = loss
+        for k in range(K):
+            mask = jax.random.bernoulli(key, 0.8, (Y.shape[0],))
+            train_idx = jnp.where(mask)[0]
+            test_idx = jnp.where(~mask)[0]
+
+            if jnp.sum(W[test_idx] == 1) == 0:
+                # print(f"Warning: No treated units in test set for fold {k + 1}, skipping fold")
+                continue
+
+            fold_loss = compute_cv_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H, max_iter, tol)
+            # print(f"Fold loss for lambda_L={lambda_L}, lambda_H={lambda_H}: {fold_loss}")
+            if jnp.isfinite(fold_loss):
+                loss += fold_loss
+                valid_folds += 1
+            else:
+                # print(f"Non-finite loss for lambda_L={lambda_L}, lambda_H={lambda_H}")
+                pass
+
+        if valid_folds > 0:
+            loss /= valid_folds
+            # print(f"Average loss for lambda_L={lambda_L}, lambda_H={lambda_H}: {loss}")
+            if loss < best_loss:
+                best_lambda_L = lambda_L
+                best_lambda_H = lambda_H
+                best_loss = loss
+                # print(f"New best loss: {best_loss} for lambda_L={best_lambda_L}, lambda_H={best_lambda_H}")
+        else:
+            # print(f"No valid folds for lambda_L={lambda_L}, lambda_H={lambda_H}")
+            pass
+
+    if best_loss == jnp.inf:
+        print("Warning: No valid loss found in cross_validate")
+        return lambda_grid[0][0], lambda_grid[0][1]
 
     return best_lambda_L, best_lambda_H
 
@@ -461,7 +489,7 @@ def estimate(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] =
              return_tau: bool = True, return_lambda: bool = True,
              return_completed_L: bool = True, return_completed_Y: bool = True, return_fixed_effects: bool = False,
              return_covariate_coefficients: bool = False, max_iter: int = 1000, tol: float = 1e-4,
-             verbose: bool = False, validation_method: str = 'cv', window_size: Optional[int] = None,
+             verbose: bool = False, validation_method: str = 'cv', K: int = 5, window_size: Optional[int] = None,
              expanding_window: bool = False, max_window_size: Optional[int] = None) -> MCNNMResults:
     """
     Estimate the MC-NNM model and return results.
@@ -487,6 +515,7 @@ def estimate(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] =
         tol (float): Convergence tolerance for fitting. Default is 1e-4.
         verbose (bool): Whether to print progress messages. Default is False.
         validation_method (str): Method for selecting lambda values. Either 'cv' or 'holdout'. Default is 'cv'.
+        K (int): Number of folds for cross-validation. Default is 5.
         window_size (Optional[int]): Size of the rolling window for time-based validation. Default is None.
         expanding_window (bool): Whether to use an expanding window for time-based validation. Default is False.
         max_window_size (Optional[int]): Maximum size of the expanding window for time-based validation. Default is None.
@@ -502,7 +531,7 @@ def estimate(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] =
             if verbose:
                 print_with_timestamp("Cross-validating lambda_L, lambda_H")
             lambda_grid = jnp.array(jnp.meshgrid(propose_lambda(None, n_lambda_L), propose_lambda(None, n_lambda_L))).T.reshape(-1, 2)
-            lambda_L, lambda_H = cross_validate(Y, W, X, Z, V, Omega, lambda_grid, max_iter // 10, tol * 10)
+            lambda_L, lambda_H = cross_validate(Y, W, X, Z, V, Omega, lambda_grid, K=K, max_iter = max_iter // 10, tol=tol * 10)
         elif validation_method == 'holdout':
             if T < 5:
                 raise ValueError("The matrix does not have enough columns for time-based validation. "
@@ -551,7 +580,7 @@ def complete_matrix(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[A
                     V: Optional[Array] = None, Omega: Optional[Array] = None, lambda_L: Optional[float] = None,
                     lambda_H: Optional[float] = None, n_lambda_L: int = 10, n_lambda_H: int = 10,
                     max_iter: int = 1000, tol: float = 1e-4, verbose: bool = False,
-                    validation_method: str = 'cv', window_size: Optional[int] = None,
+                    validation_method: str = 'cv', K: int = 5 , window_size: Optional[int] = None,
                     expanding_window: bool = False, max_window_size: Optional[int] = None) -> Tuple[Array, float, float]:
     """
     Complete the matrix Y using the MC-NNM model and return the optimal regularization parameters.
@@ -571,6 +600,7 @@ def complete_matrix(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[A
         tol (float): Convergence tolerance for fitting. Default is 1e-4.
         verbose (bool): Whether to print progress messages. Default is False.
         validation_method (str): Method for selecting lambda values. Either 'cv' or 'holdout'. Default is 'cv'.
+        K (int): Number of folds for cross-validation. Default is 5.
         window_size (Optional[int]): Size of the rolling window for time-based validation. Default is None.
         expanding_window (bool): Whether to use an expanding window for time-based validation. Default is False.
         max_window_size (Optional[int]): Maximum size of the expanding window for time-based validation. Default is None.
@@ -584,6 +614,6 @@ def complete_matrix(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[A
     results = estimate(Y, W, X, Z, V, Omega, lambda_L, lambda_H, n_lambda_L, n_lambda_H,
                        return_tau=False, return_lambda=True, return_completed_L=False, return_completed_Y=True,
                        return_fixed_effects=False, return_covariate_coefficients=False,
-                       max_iter=max_iter, tol=tol, verbose=verbose, validation_method=validation_method,
+                       max_iter=max_iter, tol=tol, verbose=verbose, validation_method=validation_method, K=K,
                        window_size=window_size, expanding_window=expanding_window, max_window_size=max_window_size)
     return results.Y_completed, results.lambda_L, results.lambda_H
