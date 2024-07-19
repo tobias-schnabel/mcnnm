@@ -472,6 +472,20 @@ def compute_treatment_effect(Y: Array, L: Array, gamma: Array, delta: Array, bet
     return tau
 
 class MCNNMResults(NamedTuple):
+    """
+    A named tuple containing the results of the MC-NNM estimation.
+
+    Attributes:
+        tau (Optional[float]): The estimated average treatment effect.
+        lambda_L (Optional[float]): The selected regularization parameter for L.
+        lambda_H (Optional[float]): The selected regularization parameter for H.
+        L (Optional[Array]): The estimated low-rank matrix.
+        Y_completed (Optional[Array]): The completed outcome matrix.
+        gamma (Optional[Array]): The estimated unit fixed effects.
+        delta (Optional[Array]): The estimated time fixed effects.
+        beta (Optional[Array]): The estimated unit-time specific covariate coefficients.
+        H (Optional[Array]): The estimated covariate coefficient matrix.
+    """
     tau: Optional[float] = None
     lambda_L: Optional[float] = None
     lambda_H: Optional[float] = None
