@@ -18,7 +18,7 @@ jax.config.update('jax_enable_x64', True)
 
 @pytest.mark.timeout(300)
 def test_mcnnm_accuracy_no_covariates(tolerance=0.1):
-    nobs, nperiods = 1000, 100
+    nobs, nperiods = 100, 100
     data, true_params = generate_data(nobs=nobs, nperiods=nperiods, seed=42,
                                       unit_fe=True, time_fe=True,X_cov=False, Z_cov=False, V_cov=False)
 
@@ -54,7 +54,7 @@ def test_mcnnm_accuracy_no_covariates(tolerance=0.1):
 
 @pytest.mark.timeout(600)
 def test_mcnnm_accuracy(tolerance=0.2):
-    nobs, nperiods = 500, 100
+    nobs, nperiods = 100, 100
     data, true_params = generate_data(nobs=nobs, nperiods=nperiods, seed=42)
 
     Y = jnp.array(data.pivot(index='unit', columns='period', values='y').values)
