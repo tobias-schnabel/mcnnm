@@ -77,6 +77,12 @@ Now you're ready to start developing!
     ```bash
     poetry run pytest
    ```
+   This will run all the tests in the tests/ directory with the exception of test_estimation_options.py, which is meant to 
+   exhaustively test possible combinations of estimation options and is disabled by default. To run all tests including
+   this script, use the following command:
+      ```bash
+      poetry run pytest -m "not comprehensive or comprehensive"
+      ```
 6. Building the package: run the following command:
     ```bash
     poetry build
