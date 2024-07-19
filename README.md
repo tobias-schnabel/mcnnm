@@ -73,6 +73,7 @@ This project uses [Poetry](https://python-poetry.org/) for dependency management
    poetry shell
    ```
 Now you're ready to start developing!
+### Testing and building the package
 5. Running tests: use the following command:
     ```bash
     poetry run pytest
@@ -83,6 +84,12 @@ Now you're ready to start developing!
       ```bash
       poetry run pytest -m "not comprehensive or comprehensive"
       ```
+   
+6. Coverage: to generate a coverage report, run the following command:
+    ```bash
+    poetry run coverage report
+    ```
+    This will generate a coverage report showing the percentage of code covered by the tests.
 6. Building the package: run the following command:
     ```bash
     poetry build
@@ -96,9 +103,7 @@ This implementation is based on the method described in:
 ## Acknowledgements
 This project was inspired by and draws upon ideas from 
 [CausalTensor](https://github.com/TianyiPeng/causaltensor) and 
-[fect](https://yiqingxu.org/packages/fect/fect.html).
-
-I am grateful for their contributions to the field of causal inference.
+[fect](https://yiqingxu.org/packages/fect/fect.html). I am grateful for their contributions to the field of causal inference.
 ## License
 lightweight-mcnnm is released under the GNU General Public License v3.0. See the LICENSE file for more details.
 ## Contributing
