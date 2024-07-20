@@ -11,11 +11,9 @@ version = "0.1.7"
 description = "Leightweight Implementation of Athey et al. (2021)'s MC-NNM estimator"
 packages = [{include = "mcnnm", from = "src"}]
 include = [
-    { path = "tests", format = "sdist" },
     { path = "README.md" },
     { path = "LICENSE" },
     { path = "py.typed" },
-    { path = "CHANGELOG.md" }
 ]
 authors = ["Tobias Schnabel <ctobiasschnabel@gmail.com>"]
 license = "GNU3.0"
