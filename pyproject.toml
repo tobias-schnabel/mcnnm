@@ -1,12 +1,22 @@
 [build-system]
 requires = ["poetry-core>=1.2.0"]
 build-backend = "poetry.core.masonry.api"
+include = [
+    { path = "tests", format = "dir" }
+]
 
 [tool.poetry]
 name = "lightweight-mcnnm"
-version = "0.1.2"
+version = "0.1.4"
 description = "Leightweight Implementation of Athey et al. (2021)'s MC-NNM estimator"
 packages = [{include = "mcnnm", from = "src"}]
+include = [
+    { path = "tests", format = "sdist" },
+    { path = "README.md" },
+    { path = "LICENSE" },
+    { path = "py.typed" },
+    { path = "CHANGELOG.md" }
+]
 authors = ["Tobias Schnabel <ctobiasschnabel@gmail.com>"]
 license = "GNU3.0"
 readme = "README.md"
@@ -14,16 +24,8 @@ repository = "https://github.com/tobias-schnabel/mcnnm"
 keywords = ["causal", "inference", "panel", "matrix"]
 classifiers = [
     "Development Status :: 3 - Alpha",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: Implementation :: CPython",
-    "Programming Language :: Python :: Implementation :: PyPy",
-    "Typing :: Typed",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3.12"
 ]
 
 [tool.poetry.dependencies]
