@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from jax import random
 from jax.numpy.linalg import norm
-from . import Array
+from .types import Array
 from typing import Optional
 import time
 from datetime import datetime

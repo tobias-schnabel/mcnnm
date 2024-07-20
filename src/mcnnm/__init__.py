@@ -1,5 +1,5 @@
-import jax
-import jax.numpy as jnp
-from typing import Union
+from .estimate import estimate, complete_matrix
+from .util import generate_data
 
-Array = Union[jnp.ndarray, jax.Array]  # Define a type alias for array-like objects in JAX
+__all__ = ["estimate", "complete_matrix", "generate_data"]
+

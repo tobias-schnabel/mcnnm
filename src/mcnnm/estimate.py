@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 from typing import Optional, Tuple, NamedTuple
-from . import Array
+from .types import Array
 from mcnnm.util import *
 from jax import jit, lax
 
