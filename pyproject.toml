@@ -4,14 +4,14 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "lightweight-mcnnm"
-version = "0.1.0"
+version = "0.1.2"
 description = "Leightweight Implementation of Athey et al. (2021)'s MC-NNM estimator"
 packages = [{include = "mcnnm", from = "src"}]
-authors = ["Tobias Schnabek <ctobiasschnabel@gmail.com>"]
+authors = ["Tobias Schnabel <ctobiasschnabel@gmail.com>"]
 license = "GNU3.0"
 readme = "README.md"
 repository = "https://github.com/tobias-schnabel/mcnnm"
-keywords = ["python3"]
+keywords = ["causal", "inference", "panel", "matrix"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "License :: OSI Approved :: MIT License",
@@ -32,16 +32,20 @@ pandas = "^2.2.2"
 numpy = "^2.0.0"
 jax = "^0.4.30"
 jaxlib = "^0.4.30"
-pytest = "^8.2.2"
-pytest-cov = "^5.0.0"
-timer = "^0.3.0"
 
 [tool.poetry.dev-dependencies]
+pytest = "^8.2.2"
 pytest-cov = "^5.0.0"
 mypy = "^1.10.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest-cov = "^5.0.0"
+
+
+[[tool.poetry.source]]
+name = "testpypi"
+url = "https://test.pypi.org/simple/"
+priority = "primary"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
