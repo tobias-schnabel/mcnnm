@@ -28,7 +28,7 @@ To upgrade lightweight-mcnnm to the latest version, use:
 $ pip install -U lightweight-mcnnm
 ```
 ## Using lightweight-mcnnm
-
+A more comprehensive example is available [here](https://colab.research.google.com/github/tobias-schnabel/mcnnm/blob/main/Example.ipynb).
 Here's a simple example of how to use lightweight-mcnnm:
 
 ```python
