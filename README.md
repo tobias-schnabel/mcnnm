@@ -1,7 +1,19 @@
 # lightweight-mcnnm
+
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 lightweight-mcnnm is a Python package that provides a lightweight and performant implementation of the Matrix Completion with Nuclear Norm Minimization (MC-NNM) estimator for causal inference in panel data settings.
+
+## Table of Contents
+- [What is lightweight-mcnnm](#what-is-lightweight-mcnnm)
+- [Features](#features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [References](#references)
+- [Acknowledgements](#acknowledgements)
+- [License](#license)
 
 ## What is lightweight-mcnnm
 
@@ -13,40 +25,26 @@ The implementation focuses on performance and minimal dependencies, making it su
 
 - Lightweight implementation with minimal dependencies
 - Utilizes JAX for improved performance and GPU compatibility
-- Faithful to the original MC-NNM algorithm as described in [Athey et al. (2021)](https://www.tandfonline.com/doi/full/10.1080/01621459.2021.1891924).
+- Faithful to the original MC-NNM algorithm as described in [Athey et al. (2021)](https://www.tandfonline.com/doi/full/10.1080/01621459.2021.1891924)
 - Suitable for large-scale panel data analysis
-
-## Installing lightweight-mcnnm
-
-lightweight-mcnnm is compatible with Python 3.7 or later and depends on JAX and NumPy. The simplest way to install lightweight-mcnnm and its dependencies is from PyPI with pip:
-```bash
-$ pip install lightweight-mcnnm
-```
-
-To upgrade lightweight-mcnnm to the latest version, use:
-```bash
-$ pip install -U lightweight-mcnnm
-```
-## Using lightweight-mcnnm
-A more comprehensive example is available [here](https://colab.research.google.com/github/tobias-schnabel/mcnnm/blob/main/Example.ipynb).
-Here's a simple example of how to use lightweight-mcnnm:
+- Supports various treatment assignment mechanisms
+- Includes unit-specific, time-specific, and unit-time specific covariates
+- Offers flexible validation methods for parameter selection
 
 ```python
 import jax.numpy as jnp
-from lightweight_mcnnm import fit
-```
-### Generate some sample data
-```python
-Y = jnp.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-W = jnp.array([[0, 0, 1], [0, 1, 1], [0, 0, 0]])
-```
-### Fit the MC-NNM model
-```python
-results = fit(Y, W)
-```
-### Print the estimated treatment effect
-```python
-print(f"Estimated treatment effect: {results.tau}")
+from lightweight_mcnnm import estimate, generate_data
+
+# Generate sample data
+data, true_params = generate_data(nobs=500, nperiods=100, seed=42)
+
+Y = jnp.array(data.pivot(index='unit', columns='period', values='y').values)
+W = jnp.array(data.pivot(index='unit', columns='period', values='treat').values)
+
+# Estimate the MC-NNM model
+results = estimate(Y, W)
+
+print(f"True effect: {true_params['treatment_effect']}, Estimated effect: {results.tau:.4f}")
 ```
 For more detailed usage instructions and examples, please refer to our documentation.
 
