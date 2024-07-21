@@ -49,3 +49,8 @@ test: $(INSTALL_STAMP)
 clean:
     # Delete all files in .gitignore
 	git clean -Xdf
+
+.PHONY: docs
+
+docs:
+	cd docs && $(MAKE) html

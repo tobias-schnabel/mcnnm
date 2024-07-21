@@ -107,3 +107,21 @@ commands =
     poetry run pytest --cov=src --cov-report=xml --cov-report=term
     poetry run coverage report
 """
+
+[tool.black]
+line-length = 100
+target-version = ['py37']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
