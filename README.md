@@ -33,6 +33,9 @@ The implementation focuses on performance and minimal dependencies, making it su
 - Includes unit-specific, time-specific, and unit-time specific covariates
 - Offers flexible validation methods for parameter selection
 
+## Using lightweight-mcnnm
+A more comprehensive example is available [here](https://colab.research.google.com/github/tobias-schnabel/mcnnm/blob/main/Example.ipynb).
+Here's a simple example of how to use lightweight-mcnnm:
 ```python
 import jax.numpy as jnp
 from lightweight_mcnnm import estimate, generate_data
