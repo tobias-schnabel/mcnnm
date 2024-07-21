@@ -7,7 +7,7 @@ include = [
 
 [tool.poetry]
 name = "lightweight-mcnnm"
-version = "0.1.8"
+version = "0.2.3"
 description = "Leightweight Implementation of Athey et al. (2021)'s MC-NNM estimator"
 packages = [{include = "mcnnm", from = "src"}]
 include = [
@@ -27,11 +27,11 @@ classifiers = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.12"
-pandas = "^2.0.3"
-numpy = "^1.25.2"
-jax = "^0.4.30"
-jaxlib = "^0.4.30"
+python = ">=3.9,<4.0"
+pandas = "=2.0.3"
+numpy = ">=1.22.4,<2.0"
+jax = ">=0.4.30,<0.5.0"
+jaxlib = ">=0.4.30,<0.5.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^8.2.2"
