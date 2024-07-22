@@ -33,6 +33,25 @@ The implementation focuses on performance and minimal dependencies, making it su
 - Includes unit-specific, time-specific, and unit-time specific covariates
 - Offers flexible validation methods for parameter selection
 
+## Installation
+
+### Requirements
+
+lightweight-mcnnm is compatible with Python 3.9 or later and depends on JAX and NumPy. Cuda-compatible versions of Jax are not currently supported directly by lightweight-mcnnm, but you can use JAX with CUDA support by installing it separately.
+
+### Installing from PyPI
+
+The simplest way to install lightweight-mcnnm and its dependencies is from PyPI using pip:
+
+```bash
+pip install lightweight-mcnnm
+```
+
+To upgrade lightweight-mcnnm to the latest version, use:
+```bash
+pip install --upgrade lightweight-mcnnm
+```
+
 ## Using lightweight-mcnnm
 1. Comprehensive example is available here: [![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/tobias-schnabel/mcnnm/blob/main/Example.ipynb)
 2. Simple example of how to use lightweight-mcnnm:
