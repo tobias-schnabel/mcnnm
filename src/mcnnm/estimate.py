@@ -3,9 +3,9 @@ import jax.numpy as jnp
 from typing import Optional, Tuple, NamedTuple
 from .types import Array
 from mcnnm.util import *
-from jax import jit, lax
+from jax import lax
 
-@jit
+
 def update_L(Y_adj: Array, L: Array, Omega: Array, O: Array, lambda_L: float) -> Array:
     """
     Update the low-rank matrix L in the MC-NNM algorithm.
@@ -22,7 +22,7 @@ def update_L(Y_adj: Array, L: Array, Omega: Array, O: Array, lambda_L: float) ->
     """
     return shrink_lambda(p_o(jnp.dot(Y_adj, Omega), O) + p_perp_o(L, O), lambda_L * jnp.sum(O) / 2)
 
-@jit
+
 def update_H(X_tilde: Array, Y_adj: Array, Z_tilde: Array, lambda_H: float) -> Array:
     """
     Update the covariate coefficient matrix H in the MC-NNM algorithm.
@@ -39,7 +39,7 @@ def update_H(X_tilde: Array, Y_adj: Array, Z_tilde: Array, lambda_H: float) -> A
     return shrink_lambda(jnp.linalg.lstsq(X_tilde, jnp.dot(Y_adj, Z_tilde))[0], lambda_H)
 
 
-@jit
+
 def update_gamma_delta_beta(Y_adj: Array, V: Array) -> Tuple[Array, Array, Array]:
     """
     Update the fixed effects (gamma, delta) and unit-time specific covariate coefficients (beta).
@@ -69,7 +69,7 @@ def update_gamma_delta_beta(Y_adj: Array, V: Array) -> Tuple[Array, Array, Array
     )
     return gamma, delta, beta
 
-@jit
+
 def fit_step(Y: Array, W: Array, X_tilde: Array, Z_tilde: Array, V: Array, Omega: Array,
              lambda_L: float, lambda_H: float, L: Array, H: Array, gamma: Array, delta: Array, beta: Array) -> Tuple:
     """
@@ -280,7 +280,6 @@ def cross_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array,
     return best_lambda_L, best_lambda_H
 
 
-@jit
 def compute_time_based_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
                             lambda_L: float, lambda_H: float, max_iter: int, tol: float,
                             train_idx: Array, test_idx: Array) -> float:
@@ -436,6 +435,8 @@ def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega:
         return lambda_grid[0][0], lambda_grid[0][1]
 
     return best_lambda_L, best_lambda_H
+
+
 def compute_treatment_effect(Y: Array, L: Array, gamma: Array, delta: Array, beta: Array, H: Array,
                              X: Array, W: Array, Z: Array, V: Array) -> float:
     """
