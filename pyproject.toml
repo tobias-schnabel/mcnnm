@@ -30,7 +30,7 @@ classifiers = [
 python = "^3.9"
 pandas = "^2.0.3"
 numpy = "^1.22.4"
-jax = "^0.4.30"
+jax = "^0.4.25"
 
 
 [tool.poetry.dev-dependencies]
@@ -41,7 +41,7 @@ mypy = "^1.10.1"
 
 [[tool.poetry.source]]
 name = "testpypi"
-url = "https://test.pypi.org/simple/"
+url = "https://test.pypi.org/legacy/"
 priority = "supplemental"
 
 [tool.pytest.ini_options]
