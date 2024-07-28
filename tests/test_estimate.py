@@ -7,6 +7,7 @@ from mcnnm.util import generate_data
 import jax
 jax.config.update('jax_platforms', 'cpu')
 jax.config.update('jax_enable_x64', True)
+jax.config.update('jax_disable_jit', True)
 
 # Set a fixed seed for reproducibility
 key = random.PRNGKey(2024)

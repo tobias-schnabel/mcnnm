@@ -4,6 +4,7 @@ from mcnnm.util import generate_data
 import jax.numpy as jnp
 jax.config.update('jax_platforms', 'cpu')
 jax.config.update('jax_enable_x64', True)
+jax.config.update('jax_disable_jit', True)
 
 
 @pytest.mark.comprehensive
