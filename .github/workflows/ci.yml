@@ -23,10 +23,28 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
+    - name: Cache Poetry
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pypoetry
+        key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-poetry-
+
     - name: Install Poetry
       run: |
         curl -sSL https://install.python-poetry.org | python3 -
         echo 'export PATH="$HOME/.local/bin:$PATH"' >> $GITHUB_ENV
+
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/pip
+          ~/.cache/pypoetry
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/poetry.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
 
     - name: Install dependencies
       run: |
