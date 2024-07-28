@@ -19,16 +19,12 @@ jax.config.update('jax_disable_jit', True)
 
 @pytest.mark.timeout(60)
 def test_mcnnm_accuracy_no_covariates(tolerance=0.1):
-    nobs, nperiods = 1000, 100
+    nobs, nperiods = 100, 100
     data, true_params = generate_data(nobs=nobs, nperiods=nperiods, seed=42,
                                       unit_fe=True, time_fe=True,X_cov=False, Z_cov=False, V_cov=False)
 
     Y = jnp.array(data.pivot(index='unit', columns='period', values='y').values)
     W = jnp.array(data.pivot(index='unit', columns='period', values='treat').values)
-
-    print(f"\nProportion of treated observations: {W.mean()}")
-    print(f"Mean of Y: {jnp.mean(Y)}")
-    print(f"Std of Y: {jnp.std(Y)}")
 
     results = estimate(Y, W, return_fixed_effects=True, validation_method='holdout')
 
@@ -53,9 +49,9 @@ def test_mcnnm_accuracy_no_covariates(tolerance=0.1):
     assert_close(jnp.mean(true_params['L']), jnp.mean(results.L), tolerance, "Estimated L mean")
 
 
-@pytest.mark.timeout(6000)
+@pytest.mark.timeout(60)
 def test_mcnnm_accuracy(tolerance=0.2):
-    nobs, nperiods = 500, 100
+    nobs, nperiods = 100, 100
     data, true_params = generate_data(nobs=nobs, nperiods=nperiods, seed=42)
 
     Y = jnp.array(data.pivot(index='unit', columns='period', values='y').values)

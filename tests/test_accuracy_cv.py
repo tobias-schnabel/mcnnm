@@ -26,10 +26,6 @@ def test_mcnnm_accuracy_no_covariates(tolerance=0.1):
     Y = jnp.array(data.pivot(index='unit', columns='period', values='y').values)
     W = jnp.array(data.pivot(index='unit', columns='period', values='treat').values)
 
-    print(f"\nProportion of treated observations: {W.mean()}")
-    print(f"Mean of Y: {jnp.mean(Y)}")
-    print(f"Std of Y: {jnp.std(Y)}")
-
     results = estimate(Y, W, return_fixed_effects=True)
 
     print(f"\nTrue effect: {true_params['treatment_effect']}, Estimated effect: {results.tau:.4f}")
