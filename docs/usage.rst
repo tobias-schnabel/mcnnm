@@ -1,6 +1,25 @@
 Usage
 =====
 
+JIT Compilation
+---------------
+By default, this package disables JAX's JIT compilation for better performance in typical use cases. If you want to re-enable JIT compilation, you can add the following line at the top of your script:
+
+.. code-block:: python
+
+   jax.config.update('jax_disable_jit', False)
+
+Note that enabling JIT may impact performance depending on your specific use case. I have found leaving JIT disabled to be the best option for most use cases.
+
+Comprehensive Example
+---------------------
+For a comprehensive example of using lightweight-mcnnm, please refer to the following Colab notebook:
+
+https://colab.research.google.com/github/tobias-schnabel/mcnnm/blob/main/Example.ipynb
+
+
+
+
 Basic Usage
 -----------
 Here's a basic example of how to use lightweight-mcnnm:
