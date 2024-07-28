@@ -60,9 +60,9 @@ def shrink_lambda(A: Array, lambda_: float) -> Array:
     Returns:
         The matrix with soft-thresholded singular values.
     """
-    u, s, v_transpose = jnp.linalg.svd(A, full_matrices=False)
+    u, s, vt = jnp.linalg.svd(A, full_matrices=False)
     s_shrunk = jnp.maximum(s - lambda_, 0)
-    return jnp.dot(u * s_shrunk, v_transpose)
+    return (u * s_shrunk) @ vt
 
 
 def frobenius_norm(A: Array) -> float:
