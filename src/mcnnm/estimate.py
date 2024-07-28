@@ -20,7 +20,9 @@ def update_L(Y_adj: Array, L: Array, Omega: Array, O: Array, lambda_L: float) ->
     Returns:
         Array: The updated low-rank matrix L.
     """
-    return shrink_lambda(p_o(jnp.dot(Y_adj, Omega), O) + p_perp_o(L, O), lambda_L * jnp.sum(O) / 2)
+    Y_adj_Omega = jnp.dot(Y_adj, Omega)
+    L_new = jnp.where(O, Y_adj_Omega, L)
+    return shrink_lambda(L_new, lambda_L * jnp.sum(O) / 2)
 
 
 def update_H(X_tilde: Array, Y_adj: Array, Z_tilde: Array, lambda_H: float) -> Array:
@@ -36,7 +38,8 @@ def update_H(X_tilde: Array, Y_adj: Array, Z_tilde: Array, lambda_H: float) -> A
     Returns:
         Array: The updated covariate coefficient matrix H.
     """
-    return shrink_lambda(jnp.linalg.lstsq(X_tilde, jnp.dot(Y_adj, Z_tilde))[0], lambda_H)
+    H_unreg = jnp.linalg.lstsq(X_tilde, jnp.dot(Y_adj, Z_tilde))[0]
+    return shrink_lambda(H_unreg, lambda_H)
 
 
 
@@ -55,18 +58,13 @@ def update_gamma_delta_beta(Y_adj: Array, V: Array) -> Tuple[Array, Array, Array
     gamma = jnp.mean(Y_adj, axis=1)
     delta = jnp.mean(Y_adj - gamma[:, jnp.newaxis], axis=0)
 
-    def true_fun(_):
-        return jnp.linalg.lstsq(V.reshape(N * T, -1), Y_adj.reshape(N * T))[0]
+    if V.size > 0:
+        V_flat = V.reshape(-1, V.shape[-1])
+        Y_adj_flat = Y_adj.reshape(-1)
+        beta = jnp.linalg.lstsq(V_flat, Y_adj_flat)[0]
+    else:
+        beta = jnp.array([])
 
-    def false_fun(_):
-        return jnp.zeros((V.shape[-1],))  # Ensure this matches the shape of true_fun output
-
-    beta = jax.lax.cond(
-        V.size > 0,
-        true_fun,
-        false_fun,
-        operand=None
-    )
     return gamma, delta, beta
 
 
@@ -93,23 +91,22 @@ def fit_step(Y: Array, W: Array, X_tilde: Array, Z_tilde: Array, V: Array, Omega
     Returns:
         Tuple: Updated estimates of L, H, gamma, delta, and beta.
     """
-    N, T = Y.shape
     O = (W == 0)
+    Y_adj_base = Y - gamma[:, jnp.newaxis] - delta[jnp.newaxis, :]
 
-    Y_adj = Y - jnp.dot(X_tilde, jnp.dot(H, Z_tilde.T)) - gamma[:, jnp.newaxis] - delta[jnp.newaxis, :]
+    Y_adj = Y_adj_base - jnp.dot(X_tilde, jnp.dot(H, Z_tilde.T))
     Y_adj = Y_adj - jnp.sum(V * beta, axis=-1) if V.size > 0 else Y_adj
     L_new = update_L(Y_adj, L, Omega, O, lambda_L)
 
-    Y_adj = Y - L_new - gamma[:, jnp.newaxis] - delta[jnp.newaxis, :]
+    Y_adj = Y_adj_base - L_new
     Y_adj = Y_adj - jnp.sum(V * beta, axis=-1) if V.size > 0 else Y_adj
     H_new = update_H(X_tilde, Y_adj, Z_tilde, lambda_H)
 
-    Y_adj = Y - L_new - jnp.dot(X_tilde, jnp.dot(H_new, Z_tilde.T))
+    Y_adj = Y_adj_base - L_new - jnp.dot(X_tilde, jnp.dot(H_new, Z_tilde.T))
     Y_adj = Y_adj - jnp.sum(V * beta, axis=-1) if V.size > 0 else Y_adj
     gamma_new, delta_new, beta_new = update_gamma_delta_beta(Y_adj, V)
 
     return L_new, H_new, gamma_new, delta_new, beta_new
-
 
 def fit(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
         lambda_L: float, lambda_H: float, initial_params: Tuple,
