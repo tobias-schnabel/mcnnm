@@ -5,6 +5,7 @@ This package supports two validation methods for selecting optimal regularizatio
 
 1. Cross-Validation
 -------------------
+This is the default used in the `estimate` function: `validation_method: str = 'cv'`
 Cross-validation is implemented in the `cross_validate` function. This method performs K-fold cross-validation to select optimal regularization parameters (lambda_L and lambda_H).
 
 The process works as follows:
@@ -31,9 +32,10 @@ When to use Cross-Validation:
 
 2. Holdout Validation
 ---------------------
-Holdout validation is implemented in the `time_based_validate` function. This method uses a time-based holdout strategy to select optimal regularization parameters.
+Holdout validation can be used in the `estimate` function by setting `validation_method='holdout'`. This method uses a time-based holdout strategy to select optimal regularization parameters.
 
 The process works as follows:
+
 1. The data is split into training and test sets based on time periods.
 2. For each pair of lambda values in the provided grid:
    a. The model is trained on the training set.
@@ -43,26 +45,56 @@ The process works as follows:
 4. The lambda pair that results in the lowest average loss is selected.
 
 Key features:
-• Supports both fixed window size and expanding window for training data.
-• Allows for multiple folds within each time-based split.
-• Handles cases where no valid folds are found.
+
+- Supports both fixed window size and expanding window for training data:
+    a. Fixed Window (default): Use this if you believe only recent data is relevant for predicting the near future.
+    b. Expanding Window: Use this if you believe all historical data is useful, but you want to limit how far back you go.
+- Allows for multiple folds within each time-based split.
+- Handles cases where no valid folds are found.
 
 When to use Holdout Validation:
 
-• Time-dependent treatment assignment: If treatments are assigned based on time (e.g., policy changes that affect all units from a certain date), holdout validation is more appropriate.
-• Staggered adoption: When units adopt the treatment at different times, holdout validation can capture this temporal structure.
-• Large datasets with many time periods: Holdout validation can be more efficient for very large datasets, especially those with many time periods.
-• Presence of temporal trends: If your data exhibits strong time trends or seasonality, holdout validation can help account for these patterns.
-• Forecasting applications: If your goal includes predicting future outcomes, holdout validation mimics this task more closely.
+- Large datasets with many time periods
+- Presence of temporal trends or seasonality
+- Forecasting applications where predicting future outcomes is the goal
 
-Choosing between methods:
+Configuring Holdout Validation in `estimate()`:
 
-• Data structure: Consider the temporal structure of your data. If time plays a crucial role in treatment assignment or outcome dynamics, lean towards holdout validation.
-• Sample size: For smaller samples, cross-validation might be more robust. For larger samples, especially with many time periods, holdout validation can be more computationally efficient.
-• Treatment mechanism: If the treatment mechanism is closely tied to time (like policy changes), holdout validation is often more appropriate.
-• Stability of effects: If you suspect the treatment effect might change over time, holdout validation can help capture this, especially with the expanding window option.
+To use holdout validation, set the following parameters in the `estimate()` function:
 
-In practice, if computational resources allow, it can be informative to try both methods and compare results. Significant differences between the two might indicate important temporal structures in your data that deserve closer examination.
+- `validation_method='holdout'`: Activates holdout validation (default is 'cv').
+- `window_size`: Set the size of the training window (default is 80% of total time periods).
+- `expanding_window`: Set to True for expanding window, False for fixed window (default is False).
+- `max_window_size`: Set the maximum window size when using expanding window (default is None).
+- `n_folds`: Set the number of folds for time-based validation (default is 5).
+
+Example:
+```python
+results = estimate(Y, W, X=X, Z=Z, V=V,
+                   validation_method='holdout',
+                   window_size=50,
+                   expanding_window=True,
+                   max_window_size=80,
+                   n_folds=3)
+```
+
+This call uses time-based holdout validation with an expanding window, starting with a window size of 50, expanding up to 80, and using 3 folds for validation.
+Notes:
+
+- The `window_size` must be less than the total number of time periods.
+- If `expanding_window` is True and max_window_size is not set, it defaults to window_size.
+- The actual number of folds used might be less than `n_folds` if there aren't enough time periods.
+- Time-based validation requires at least 5 time periods in total.
+
+Choosing between Cross-Validation and Holdout Validation:
+Consider:
+
+- Data structure and temporal importance
+- Sample size and computational efficiency
+- Treatment mechanism's relation to time
+- Stability of effects over time
+
+If resources allow, trying both methods can provide insights into temporal structures in your data.
 
 Proposing Lambda Values
 =======================
@@ -83,11 +115,11 @@ Customizing Validation in estimate()
 ====================================
 The `estimate` function in `estimate.py` allows for customization of the validation process through several parameters:
 
-1. `validation_method` (str): Choose between 'cv' for cross-validation or 'holdout' for time-based holdout validation.
+1. `validation_method` (str): Choose between 'cv' for cross-validation (the default) or 'holdout' for time-based holdout validation.
 
-2. `lambda_L` and `lambda_H` (Optional[float]): If provided, these values are used directly. If None, they are selected via validation.
+2. `lambda_L` and `lambda_H` (Optional[float]): If provided, these values are used as the starting point for the grid search.
 
-3. `n_lambda_L` and `n_lambda_H` (int): Number of lambda values to consider in the grid search for lambda_L and lambda_H respectively.
+3. `n_lambda_L` and `n_lambda_H` (int): Number of lambda values to consider in the grid search for lambda_L and lambda_H respectively. If both lambda values are provided and `n_lambda_L` and `n_lambda_H` are set to 1, no grid search is performed.
 
 4. `K` (int): Number of folds for cross-validation (default is 5).
 
