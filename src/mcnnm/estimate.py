@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-from typing import Optional, Tuple, NamedTuple
+from typing import Optional, Tuple, NamedTuple, List
 from .types import Array
 from mcnnm.util import *
 from jax import lax
@@ -300,44 +300,30 @@ def compute_time_based_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Om
     Returns:
         float: The computed time-based holdout loss.
     """
-    Y_train, Y_test = Y[train_idx], Y[test_idx]
-    W_train, W_test = W[train_idx], W[test_idx]
-    X_train, X_test = X[train_idx], X[test_idx]
-    V_train, V_test = V[train_idx], V[test_idx]
+    Y_train, Y_test = Y[:, train_idx], Y[:, test_idx]
+    W_train, W_test = W[:, train_idx], W[:, test_idx]
+    X_train, X_test = X, X
+    V_train, V_test = V[:, train_idx, :], V[:, test_idx, :]
+    Z_train, Z_test = Z[train_idx, :], Z[test_idx, :]
 
-    # print(f"Shapes: Y_train {Y_train.shape}, Y_test {Y_test.shape}, W_test {W_test.shape}")
+    initial_params = initialize_params(Y_train, W_train, X_train, Z_train, V_train)
 
-    initial_params = initialize_params(Y_train, W_train, X_train, Z, V_train)
-    L, H, gamma, delta, beta = fit(Y_train, W_train, X_train, Z, V_train, Omega,
+    L, H, gamma, delta, beta = fit(Y_train, W_train, X_train, Z_train, V_train, Omega,
                                    lambda_L, lambda_H, initial_params, max_iter, tol)
 
-    # print(f"Fit results: L shape {L.shape}, gamma shape {gamma.shape}, delta shape {delta.shape}")
+    # Adjust the shapes for correct broadcasting
+    L_test = L[:, :test_idx.shape[0]]
+    delta_test = delta[test_idx]
 
-    Y_pred = (L[test_idx] + jnp.outer(gamma[test_idx], jnp.ones(Z.shape[0])) +
-              jnp.outer(jnp.ones(test_idx.shape[0]), delta))
+    Y_pred = L_test + jnp.outer(gamma, jnp.ones(test_idx.shape[0])) + jnp.outer(jnp.ones(X.shape[0]), delta_test)
 
     if V_test.shape[2] > 0:
         Y_pred += jnp.sum(V_test * beta, axis=2)
 
-    # print(f"Y_pred shape {Y_pred.shape}, Y_test shape {Y_test.shape}")
-
     O_test = (W_test == 0)
-    # print(f"O_test shape {O_test.shape}, sum {jnp.sum(O_test)}")
-
-    def true_fun(_):
-        return jnp.inf
-
-    def false_fun(_):
-        return jnp.sum((Y_test - Y_pred) ** 2 * O_test) / jnp.sum(O_test)
-
-    loss = lax.cond(
-        jnp.sum(O_test) == 0,
-        true_fun,
-        false_fun,
-        operand=None
-    )
-
-    # print(f"Computed loss: {loss}")
+    loss = jnp.where(jnp.sum(O_test) > 0,
+                     jnp.sum((Y_test - Y_pred) ** 2 * O_test) / jnp.sum(O_test),
+                     jnp.inf)
     return loss
 
 
@@ -378,55 +364,64 @@ def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega:
     best_lambda_H = None
     best_loss = jnp.inf
 
-    for lambda_L, lambda_H in lambda_grid:
-        loss = 0.0
-        valid_folds = 0
-        t = window_size
-
-        while t < T:
-            if expanding_window:
-                train_idx = jnp.arange(max(0, t - max_window_size), t)
-            else:
-                train_idx = jnp.arange(max(0, t - window_size), t)
-
-            test_idx = jnp.arange(t, min(t + (T - window_size) // n_folds, T))
-            fold_loss = 0.0
-
-            for _ in range(n_folds):
-                if test_idx[-1] == T:
-                    break
-
-                if jnp.sum(W[test_idx] == 0) == 0:
-                    # print(f"Warning: No untreated units in test set for fold {_ + 1}, skipping fold")
-                    continue
-
-                fold_loss = compute_time_based_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H,
-                                                    max_iter, tol, train_idx, test_idx)
-                # print(f"Fold loss for lambda_L={lambda_L}, lambda_H={lambda_H}: {fold_loss}")
-                if jnp.isfinite(fold_loss):
-                    loss += fold_loss
-                    valid_folds += 1
-                else:
-                    # print(f"Non-finite loss for lambda_L={lambda_L}, lambda_H={lambda_H}")
-                    pass
-                test_idx = jnp.arange(test_idx[-1], min(test_idx[-1] + (T - window_size) // n_folds, T))
-
-            loss += fold_loss / n_folds
-            t += (T - window_size) // n_folds
-
-        loss /= (T - window_size) // ((T - window_size) // n_folds)
-
-        if valid_folds > 0:
-            loss /= valid_folds
-            # print(f"Average loss for lambda_L={lambda_L}, lambda_H={lambda_H}: {loss}")
-            if loss < best_loss:
-                best_lambda_L = lambda_L
-                best_lambda_H = lambda_H
-                best_loss = loss
-                # print(f"New best loss: {best_loss} for lambda_L={best_lambda_L}, lambda_H={best_lambda_H}")
+    # Pre-compute all train and test indices
+    all_indices = []
+    t = window_size
+    while t < T:
+        if expanding_window:
+            train_idx = jnp.arange(max(0, t - max_window_size), t)
         else:
-            # print(f"No valid folds for lambda_L={lambda_L}, lambda_H={lambda_H}")
-            pass
+            train_idx = jnp.arange(max(0, t - window_size), t)
+
+        test_idx = jnp.arange(t, min(t + (T - window_size) // n_folds, T))
+        all_indices.append((train_idx, test_idx))
+        t += (T - window_size) // n_folds
+        if t >= T:
+            break
+
+    print(f"Number of folds: {len(all_indices)}")
+
+    def compute_loss_for_lambda(lambda_pair):
+        """
+        Compute the average loss for a given lambda pair across all folds.
+
+        Args:
+            lambda_pair (Array): A pair of lambda values (lambda_L, lambda_H).
+
+        Returns:
+            float: The average loss across all valid folds, or infinity if no valid folds.
+        """
+        lambda_L, lambda_H = lambda_pair
+        total_loss = 0.0
+        valid_folds = 0
+
+        for i, (train_idx, test_idx) in enumerate(all_indices):
+            fold_loss = compute_time_based_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H,
+                                                max_iter, tol, train_idx, test_idx)
+            print(f"Fold {i}: loss = {fold_loss}")
+            if jnp.isfinite(fold_loss):
+                total_loss += fold_loss
+                valid_folds += 1
+
+        print(f"Lambda pair: {lambda_pair}, Valid folds: {valid_folds}, Total loss: {total_loss}")
+
+        return lax.cond(
+            valid_folds > 0,
+            lambda _: total_loss / valid_folds,
+            lambda _: jnp.inf,
+            operand=None
+        )
+
+    # Compute losses for all lambda pairs
+    losses = jnp.array([compute_loss_for_lambda(lambda_pair) for lambda_pair in lambda_grid])
+
+    # Find the best lambda pair
+    best_idx = jnp.argmin(losses)
+    best_lambda_L, best_lambda_H = lambda_grid[best_idx]
+    best_loss = losses[best_idx]
+
+    print(f"Best loss: {best_loss}, Best lambda_L: {best_lambda_L}, Best lambda_H: {best_lambda_H}")
+
     if best_loss == jnp.inf:
         print("Warning: No valid loss found in time_based_validate")
         return lambda_grid[0][0], lambda_grid[0][1]
@@ -593,7 +588,7 @@ def complete_matrix(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[A
                     V: Optional[Array] = None, Omega: Optional[Array] = None, lambda_L: Optional[float] = None,
                     lambda_H: Optional[float] = None, n_lambda_L: int = 10, n_lambda_H: int = 10,
                     max_iter: int = 1000, tol: float = 1e-4, verbose: bool = False,
-                    validation_method: str = 'cv', K: int = 5 , window_size: Optional[int] = None,
+                    validation_method: str = 'cv', K: int = 5, window_size: Optional[int] = None,
                     expanding_window: bool = False, max_window_size: Optional[int] = None) -> Tuple[Array, float, float]:
     """
     Complete the matrix Y using the MC-NNM model and return the optimal regularization parameters.
