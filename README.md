@@ -4,7 +4,7 @@
 [![Documentation Status](https://readthedocs.org/projects/mcnnm/badge/?version=latest)](https://mcnnm.readthedocs.io/en/latest/?badge=latest) 
 [![PyPI version](https://badge.fury.io/py/lightweight-mcnnm.svg?cache-bust=1)](https://badge.fury.io/py/lightweight-mcnnm)
 [![GitHub last commit](https://img.shields.io/github/last-commit/tobias-schnabel/mcnnm)](https://github.com/your-username/your-repository/commits/main)
-[![codecov](https://codecov.io/gh/your-username/your-repository/branch/main/graph/badge.svg)](https://codecov.io/gh/your-username/your-repository)
+[![codecov](https://codecov.io/gh/tobias-schnabel/mcnnm/graph/badge.svg?token=VYJ12XOQMP)](https://codecov.io/gh/tobias-schnabel/mcnnm)
 ![Issues](https://img.shields.io/github/issues/tobias-schnabel/mcnnm)
 ![Pull Requests](https://img.shields.io/github/issues-pr/tobias-schnabel/mcnnm)
 
