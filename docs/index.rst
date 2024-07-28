@@ -18,6 +18,7 @@ lightweight-mcnnm is a Python package that provides a lightweight and performant
 
    installation
    usage
+   validation
    api
    examples
    development
