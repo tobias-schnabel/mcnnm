@@ -97,8 +97,8 @@ Consider:
 If resources allow, trying both methods can provide insights into temporal structures in your data.
 
 Proposing Lambda Values
-=======================
-The `propose_lambda` function in the `util.py` file is used to generate a sequence of lambda values for grid search. It works as follows:
+-------------------
+The internal `propose_lambda` function in the `util.py` file is used to generate a sequence of lambda values for grid search. It works as follows:
 
 1. If no `proposed_lambda` is provided:
    - Returns a logarithmically spaced sequence of `n_lambdas` values between 10^-3 and 10^0.
@@ -112,7 +112,7 @@ Usage:
 - When called with a specific lambda value, it provides a range of values around that lambda for fine-tuning.
 
 Customizing Validation in estimate()
-====================================
+-------------------
 The `estimate` function in `estimate.py` allows for customization of the validation process through several parameters:
 
 1. `validation_method` (str): Choose between 'cv' for cross-validation (the default) or 'holdout' for time-based holdout validation.
