@@ -379,7 +379,7 @@ def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega:
         if t >= T:
             break
 
-    print(f"Number of folds: {len(all_indices)}")
+    # print(f"Number of folds: {len(all_indices)}")
 
     def compute_loss_for_lambda(lambda_pair):
         """
@@ -398,12 +398,12 @@ def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega:
         for i, (train_idx, test_idx) in enumerate(all_indices):
             fold_loss = compute_time_based_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H,
                                                 max_iter, tol, train_idx, test_idx)
-            print(f"Fold {i}: loss = {fold_loss}")
+            # print(f"Fold {i}: loss = {fold_loss}")
             if jnp.isfinite(fold_loss):
                 total_loss += fold_loss
                 valid_folds += 1
 
-        print(f"Lambda pair: {lambda_pair}, Valid folds: {valid_folds}, Total loss: {total_loss}")
+        # print(f"Lambda pair: {lambda_pair}, Valid folds: {valid_folds}, Total loss: {total_loss}")
 
         return lax.cond(
             valid_folds > 0,
@@ -420,7 +420,7 @@ def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega:
     best_lambda_L, best_lambda_H = lambda_grid[best_idx]
     best_loss = losses[best_idx]
 
-    print(f"Best loss: {best_loss}, Best lambda_L: {best_lambda_L}, Best lambda_H: {best_lambda_H}")
+    # print(f"Best loss: {best_loss}, Best lambda_L: {best_lambda_L}, Best lambda_H: {best_lambda_H}")
 
     if best_loss == jnp.inf:
         print("Warning: No valid loss found in time_based_validate")
@@ -551,7 +551,7 @@ def estimate(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] =
             lambda_L, lambda_H = time_based_validate(Y, W, X, Z, V, Omega, lambda_grid, max_iter // 10, tol * 10,
                                                      window_size, expanding_window, max_window_size)
         else:
-            raise ValueError("Invalid validation_method. Choose 'cv' or 'time'.")
+            raise ValueError("Invalid validation_method. Choose 'cv' or 'holdout'.")
 
         if verbose:
             print_with_timestamp(f"Selected lambda_L: {lambda_L:.4f}, lambda_H: {lambda_H:.4f}")
