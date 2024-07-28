@@ -53,7 +53,6 @@ To upgrade lightweight-mcnnm to the latest version, use:
 ```bash
 pip install --upgrade lightweight-mcnnm
 ```
-Note that enabling JIT may impact performance depending on your specific use case.
 
 #### JIT Compilation
 By default, this package disables JAX's JIT compilation for better performance in typical use cases. If you want to re-enable JIT compilation, you can add the following line at the top of your script:
@@ -61,6 +60,8 @@ By default, this package disables JAX's JIT compilation for better performance i
 ```python
 jax.config.update('jax_disable_jit', False)
 ```
+
+Note that enabling JIT may impact performance depending on your specific use case. I have found leaving JIT disabled to be the best option for most use cases.
 ## Using lightweight-mcnnm
 1. Comprehensive example is available here: [![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/tobias-schnabel/mcnnm/blob/main/Example.ipynb)
 2. Simple example of how to use lightweight-mcnnm:
