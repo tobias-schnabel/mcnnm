@@ -1,8 +1,9 @@
 import jax
 import jax.numpy as jnp
-from typing import Optional, Tuple, NamedTuple, List, cast
+from typing import Optional, Tuple, NamedTuple, cast
 from .types import Array
-from mcnnm.util import *
+from mcnnm.util import shrink_lambda, initialize_params, propose_lambda, check_inputs
+from mcnnm.util import print_with_timestamp
 from jax import lax
 
 
@@ -41,7 +42,6 @@ def update_H(X_tilde: Array, Y_adj: Array, Z_tilde: Array, lambda_H: float) -> A
     """
     H_unreg = jnp.linalg.lstsq(X_tilde, jnp.dot(Y_adj, Z_tilde))[0]
     return shrink_lambda(H_unreg, lambda_H)
-
 
 
 def update_gamma_delta_beta(Y_adj: Array, V: Array) -> Tuple[Array, Array, Array]:
@@ -109,6 +109,7 @@ def fit_step(Y: Array, W: Array, X_tilde: Array, Z_tilde: Array, V: Array, Omega
 
     return L_new, H_new, gamma_new, delta_new, beta_new
 
+
 def fit(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
         lambda_L: float, lambda_H: float, initial_params: Tuple,
         max_iter: int, tol: float) -> Tuple:
@@ -161,7 +162,6 @@ def fit(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
     _, L, H, gamma, delta, beta, _ = jax.lax.while_loop(cond_fn, body_fn, initial_state)
 
     return L, H, gamma, delta, beta
-
 
 
 def compute_cv_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,

@@ -4,4 +4,3 @@ import jax
 jax.config.update('jax_disable_jit', True)
 
 __all__ = ["estimate", "complete_matrix", "generate_data"]
-

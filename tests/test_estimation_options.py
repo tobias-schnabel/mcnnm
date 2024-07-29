@@ -1,4 +1,5 @@
-import pytest, jax
+import pytest
+import jax
 from mcnnm.estimate import estimate
 from mcnnm.util import generate_data
 import jax.numpy as jnp

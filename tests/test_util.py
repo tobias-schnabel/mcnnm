@@ -1,9 +1,10 @@
 import pytest
-from typing import Optional, Tuple
 import jax.numpy as jnp
-from mcnnm.util import *
+from mcnnm.util import p_o, p_perp_o, shrink_lambda, frobenius_norm, nuclear_norm
+from mcnnm.util import propose_lambda, print_with_timestamp, initialize_params, check_inputs
+from mcnnm.util import generate_data, element_wise_l1_norm
 import jax
-
+from jax import random
 jax.config.update('jax_platforms', 'cpu')
 jax.config.update('jax_enable_x64', True)
 jax.config.update('jax_disable_jit', True)
@@ -159,32 +160,38 @@ def test_p_o_shape_mismatch():
     with pytest.raises(ValueError, match="Shapes of A and mask must match."):
         p_o(A, mask)
 
+
 def test_p_perp_o_shape_mismatch():
     A = jnp.array([[1, 2], [3, 4]])
     mask = jnp.array([[True, False]])
     with pytest.raises(ValueError, match="Shapes of A and mask must match."):
         p_perp_o(A, mask)
 
+
 def test_frobenius_norm_non_2d():
     A = jnp.array([1, 2, 3])
     with pytest.raises(ValueError, match="Input must be a 2D array."):
         frobenius_norm(A)
+
 
 def test_nuclear_norm_non_2d():
     A = jnp.array([1, 2, 3])
     with pytest.raises(ValueError, match="Input must be a 2D array."):
         nuclear_norm(A)
 
+
 def test_element_wise_l1_norm_non_2d():
     A = jnp.array([1, 2, 3])
     with pytest.raises(ValueError, match="Input must be a 2D array."):
         element_wise_l1_norm(A)
+
 
 def test_check_inputs_shape_mismatch():
     Y = jnp.array([[1, 2], [3, 4]])
     W = jnp.array([[0, 1]])
     with pytest.raises(ValueError, match="The shape of W must match the shape of Y."):
         check_inputs(Y, W)
+
 
 def test_check_inputs_with_na():
     Y = jnp.array([[1.0, 2.0], [3.0, jnp.nan]])
@@ -194,6 +201,7 @@ def test_check_inputs_with_na():
     assert Z.shape == (2, 0)
     assert V.shape == (2, 2, 0)
     assert Omega.shape == (2, 2)
+
 
 def test_generate_data_invalid_assignment():
     with pytest.raises(ValueError, match="Invalid assignment mechanism specified."):
