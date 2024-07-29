@@ -7,7 +7,7 @@ include = [
 
 [tool.poetry]
 name = "lightweight-mcnnm"
-version = "0.1.2"
+version = "0.1.3"
 description = "Leightweight Implementation of Athey et al. (2021)'s MC-NNM estimator"
 packages = [{include = "mcnnm", from = "src"}]
 include = [
@@ -19,6 +19,7 @@ authors = ["Tobias Schnabel <ctobiasschnabel@gmail.com>"]
 license = "GNU3.0"
 readme = "README.md"
 repository = "https://github.com/tobias-schnabel/mcnnm"
+urls = { "Documentation" = "https://mcnnm.readthedocs.io/en/latest/" }
 keywords = ["causal", "inference", "panel", "matrix"]
 classifiers = [
     "Development Status :: 3 - Alpha",
