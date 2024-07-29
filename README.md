@@ -8,7 +8,7 @@
 ![Issues](https://img.shields.io/github/issues/tobias-schnabel/mcnnm)
 ![Pull Requests](https://img.shields.io/github/issues-pr/tobias-schnabel/mcnnm)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![security: bandit](https://img.shields.io/badge/security-bandit-yellow.svg)](https://github.com/PyCQA/bandit)
+[![Tests](https://github.com/tobias-schnabel/mcnnm/actions/workflows/ci.yml/badge.svg?branch=main&cache-bust=1)](https://github.com/tobias-schnabel/mcnnm/actions/workflows/ci.yml)
 
 lightweight-mcnnm is a Python package that provides a lightweight and performant implementation of the Matrix Completion with Nuclear Norm Minimization (MC-NNM) estimator for causal inference in panel data settings.
 
