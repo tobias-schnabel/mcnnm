@@ -99,7 +99,7 @@ def nuclear_norm(A: Array) -> float:
     if A.ndim != 2:
         raise ValueError("Input must be a 2D array.")
     _, s, _ = jnp.linalg.svd(A, full_matrices=False)
-    return jnp.sum(s)
+    return float(jnp.sum(s))
 
 
 def element_wise_l1_norm(A: Array) -> float:
@@ -117,7 +117,7 @@ def element_wise_l1_norm(A: Array) -> float:
     """
     if A.ndim != 2:
         raise ValueError("Input must be a 2D array.")
-    return jnp.sum(jnp.abs(A))
+    return float(jnp.sum(jnp.abs(A)))
 
 
 def propose_lambda(proposed_lambda: Optional[float] = None, n_lambdas: int = 6) -> Array:

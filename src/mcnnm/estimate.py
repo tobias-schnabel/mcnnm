@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-from typing import Optional, Tuple, NamedTuple, List
+from typing import Optional, Tuple, NamedTuple, List, cast
 from .types import Array
 from mcnnm.util import *
 from jax import lax
@@ -22,7 +22,8 @@ def update_L(Y_adj: Array, L: Array, Omega: Array, O: Array, lambda_L: float) ->
     """
     Y_adj_Omega = jnp.dot(Y_adj, Omega)
     L_new = jnp.where(O, Y_adj_Omega, L)
-    return shrink_lambda(L_new, lambda_L * jnp.sum(O) / 2)
+    lambda_val = lambda_L * float(jnp.sum(O)) / 2
+    return shrink_lambda(L_new, lambda_val)
 
 
 def update_H(X_tilde: Array, Y_adj: Array, Z_tilde: Array, lambda_H: float) -> Array:
@@ -184,7 +185,7 @@ def compute_cv_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Arr
         float: The computed cross-validation loss.
     """
     N = Y.shape[0]
-    loss = 0.0
+    loss = jnp.array(0.0)
 
     key = jax.random.PRNGKey(0)
     mask = jax.random.bernoulli(key, 0.8, (N,))
@@ -209,10 +210,10 @@ def compute_cv_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Arr
 
     O_test = (W_test == 0)
     loss += jnp.sum((Y_test - Y_pred) ** 2 * O_test) / jnp.sum(O_test)
-    return loss
+    return float(loss)
 
 def cross_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array,
-                   Omega: Array, lambda_grid: Array, max_iter: int, tol: float, K: int = 5) -> Tuple[float, float]:
+                   Omega: Array, lambda_grid: Array, max_iter: int, tol: float, K: int = 5) -> tuple[float, float]:
     """
     Perform K-fold cross-validation to select optimal regularization parameters.
 
@@ -272,9 +273,11 @@ def cross_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array,
 
     if best_loss == jnp.inf:
         print("Warning: No valid loss found in cross_validate")
-        return lambda_grid[0][0], lambda_grid[0][1]
+        return float(lambda_grid[0][0]), float(lambda_grid[0][1])
 
-    return best_lambda_L, best_lambda_H
+    # Provide default float values if best_lambda_L or best_lambda_H is None
+    return float(best_lambda_L if best_lambda_L is not None else -1.0), \
+        float(best_lambda_H if best_lambda_H is not None else -1.0)
 
 
 def compute_time_based_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
@@ -324,7 +327,7 @@ def compute_time_based_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Om
     loss = jnp.where(jnp.sum(O_test) > 0,
                      jnp.sum((Y_test - Y_pred) ** 2 * O_test) / jnp.sum(O_test),
                      jnp.inf)
-    return loss
+    return float(loss)
 
 
 def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Array,
@@ -357,7 +360,11 @@ def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega:
     if window_size is None:
         window_size = (T * 4) // 5
 
-    if expanding_window and max_window_size is None:
+    if expanding_window and (max_window_size is None or max_window_size < window_size):
+        max_window_size = window_size
+
+    # Ensure max_window_size is not None
+    if max_window_size is None:
         max_window_size = window_size
 
     best_lambda_L = None
@@ -418,13 +425,13 @@ def time_based_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega:
     # Find the best lambda pair
     best_idx = jnp.argmin(losses)
     best_lambda_L, best_lambda_H = lambda_grid[best_idx]
-    best_loss = losses[best_idx]
+    best_loss = float(losses[best_idx])
 
     # print(f"Best loss: {best_loss}, Best lambda_L: {best_lambda_L}, Best lambda_H: {best_lambda_H}")
 
     if best_loss == jnp.inf:
         print("Warning: No valid loss found in time_based_validate")
-        return lambda_grid[0][0], lambda_grid[0][1]
+        return float(lambda_grid[0][0]), float(lambda_grid[0][1])
 
     return best_lambda_L, best_lambda_H
 
@@ -462,7 +469,7 @@ def compute_treatment_effect(Y: Array, L: Array, gamma: Array, delta: Array, bet
 
     treated_units = jnp.sum(W)
     tau = jnp.sum((Y - Y_completed) * W) / treated_units
-    return tau
+    return float(tau)
 
 class MCNNMResults(NamedTuple):
     """
@@ -472,22 +479,22 @@ class MCNNMResults(NamedTuple):
         tau (Optional[float]): The estimated average treatment effect.
         lambda_L (Optional[float]): The selected regularization parameter for L.
         lambda_H (Optional[float]): The selected regularization parameter for H.
-        L (Optional[Array]): The estimated low-rank matrix.
-        Y_completed (Optional[Array]): The completed outcome matrix.
-        gamma (Optional[Array]): The estimated unit fixed effects.
-        delta (Optional[Array]): The estimated time fixed effects.
-        beta (Optional[Array]): The estimated unit-time specific covariate coefficients.
-        H (Optional[Array]): The estimated covariate coefficient matrix.
+        L (Optional[float | Array]): The estimated low-rank matrix.
+        Y_completed (Optional[float | Array]): The completed outcome matrix.
+        gamma (Optional[float | Array]): The estimated unit fixed effects.
+        delta (Optional[float | Array]): The estimated time fixed effects.
+        beta (Optional[float | Array]): The estimated unit-time specific covariate coefficients.
+        H (Optional[float | Array]): The estimated covariate coefficient matrix.
     """
     tau: Optional[float] = None
     lambda_L: Optional[float] = None
     lambda_H: Optional[float] = None
-    L: Optional[Array] = None
-    Y_completed: Optional[Array] = None
-    gamma: Optional[Array] = None
-    delta: Optional[Array] = None
-    beta: Optional[Array] = None
-    H: Optional[Array] = None
+    L: Optional[float | Array] = None
+    Y_completed: Optional[float | Array] = None
+    gamma: Optional[float | Array] = None
+    delta: Optional[float | Array] = None
+    beta: Optional[float | Array] = None
+    H: Optional[float | Array] = None
 
 
 def estimate(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] = None,
@@ -532,6 +539,11 @@ def estimate(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] =
         MCNNMResults: A named tuple containing the requested results.
     """
     X, Z, V, Omega = check_inputs(Y, W, X, Z, V, Omega)
+    # Type assertions to ensure X, Z, V, and Omega are Arrays
+    X = cast(Array, X)
+    Z = cast(Array, Z)
+    V = cast(Array, V)
+    Omega = cast(Array, Omega)
     N, T = Y.shape
 
     if lambda_L is None or lambda_H is None:
@@ -562,25 +574,40 @@ def estimate(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] =
     results = {}
     if return_tau:
         tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W, Z, V)
-        results['tau'] = tau
+        results['tau'] = float(tau)  # Ensure tau is a float
     if return_lambda:
-        results['lambda_L'] = lambda_L
-        results['lambda_H'] = lambda_H
+        results['lambda_L'] = float(lambda_L)  # Ensure lambda_L is a float
+        results['lambda_H'] = float(lambda_H)  # Ensure lambda_H is a float
     if return_completed_L:
-        results['L'] = L
+        results['L'] = L  # Ensure L is an Array
     if return_completed_Y:
         Y_completed = L + jnp.dot(jnp.hstack((X, jnp.eye(N))), jnp.dot(H, jnp.hstack((Z, jnp.eye(T))).T))
         Y_completed += jnp.outer(gamma, jnp.ones(T)) + jnp.outer(jnp.ones(N), delta)
         if V.shape[2] > 0:
             Y_completed += jnp.sum(V * beta, axis=2)
-        results['Y_completed'] = Y_completed
+        results['Y_completed'] = Y_completed  # Ensure Y_completed is an Array
     if return_fixed_effects:
-        results['gamma'] = gamma
-        results['delta'] = delta
+        results['gamma'] = gamma  # Ensure gamma is an Array
+        results['delta'] = delta  # Ensure delta is an Array
     if return_covariate_coefficients:
-        results['beta'] = beta
-        results['H'] = H
+        results['beta'] = beta  # Ensure beta is an Array
+        results['H'] = H  # Ensure H is an Array
 
+    # # Explicitly create MCNNMResults object, ensuring correct types
+    # mcnnm_results = MCNNMResults(
+    #     tau=results.get('tau', None),
+    #     lambda_L=results.get('lambda_L', None),
+    #     lambda_H=results.get('lambda_H', None),
+    #     L=results.get('L', None) if isinstance(results.get('L', None), jnp.ndarray) else None,
+    #     Y_completed=results.get('Y_completed', None) if isinstance(results.get('Y_completed', None),
+    #                                                                jnp.ndarray) else None,
+    #     gamma=results.get('gamma', None) if isinstance(results.get('gamma', None), jnp.ndarray) else None,
+    #     delta=results.get('delta', None) if isinstance(results.get('delta', None), jnp.ndarray) else None,
+    #     beta=results.get('beta', None) if isinstance(results.get('beta', None), jnp.ndarray) else None,
+    #     H=results.get('H', None) if isinstance(results.get('H', None), jnp.ndarray) else None
+    # )
+    #
+    # return mcnnm_results
     return MCNNMResults(**results)
 
 
@@ -624,4 +651,10 @@ def complete_matrix(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[A
                        return_fixed_effects=False, return_covariate_coefficients=False,
                        max_iter=max_iter, tol=tol, verbose=verbose, validation_method=validation_method, K=K,
                        window_size=window_size, expanding_window=expanding_window, max_window_size=max_window_size)
-    return results.Y_completed, results.lambda_L, results.lambda_H
+
+    y_completed = results.Y_completed if results.Y_completed is not None else jnp.zeros_like(Y)
+    y_completed = cast(Array, y_completed)  # Ensure y_completed is of type Array
+    lambda_L = results.lambda_L if results.lambda_L is not None else -1.0
+    lambda_H = results.lambda_H if results.lambda_H is not None else -1.0
+
+    return y_completed, lambda_L, lambda_H
