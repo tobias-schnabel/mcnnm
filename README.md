@@ -1,14 +1,16 @@
 # lightweight-mcnnm
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Documentation Status](https://readthedocs.org/projects/mcnnm/badge/?version=latest)](https://mcnnm.readthedocs.io/en/latest/?badge=latest)
+[![Python Versions](https://img.shields.io/pypi/pyversions/lightweight-mcnnm.svg)](https://pypi.org/project/lightweight-mcnnm/)
 [![PyPI version](https://badge.fury.io/py/lightweight-mcnnm.svg?cache-bust=1)](https://badge.fury.io/py/lightweight-mcnnm)
+[![Documentation Status](https://readthedocs.org/projects/mcnnm/badge/?version=latest)](https://mcnnm.readthedocs.io/en/latest/?badge=latest)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![GitHub last commit](https://img.shields.io/github/last-commit/tobias-schnabel/mcnnm)](https://github.com/your-username/your-repository/commits/main)
 [![codecov](https://codecov.io/gh/tobias-schnabel/mcnnm/graph/badge.svg?token=VYJ12XOQMP)](https://codecov.io/gh/tobias-schnabel/mcnnm)
+[![Tests](https://github.com/tobias-schnabel/mcnnm/actions/workflows/ci.yml/badge.svg?branch=main&cache-bust=1)](https://github.com/tobias-schnabel/mcnnm/actions/workflows/ci.yml)
 ![Issues](https://img.shields.io/github/issues/tobias-schnabel/mcnnm)
 ![Pull Requests](https://img.shields.io/github/issues-pr/tobias-schnabel/mcnnm)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![Tests](https://github.com/tobias-schnabel/mcnnm/actions/workflows/ci.yml/badge.svg?branch=main&cache-bust=1)](https://github.com/tobias-schnabel/mcnnm/actions/workflows/ci.yml)
+
 
 lightweight-mcnnm is a Python package that provides a lightweight and performant implementation of the Matrix Completion with Nuclear Norm Minimization (MC-NNM) estimator for causal inference in panel data settings.
 
