@@ -1,14 +1,12 @@
-import jax
+from datetime import datetime
+from typing import Optional, Tuple, Dict, Literal
+
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
-from jax import random
 from jax.numpy.linalg import norm
+
 from .types import Array
-from typing import Optional
-import time
-from datetime import datetime
-from typing import Optional, Tuple, Dict, Literal
 
 
 def p_o(A: Array, mask: Array) -> Array:
@@ -80,7 +78,7 @@ def frobenius_norm(A: Array) -> float:
     """
     if A.ndim != 2:
         raise ValueError("Input must be a 2D array.")
-    return norm(A, ord='fro')
+    return float(norm(A, ord='fro'))
 
 
 def nuclear_norm(A: Array) -> float:
@@ -140,13 +138,12 @@ def propose_lambda(proposed_lambda: Optional[float] = None, n_lambdas: int = 6) 
         return jnp.logspace(log_min, log_max, n_lambdas)
 
 
-def initialize_params(Y: Array, W: Array, X: Array, Z: Array, V: Array) -> Tuple:
+def initialize_params(Y: Array, X: Array, Z: Array, V: Array) -> Tuple:
     """
     Initialize parameters for the MC-NNM model.
 
     Args:
         Y (Array): The observed outcome matrix of shape (N, T).
-        W (Array): The binary treatment matrix of shape (N, T).
         X (Array): The unit-specific covariates matrix of shape (N, P).
         Z (Array): The time-specific covariates matrix of shape (T, Q).
         V (Array): The unit-time specific covariates tensor of shape (N, T, J).
@@ -206,14 +203,16 @@ def generate_data(
         fixed_effects_scale: float = 0.1,
         covariates_scale: float = 0.1,
         noise_scale: float = 0.1,
-        assignment_mechanism: Literal['staggered', 'block', 'single_treated_period', 'single_treated_unit', 'last_periods'] = 'staggered',
+        assignment_mechanism: Literal['staggered', 'block', 'single_treated_period', 'single_treated_unit',
+                                      'last_periods'] = 'staggered',
         treated_fraction: float = 0.2,
         last_treated_periods: int = 10,
         autocorrelation: float = 0.0,
         seed: Optional[int] = None
 ) -> Tuple[pd.DataFrame, Dict]:
     """
-    Generate synthetic data for testing the MC-NNM model with various treatment assignment mechanisms and autocorrelated errors.
+    Generate synthetic data for testing the MC-NNM model with various treatment assignment mechanisms and
+    autocorrelated errors.
 
     Args:
         nobs: Number of observations (units).
@@ -278,7 +277,8 @@ def generate_data(
     for i in range(nobs):
         errors[i, 0] = np.random.normal(0, noise_scale)
         for t in range(1, nperiods):
-            errors[i, t] = autocorrelation * errors[i, t-1] + np.random.normal(0, noise_scale * np.sqrt(1 - autocorrelation**2))
+            errors[i, t] = (autocorrelation * errors[i, t - 1] +
+                            np.random.normal(0, noise_scale * np.sqrt(1 - autocorrelation ** 2)))
 
     # Generate outcome
     Y = (L +
@@ -286,8 +286,7 @@ def generate_data(
          np.outer(np.ones(nobs), time_fe_values) +
          np.repeat(X @ X_coef, nperiods).reshape(nobs, nperiods) +
          np.tile((Z @ Z_coef).reshape(1, -1), (nobs, 1)) +
-         np.sum(V * V_coef, axis=2) +
-         errors)
+         np.sum(V * V_coef, axis=2) + errors)
 
     # Generate treatment assignment based on the specified mechanism
     if assignment_mechanism == 'staggered':
@@ -295,7 +294,7 @@ def generate_data(
         adoption_times = np.random.geometric(p=treatment_probability, size=nobs)
         for i in range(nobs):
             if adoption_times[i] <= nperiods:
-                treat[i, adoption_times[i]-1:] = 1
+                treat[i, adoption_times[i] - 1:] = 1
     elif assignment_mechanism == 'block':
         treated_units = np.random.choice(nobs, size=int(nobs * treated_fraction), replace=False)
         treat = np.zeros((nobs, nperiods), dtype=int)

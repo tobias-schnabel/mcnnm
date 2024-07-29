@@ -194,10 +194,10 @@ def compute_cv_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Arr
 
     Y_train, Y_test = Y[train_idx], Y[test_idx]
     W_train, W_test = W[train_idx], W[test_idx]
-    X_train, X_test = X[train_idx], X[test_idx]
+    X_train = X[train_idx]
     V_train, V_test = V[train_idx], V[test_idx]
 
-    initial_params = initialize_params(Y_train, W_train, X_train, Z, V_train)
+    initial_params = initialize_params(Y_train, X_train, Z, V_train)
 
     L, H, gamma, delta, beta = fit(Y_train, W_train, X_train, Z, V_train, Omega,
                                    lambda_L, lambda_H, initial_params, max_iter, tol)
@@ -211,6 +211,7 @@ def compute_cv_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Omega: Arr
     O_test = (W_test == 0)
     loss += jnp.sum((Y_test - Y_pred) ** 2 * O_test) / jnp.sum(O_test)
     return float(loss)
+
 
 def cross_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array,
                    Omega: Array, lambda_grid: Array, max_iter: int, tol: float, K: int = 5) -> tuple[float, float]:
@@ -243,7 +244,6 @@ def cross_validate(Y: Array, W: Array, X: Array, Z: Array, V: Array,
 
         for k in range(K):
             mask = jax.random.bernoulli(key, 0.8, (Y.shape[0],))
-            train_idx = jnp.where(mask)[0]
             test_idx = jnp.where(~mask)[0]
 
             if jnp.sum(W[test_idx] == 1) == 0:
@@ -305,11 +305,11 @@ def compute_time_based_loss(Y: Array, W: Array, X: Array, Z: Array, V: Array, Om
     """
     Y_train, Y_test = Y[:, train_idx], Y[:, test_idx]
     W_train, W_test = W[:, train_idx], W[:, test_idx]
-    X_train, X_test = X, X
+    X_train = X
     V_train, V_test = V[:, train_idx, :], V[:, test_idx, :]
-    Z_train, Z_test = Z[train_idx, :], Z[test_idx, :]
+    Z_train = Z[train_idx, :]
 
-    initial_params = initialize_params(Y_train, W_train, X_train, Z_train, V_train)
+    initial_params = initialize_params(Y_train, X_train, Z_train, V_train)
 
     L, H, gamma, delta, beta = fit(Y_train, W_train, X_train, Z_train, V_train, Omega,
                                    lambda_L, lambda_H, initial_params, max_iter, tol)
@@ -471,6 +471,7 @@ def compute_treatment_effect(Y: Array, L: Array, gamma: Array, delta: Array, bet
     tau = jnp.sum((Y - Y_completed) * W) / treated_units
     return float(tau)
 
+
 class MCNNMResults(NamedTuple):
     """
     A named tuple containing the results of the MC-NNM estimation.
@@ -533,7 +534,7 @@ def estimate(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] =
         K (int): Number of folds for cross-validation. Default is 5.
         window_size (Optional[int]): Size of the rolling window for time-based validation. Default is None.
         expanding_window (bool): Whether to use an expanding window for time-based validation. Default is False.
-        max_window_size (Optional[int]): Maximum size of the expanding window for time-based validation. Default is None.
+        max_window_size (Optional[int]): Maximum size of the expanding window for time-based validation. Default None.
 
     Returns:
         MCNNMResults: A named tuple containing the requested results.
@@ -550,8 +551,11 @@ def estimate(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] =
         if validation_method == 'cv':
             if verbose:
                 print_with_timestamp("Cross-validating lambda_L, lambda_H")
-            lambda_grid = jnp.array(jnp.meshgrid(propose_lambda(None, n_lambda_L), propose_lambda(None, n_lambda_L))).T.reshape(-1, 2)
-            lambda_L, lambda_H = cross_validate(Y, W, X, Z, V, Omega, lambda_grid, K=K, max_iter = max_iter // 10, tol=tol * 10)
+            lambda_grid = jnp.array(jnp.meshgrid(propose_lambda(None, n_lambda_L),
+                                                 propose_lambda(None,
+                                                                n_lambda_L))).T.reshape(-1, 2)
+            lambda_L, lambda_H = cross_validate(Y, W, X, Z, V, Omega, lambda_grid, K=K,
+                                                max_iter=max_iter // 10, tol=tol * 10)
         elif validation_method == 'holdout':
             if T < 5:
                 raise ValueError("The matrix does not have enough columns for time-based validation. "
@@ -568,7 +572,7 @@ def estimate(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[Array] =
         if verbose:
             print_with_timestamp(f"Selected lambda_L: {lambda_L:.4f}, lambda_H: {lambda_H:.4f}")
 
-    initial_params = initialize_params(Y, W, X, Z, V)
+    initial_params = initialize_params(Y, X, Z, V)
     L, H, gamma, delta, beta = fit(Y, W, X, Z, V, Omega, lambda_L, lambda_H, initial_params, max_iter, tol)
 
     results = {}
@@ -616,7 +620,8 @@ def complete_matrix(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[A
                     lambda_H: Optional[float] = None, n_lambda_L: int = 10, n_lambda_H: int = 10,
                     max_iter: int = 1000, tol: float = 1e-4, verbose: bool = False,
                     validation_method: str = 'cv', K: int = 5, window_size: Optional[int] = None,
-                    expanding_window: bool = False, max_window_size: Optional[int] = None) -> Tuple[Array, float, float]:
+                    expanding_window: bool = False,
+                    max_window_size: Optional[int] = None) -> Tuple[Array, float, float]:
     """
     Complete the matrix Y using the MC-NNM model and return the optimal regularization parameters.
 
@@ -638,7 +643,7 @@ def complete_matrix(Y: Array, W: Array, X: Optional[Array] = None, Z: Optional[A
         K (int): Number of folds for cross-validation. Default is 5.
         window_size (Optional[int]): Size of the rolling window for time-based validation. Default is None.
         expanding_window (bool): Whether to use an expanding window for time-based validation. Default is False.
-        max_window_size (Optional[int]): Maximum size of the expanding window for time-based validation. Default is None.
+        max_window_size (Optional[int]): Maximum size of the expanding window for time-based validation. Default None.
 
     Returns:
         Tuple[Array, float, float]: A tuple containing:

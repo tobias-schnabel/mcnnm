@@ -35,7 +35,8 @@ jax.config.update('jax_disable_jit', True)
 def test_mcnnm_estimation(fixed_effects, covariates, Omega, validation_method, return_options):
     unit_fe, time_fe = fixed_effects
     X_cov, Z_cov, V_cov = covariates
-    return_tau, return_lambda, return_completed_L, return_completed_Y, return_fixed_effects, return_covariate_coefficients = return_options
+    (return_tau, return_lambda, return_completed_L, return_completed_Y, return_fixed_effects,
+     return_covariate_coefficients) = return_options
 
     nobs, nperiods = 10, 10
     autocorrelation = 0.5 if Omega == "autocorrelated" else 0.0
