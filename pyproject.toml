@@ -54,6 +54,8 @@ black = "^24.4.2"
 click = "^8.1.7"
 flake8 = "^7.1.0"
 importlib-metadata = "^8.2.0"
+pre-commit = "^3.8.0"
+typed-ast = "^1.5.5"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
