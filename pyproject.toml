@@ -38,12 +38,22 @@ jax = "^0.4.25"
 pytest = "^8.2.2"
 pytest-cov = "^5.0.0"
 mypy = "^1.10.1"
+flake8 = "^7.1.0"
+bandit = "^1.7.0"
+black = "^24.4.2"
 
 
 [[tool.poetry.source]]
 name = "testpypi"
 url = "https://test.pypi.org/legacy/"
 priority = "supplemental"
+
+
+[tool.poetry.group.dev.dependencies]
+black = "^24.4.2"
+click = "^8.1.7"
+flake8 = "^7.1.0"
+importlib-metadata = "^8.2.0"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -108,7 +118,7 @@ commands =
 
 [tool.black]
 line-length = 100
-target-version = ['py37']
+target-version = ['py38']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
