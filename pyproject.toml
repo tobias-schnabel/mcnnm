@@ -7,7 +7,7 @@ include = [
 
 [tool.poetry]
 name = "lightweight-mcnnm"
-version = "0.1.3"
+version = "0.1.4"
 description = "Leightweight Implementation of Athey et al. (2021)'s MC-NNM estimator"
 packages = [{include = "mcnnm", from = "src"}]
 include = [
@@ -24,6 +24,9 @@ keywords = ["causal", "inference", "panel", "matrix"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12"
 ]
 
@@ -33,26 +36,19 @@ pandas = "^2.0.3"
 numpy = "^1.22.4"
 jax = "^0.4.25"
 
+[[tool.poetry.source]]
+name = "testpypi"
+url = "https://test.pypi.org/legacy/"
+priority = "supplemental"
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 pytest = "^8.2.2"
 pytest-cov = "^5.0.0"
 mypy = "^1.10.1"
 flake8 = "^7.1.0"
 bandit = "^1.7.0"
 black = "^24.4.2"
-
-
-[[tool.poetry.source]]
-name = "testpypi"
-url = "https://test.pypi.org/legacy/"
-priority = "supplemental"
-
-
-[tool.poetry.group.dev.dependencies]
-black = "^24.4.2"
 click = "^8.1.7"
-flake8 = "^7.1.0"
 importlib-metadata = "^8.2.0"
 pre-commit = "^3.8.0"
 typed-ast = "^1.5.5"
@@ -99,8 +95,6 @@ skip_missing_interpreters = true
 
 [gh-actions]
 python =
-    3.8: py38
-    3.9: py39
     3.10: py310
     3.11: py311
     3.12: py312

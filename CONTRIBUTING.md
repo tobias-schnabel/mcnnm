@@ -7,10 +7,10 @@ I want to make contributing to this project as easy and transparent as possible,
 - Submitting a fix
 - Proposing new features
 
-## We Develop with Github
+## Developing with Github
 I use github to host code, to track issues and feature requests, as well as accept pull requests.
 
-## We Use [Github Flow](https://guides.github.com/introduction/flow/index.html), So All Code Changes Happen Through Pull Requests
+## I Use [Github Flow](https://guides.github.com/introduction/flow/index.html), So All Code Changes Happen Through Pull Requests
 Pull requests are the best way to propose changes to the codebase. I actively welcome your pull requests:
 
 1. Fork the repo and create your branch from `main`.
@@ -24,7 +24,7 @@ Pull requests are the best way to propose changes to the codebase. I actively we
 In short, when you submit code changes, your submissions are understood to be under the same [GNU GPL v3 License](https://www.gnu.org/licenses/gpl-3.0.en.html) that covers the project.
 
 ## Report bugs using Github's [issues](https://github.com/yourusername/lightweight-mcnnm/issues)
-We use GitHub issues to track public bugs. Report a bug by opening a new issue; it's that easy!
+I use GitHub issues to track public bugs. Report a bug by opening a new issue; it's that easy!
 
 ## Write bug reports with detail, background, and sample code
 

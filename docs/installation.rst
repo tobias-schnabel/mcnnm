@@ -3,7 +3,7 @@ Installation
 
 Requirements
 ------------
-lightweight-mcnnm is compatible with Python 3.9 or later and depends on JAX and NumPy.
+lightweight-mcnnm is compatible with Python 3.10 or later and depends on JAX and NumPy.
 
 Installing from PyPI
 --------------------
@@ -23,29 +23,6 @@ To upgrade lightweight-mcnnm to the latest version, use:
 
 Installing for Development
 --------------------------
-If you want to contribute to lightweight-mcnnm or modify the source code, you can install it in development mode:
-
-1. Ensure you have Poetry installed. If not, install it by following the instructions on the `official Poetry website <https://python-poetry.org/docs/#installation>`_.
-
-2. Clone the repository:
-
-   .. code-block:: bash
-
-      git clone https://github.com/yourusername/lightweight-mcnnm.git
-      cd lightweight-mcnnm
-
-3. Install the project dependencies:
-
-   .. code-block:: bash
-
-      poetry install
-
-   This command creates a virtual environment and installs all the necessary dependencies.
-
-4. Activate the virtual environment:
-
-   .. code-block:: bash
-
-      poetry shell
-
-Now you're ready to start developing!
+If you want to contribute to lightweight-mcnnm or modify the source code, you can install it in development mode.
+You can view the project's README on GitHub for more details:
+`README on GitHub <https://github.com/tobias-schnabel/mcnnm/blob/main/README.md#development>`_
