@@ -1,7 +1,7 @@
 # lightweight-mcnnm
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Documentation Status](https://readthedocs.org/projects/mcnnm/badge/?version=latest)](https://mcnnm.readthedocs.io/en/latest/?badge=latest) 
+[![Documentation Status](https://readthedocs.org/projects/mcnnm/badge/?version=latest)](https://mcnnm.readthedocs.io/en/latest/?badge=latest)
 [![PyPI version](https://badge.fury.io/py/lightweight-mcnnm.svg?cache-bust=1)](https://badge.fury.io/py/lightweight-mcnnm)
 [![GitHub last commit](https://img.shields.io/github/last-commit/tobias-schnabel/mcnnm)](https://github.com/your-username/your-repository/commits/main)
 [![codecov](https://codecov.io/gh/tobias-schnabel/mcnnm/graph/badge.svg?token=VYJ12XOQMP)](https://codecov.io/gh/tobias-schnabel/mcnnm)
@@ -114,13 +114,13 @@ Now you're ready to start developing!
     ```bash
     poetry run pytest
    ```
-   This will run all the tests in the tests/ directory with the exception of test_estimation_options.py, which is meant to 
+   This will run all the tests in the tests/ directory with the exception of test_estimation_options.py, which is meant to
    exhaustively test possible combinations of estimation options and is disabled by default. To run all tests including
    this script, use the following command:
       ```bash
       poetry run pytest -m "not comprehensive or comprehensive"
       ```
-   
+
 6. Coverage: to generate a coverage report, run the following command:
     ```bash
     poetry run coverage report
@@ -137,8 +137,8 @@ This implementation is based on the method described in:
 [Athey, S., Bayati, M., Doudchenko, N., Imbens, G., & Khosravi, K. (2021). Matrix Completion Methods for Causal Panel Data Models. Journal of the American Statistical Association, 116(536), 1716-1730.](https://www.tandfonline.com/doi/full/10.1080/01621459.2021.1891924)
 
 ## Acknowledgements
-This project was inspired by and draws upon ideas from 
-[CausalTensor](https://github.com/TianyiPeng/causaltensor) and 
+This project was inspired by and draws upon ideas from
+[CausalTensor](https://github.com/TianyiPeng/causaltensor) and
 [fect](https://yiqingxu.org/packages/fect/fect.html). I am grateful for their contributions to the field of causal inference.
 ## License
 lightweight-mcnnm is released under the GNU General Public License v3.0. See the LICENSE file for more details.

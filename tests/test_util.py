@@ -5,9 +5,10 @@ from mcnnm.util import propose_lambda, print_with_timestamp, initialize_params, 
 from mcnnm.util import generate_data, element_wise_l1_norm
 import jax
 from jax import random
-jax.config.update('jax_platforms', 'cpu')
-jax.config.update('jax_enable_x64', True)
-jax.config.update('jax_disable_jit', True)
+
+jax.config.update("jax_platforms", "cpu")
+jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_disable_jit", True)
 
 key = jax.random.PRNGKey(2024)
 
@@ -25,13 +26,13 @@ def sample_data():
 
 def test_p_o(sample_data):
     Y, W, _, _, _ = sample_data
-    mask = (W == 0)
+    mask = W == 0
     assert jnp.allclose(p_o(Y, mask), Y * mask)
 
 
 def test_p_perp_o(sample_data):
     Y, W, _, _, _ = sample_data
-    mask = (W == 0)
+    mask = W == 0
     assert jnp.allclose(p_perp_o(Y, mask), Y * (1 - mask))
 
 
@@ -90,10 +91,14 @@ def test_check_inputs():
 @pytest.mark.parametrize("X_cov", [True, False])
 @pytest.mark.parametrize("Z_cov", [True, False])
 @pytest.mark.parametrize("V_cov", [True, False])
-@pytest.mark.parametrize("assignment_mechanism",
-                         ['staggered', 'block', 'single_treated_period', 'single_treated_unit', 'last_periods'])
+@pytest.mark.parametrize(
+    "assignment_mechanism",
+    ["staggered", "block", "single_treated_period", "single_treated_unit", "last_periods"],
+)
 @pytest.mark.parametrize("autocorrelation", [0.0, 0.5])
-def test_generate_data(unit_fe, time_fe, X_cov, Z_cov, V_cov, assignment_mechanism, autocorrelation):
+def test_generate_data(
+    unit_fe, time_fe, X_cov, Z_cov, V_cov, assignment_mechanism, autocorrelation
+):
     nobs, nperiods = 100, 50
     treatment_probability = 0.8
     rank = 3
@@ -105,40 +110,53 @@ def test_generate_data(unit_fe, time_fe, X_cov, Z_cov, V_cov, assignment_mechani
     last_treated_periods = 5
     seed = 42
 
-    data, true_params = generate_data(nobs=nobs, nperiods=nperiods, treatment_probability=treatment_probability,
-                                      rank=rank, treatment_effect=treatment_effect, unit_fe=unit_fe, time_fe=time_fe,
-                                      X_cov=X_cov, Z_cov=Z_cov, V_cov=V_cov, fixed_effects_scale=fixed_effects_scale,
-                                      covariates_scale=covariates_scale, noise_scale=noise_scale,
-                                      assignment_mechanism=assignment_mechanism, treated_fraction=treated_fraction,
-                                      last_treated_periods=last_treated_periods, autocorrelation=autocorrelation,
-                                      seed=seed)
+    data, true_params = generate_data(
+        nobs=nobs,
+        nperiods=nperiods,
+        treatment_probability=treatment_probability,
+        rank=rank,
+        treatment_effect=treatment_effect,
+        unit_fe=unit_fe,
+        time_fe=time_fe,
+        X_cov=X_cov,
+        Z_cov=Z_cov,
+        V_cov=V_cov,
+        fixed_effects_scale=fixed_effects_scale,
+        covariates_scale=covariates_scale,
+        noise_scale=noise_scale,
+        assignment_mechanism=assignment_mechanism,
+        treated_fraction=treated_fraction,
+        last_treated_periods=last_treated_periods,
+        autocorrelation=autocorrelation,
+        seed=seed,
+    )
 
     assert data.shape == (nobs * nperiods, 4)
-    assert set(data.columns) == {'unit', 'period', 'y', 'treat'}
-    assert true_params['L'].shape == (nobs, nperiods)
+    assert set(data.columns) == {"unit", "period", "y", "treat"}
+    assert true_params["L"].shape == (nobs, nperiods)
     if unit_fe:
-        assert true_params['unit_fe'].shape == (nobs,)
+        assert true_params["unit_fe"].shape == (nobs,)
     if time_fe:
-        assert true_params['time_fe'].shape == (nperiods,)
+        assert true_params["time_fe"].shape == (nperiods,)
     if X_cov:
-        assert true_params['X'].shape == (nobs, 2)
-        assert true_params['X_coef'].shape == (2,)
+        assert true_params["X"].shape == (nobs, 2)
+        assert true_params["X_coef"].shape == (2,)
     else:
-        assert true_params['X'].shape == (nobs, 0)
-        assert true_params['X_coef'].size == 0
+        assert true_params["X"].shape == (nobs, 0)
+        assert true_params["X_coef"].size == 0
     if Z_cov:
-        assert true_params['Z'].shape == (nperiods, 2)
-        assert true_params['Z_coef'].shape == (2,)
+        assert true_params["Z"].shape == (nperiods, 2)
+        assert true_params["Z_coef"].shape == (2,)
     else:
-        assert true_params['Z'].shape == (nperiods, 0)
-        assert true_params['Z_coef'].size == 0
+        assert true_params["Z"].shape == (nperiods, 0)
+        assert true_params["Z_coef"].size == 0
     if V_cov:
-        assert true_params['V'].shape == (nobs, nperiods, 2)
-        assert true_params['V_coef'].shape == (2,)
+        assert true_params["V"].shape == (nobs, nperiods, 2)
+        assert true_params["V_coef"].shape == (2,)
     else:
-        assert true_params['V'].shape == (nobs, nperiods, 0)
-        assert true_params['V_coef'].size == 0
-    assert set(data['treat'].unique()) == {0, 1}
+        assert true_params["V"].shape == (nobs, nperiods, 0)
+        assert true_params["V_coef"].size == 0
+    assert set(data["treat"].unique()) == {0, 1}
 
 
 def test_generate_data_autocorrelation():
@@ -205,4 +223,4 @@ def test_check_inputs_with_na():
 
 def test_generate_data_invalid_assignment():
     with pytest.raises(ValueError, match="Invalid assignment mechanism specified."):
-        generate_data(assignment_mechanism='invalid_mechanism')
+        generate_data(assignment_mechanism="invalid_mechanism")
