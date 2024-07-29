@@ -45,7 +45,7 @@ jobs:
 
     - name: Run security scanner
       run: |
-        poetry run bandit -r . -f custom --exclude tests
+        poetry run bandit -r src -f custom
 
     - name: Run code formatter check
       run: |
