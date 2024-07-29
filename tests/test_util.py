@@ -140,7 +140,6 @@ def test_generate_data(unit_fe, time_fe, X_cov, Z_cov, V_cov, assignment_mechani
     assert set(data['treat'].unique()) == {0, 1}
 
 
-# Test autocorrelation values
 def test_generate_data_autocorrelation():
     with pytest.raises(ValueError):
         generate_data(autocorrelation=-0.1)
@@ -152,3 +151,50 @@ def test_print_with_timestamp(capsys):
     print_with_timestamp("Test message")
     captured = capsys.readouterr()
     assert "Test message" in captured.out
+
+
+def test_p_o_shape_mismatch():
+    A = jnp.array([[1, 2], [3, 4]])
+    mask = jnp.array([[True, False]])
+    with pytest.raises(ValueError, match="Shapes of A and mask must match."):
+        p_o(A, mask)
+
+def test_p_perp_o_shape_mismatch():
+    A = jnp.array([[1, 2], [3, 4]])
+    mask = jnp.array([[True, False]])
+    with pytest.raises(ValueError, match="Shapes of A and mask must match."):
+        p_perp_o(A, mask)
+
+def test_frobenius_norm_non_2d():
+    A = jnp.array([1, 2, 3])
+    with pytest.raises(ValueError, match="Input must be a 2D array."):
+        frobenius_norm(A)
+
+def test_nuclear_norm_non_2d():
+    A = jnp.array([1, 2, 3])
+    with pytest.raises(ValueError, match="Input must be a 2D array."):
+        nuclear_norm(A)
+
+def test_element_wise_l1_norm_non_2d():
+    A = jnp.array([1, 2, 3])
+    with pytest.raises(ValueError, match="Input must be a 2D array."):
+        element_wise_l1_norm(A)
+
+def test_check_inputs_shape_mismatch():
+    Y = jnp.array([[1, 2], [3, 4]])
+    W = jnp.array([[0, 1]])
+    with pytest.raises(ValueError, match="The shape of W must match the shape of Y."):
+        check_inputs(Y, W)
+
+def test_check_inputs_with_na():
+    Y = jnp.array([[1.0, 2.0], [3.0, jnp.nan]])
+    W = jnp.array([[0, 1], [1, 0]])
+    X, Z, V, Omega = check_inputs(Y, W)
+    assert X.shape == (2, 0)
+    assert Z.shape == (2, 0)
+    assert V.shape == (2, 2, 0)
+    assert Omega.shape == (2, 2)
+
+def test_generate_data_invalid_assignment():
+    with pytest.raises(ValueError, match="Invalid assignment mechanism specified."):
+        generate_data(assignment_mechanism='invalid_mechanism')

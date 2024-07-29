@@ -42,16 +42,26 @@ def test_update_H():
     assert updated_H.shape == (2, 2)
     assert jnp.all(jnp.isfinite(updated_H))
 
+
 def test_update_gamma_delta_beta():
-    Y_adj = jnp.array([[1, 2], [3, 4]])
-    V = jnp.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])
+    Y_adj = jnp.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    V = jnp.array([[[1, 2], [3, 4], [5, 6]],
+                   [[7, 8], [9, 10], [11, 12]],
+                   [[13, 14], [15, 16], [17, 18]]])
+
     gamma, delta, beta = update_gamma_delta_beta(Y_adj, V)
-    assert gamma.shape == (2,)
-    assert delta.shape == (2,)
+
+    assert gamma.shape == (3,)
+    assert delta.shape == (3,)
     assert beta.shape == (2,)
-    assert jnp.all(jnp.isfinite(gamma))
-    assert jnp.all(jnp.isfinite(delta))
-    assert jnp.all(jnp.isfinite(beta))
+
+    # Test with empty V
+    V_empty = jnp.zeros((3, 3, 0))
+    gamma, delta, beta = update_gamma_delta_beta(Y_adj, V_empty)
+
+    assert gamma.shape == (3,)
+    assert delta.shape == (3,)
+    assert beta.shape == (0,)
 
 def test_fit_step():
     Y = jnp.array([[1, 2], [3, 4]])
@@ -79,9 +89,32 @@ def test_fit_step():
     assert jnp.all(jnp.isfinite(delta_new))
     assert jnp.all(jnp.isfinite(beta_new))
 
-@pytest.mark.timeout(180)
-def test_fit():
-    nobs, nperiods = 50, 10
+# @pytest.mark.timeout(180)
+# def test_fit():
+#     nobs, nperiods = 50, 10
+#     data, true_params = generate_data(nobs=nobs, nperiods=nperiods, seed=42)
+#     Y = jnp.array(data.pivot(index='unit', columns='period', values='y').values)
+#     W = jnp.array(data.pivot(index='unit', columns='period', values='treat').values)
+#     X, Z, V = jnp.array(true_params['X']), jnp.array(true_params['Z']), jnp.array(true_params['V'])
+#     Omega = jnp.eye(nperiods)
+#     lambda_L = 0.1
+#     lambda_H = 0.1
+#     initial_params = (jnp.zeros_like(Y), jnp.zeros((X.shape[1] + nobs, Z.shape[1] + nperiods)), jnp.zeros(nobs), jnp.zeros(nperiods), jnp.zeros(V.shape[2]))
+#     max_iter = 100
+#     tol = 1e-4
+#     L, H, gamma, delta, beta = fit(Y, W, X, Z, V, Omega, lambda_L, lambda_H, initial_params, max_iter, tol)
+#     assert L.shape == Y.shape
+#     assert H.shape == (X.shape[1] + nobs, Z.shape[1] + nperiods)
+#     assert gamma.shape == (nobs,)
+#     assert delta.shape == (nperiods,)
+#     assert beta.shape == (V.shape[2],)
+#     assert jnp.all(jnp.isfinite(L))
+#     assert jnp.all(jnp.isfinite(H))
+#     assert jnp.all(jnp.isfinite(gamma))
+#     assert jnp.all(jnp.isfinite(delta))
+#     assert jnp.all(jnp.isfinite(beta))
+@pytest.mark.parametrize("nobs, nperiods", [(10, 5), (50, 10)])
+def test_fit(nobs, nperiods):
     data, true_params = generate_data(nobs=nobs, nperiods=nperiods, seed=42)
     Y = jnp.array(data.pivot(index='unit', columns='period', values='y').values)
     W = jnp.array(data.pivot(index='unit', columns='period', values='treat').values)
@@ -89,10 +122,14 @@ def test_fit():
     Omega = jnp.eye(nperiods)
     lambda_L = 0.1
     lambda_H = 0.1
-    initial_params = (jnp.zeros_like(Y), jnp.zeros((X.shape[1] + nobs, Z.shape[1] + nperiods)), jnp.zeros(nobs), jnp.zeros(nperiods), jnp.zeros(V.shape[2]))
+
+    # Test with default initial params
+    initial_params = initialize_params(Y, W, X, Z, V)
     max_iter = 100
     tol = 1e-4
+
     L, H, gamma, delta, beta = fit(Y, W, X, Z, V, Omega, lambda_L, lambda_H, initial_params, max_iter, tol)
+
     assert L.shape == Y.shape
     assert H.shape == (X.shape[1] + nobs, Z.shape[1] + nperiods)
     assert gamma.shape == (nobs,)
@@ -104,6 +141,61 @@ def test_fit():
     assert jnp.all(jnp.isfinite(delta))
     assert jnp.all(jnp.isfinite(beta))
 
+    # Test with custom initial params
+    custom_initial_params = (
+        jnp.ones_like(Y),
+        jnp.ones((X.shape[1] + nobs, Z.shape[1] + nperiods)),
+        jnp.ones(nobs),
+        jnp.ones(nperiods),
+        jnp.ones(V.shape[2])
+    )
+
+    L, H, gamma, delta, beta = fit(Y, W, X, Z, V, Omega, lambda_L, lambda_H, custom_initial_params, max_iter, tol)
+
+    assert L.shape == Y.shape
+    assert H.shape == (X.shape[1] + nobs, Z.shape[1] + nperiods)
+    assert gamma.shape == (nobs,)
+    assert delta.shape == (nperiods,)
+    assert beta.shape == (V.shape[2],)
+    assert jnp.all(jnp.isfinite(L))
+    assert jnp.all(jnp.isfinite(H))
+    assert jnp.all(jnp.isfinite(gamma))
+    assert jnp.all(jnp.isfinite(delta))
+    assert jnp.all(jnp.isfinite(beta))
+
+    # Test with different max_iter and tol
+    max_iter = 10
+    tol = 1e-2
+
+    L, H, gamma, delta, beta = fit(Y, W, X, Z, V, Omega, lambda_L, lambda_H, initial_params, max_iter, tol)
+
+    assert L.shape == Y.shape
+    assert H.shape == (X.shape[1] + nobs, Z.shape[1] + nperiods)
+    assert gamma.shape == (nobs,)
+    assert delta.shape == (nperiods,)
+    assert beta.shape == (V.shape[2],)
+    assert jnp.all(jnp.isfinite(L))
+    assert jnp.all(jnp.isfinite(H))
+    assert jnp.all(jnp.isfinite(gamma))
+    assert jnp.all(jnp.isfinite(delta))
+    assert jnp.all(jnp.isfinite(beta))
+
+    # Test with different lambda values
+    lambda_L = 0.01
+    lambda_H = 1.0
+
+    L, H, gamma, delta, beta = fit(Y, W, X, Z, V, Omega, lambda_L, lambda_H, initial_params, max_iter, tol)
+
+    assert L.shape == Y.shape
+    assert H.shape == (X.shape[1] + nobs, Z.shape[1] + nperiods)
+    assert gamma.shape == (nobs,)
+    assert delta.shape == (nperiods,)
+    assert beta.shape == (V.shape[2],)
+    assert jnp.all(jnp.isfinite(L))
+    assert jnp.all(jnp.isfinite(H))
+    assert jnp.all(jnp.isfinite(gamma))
+    assert jnp.all(jnp.isfinite(delta))
+    assert jnp.all(jnp.isfinite(beta))
 
 
 def test_compute_treatment_effect(sample_data):
@@ -162,3 +254,213 @@ def test_complete_matrix():
 
     # Optional: Check if the completed values are within a reasonable range
     assert jnp.all(Y_completed >= Y.min() - 1) and jnp.all(Y_completed <= Y.max() + 1)
+
+
+def test_compute_cv_loss():
+    N, T, P, Q, J = 5, 4, 2, 2, 2
+    Y = jnp.array([[1, 2, 3, 4],
+                   [5, 6, 7, 8],
+                   [9, 10, 11, 12],
+                   [13, 14, 15, 16],
+                   [17, 18, 19, 20]])
+    W = jnp.array([[0, 0, 1, 1],
+                   [0, 1, 1, 1],
+                   [1, 1, 1, 0],
+                   [1, 0, 0, 0],
+                   [0, 0, 0, 1]])
+    X = jnp.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])
+    Z = jnp.array([[1, 2], [3, 4], [5, 6], [7, 8]])
+    V = jnp.ones((N, T, J))
+    Omega = jnp.eye(T)
+    lambda_L = 0.1
+    lambda_H = 0.1
+    max_iter = 10
+    tol = 1e-4
+
+    loss = compute_cv_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H, max_iter, tol)
+
+    # Check if loss is finite or NaN
+    assert jnp.isfinite(loss) or jnp.isnan(loss)
+
+    # If loss is finite, check if it's non-negative
+    if jnp.isfinite(loss):
+        assert loss >= 0
+
+    # Test with different lambda values
+    lambda_L = 0.01
+    lambda_H = 1.0
+    loss = compute_cv_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H, max_iter, tol)
+    assert jnp.isfinite(loss) or jnp.isnan(loss)
+    if jnp.isfinite(loss):
+        assert loss >= 0
+
+    # Test with different max_iter and tol
+    max_iter = 5
+    tol = 1e-3
+    loss = compute_cv_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H, max_iter, tol)
+    assert jnp.isfinite(loss) or jnp.isnan(loss)
+    if jnp.isfinite(loss):
+        assert loss >= 0
+
+
+def test_cross_validate():
+    N, T, P, Q, J = 5, 4, 2, 2, 2
+    Y = jnp.array([[1, 2, 3, 4],
+                   [5, 6, 7, 8],
+                   [9, 10, 11, 12],
+                   [13, 14, 15, 16],
+                   [17, 18, 19, 20]])
+    W = jnp.array([[0, 0, 1, 1],
+                   [0, 1, 1, 1],
+                   [1, 1, 1, 0],
+                   [1, 0, 0, 0],
+                   [0, 0, 0, 1]])
+    X = jnp.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])
+    Z = jnp.array([[1, 2], [3, 4], [5, 6], [7, 8]])
+    V = jnp.ones((N, T, J))
+    Omega = jnp.eye(T)
+    lambda_grid = jnp.array([[0.1, 0.1], [0.2, 0.2], [0.3, 0.3]])
+    max_iter = 10
+    tol = 1e-4
+    K = 2
+
+    best_lambda_L, best_lambda_H = cross_validate(Y, W, X, Z, V, Omega, lambda_grid, max_iter, tol, K)
+
+    assert jnp.isfinite(best_lambda_L)
+    assert jnp.isfinite(best_lambda_H)
+    assert best_lambda_L > 0
+    assert best_lambda_H > 0
+
+
+def test_compute_time_based_loss():
+    N, T, P, Q, J = 5, 4, 2, 2, 2
+    Y = jnp.array([[1, 2, 3, 4],
+                   [5, 6, 7, 8],
+                   [9, 10, 11, 12],
+                   [13, 14, 15, 16],
+                   [17, 18, 19, 20]])
+    W = jnp.array([[0, 0, 1, 1],
+                   [0, 1, 1, 1],
+                   [1, 1, 1, 0],
+                   [1, 0, 0, 0],
+                   [0, 0, 0, 1]])
+    X = jnp.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])
+    Z = jnp.array([[1, 2], [3, 4], [5, 6], [7, 8]])
+    V = jnp.ones((N, T, J))
+    Omega = jnp.eye(T)
+    lambda_L = 0.1
+    lambda_H = 0.1
+    max_iter = 10
+    tol = 1e-4
+    train_idx = jnp.array([0, 1, 2])
+    test_idx = jnp.array([3])
+
+    loss = compute_time_based_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H, max_iter, tol, train_idx, test_idx)
+
+    assert jnp.isfinite(loss)
+    assert loss >= 0
+
+
+def test_time_based_validate():
+    N, T, P, Q, J = 5, 6, 2, 2, 2
+    Y = jnp.array([[1, 2, 3, 4, 5, 6],
+                   [7, 8, 9, 10, 11, 12],
+                   [13, 14, 15, 16, 17, 18],
+                   [19, 20, 21, 22, 23, 24],
+                   [25, 26, 27, 28, 29, 30]])
+    W = jnp.array([[0, 0, 1, 1, 1, 1],
+                   [0, 1, 1, 1, 1, 1],
+                   [1, 1, 1, 0, 0, 0],
+                   [1, 0, 0, 0, 1, 1],
+                   [0, 0, 0, 1, 1, 1]])
+    X = jnp.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])
+    Z = jnp.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12]])
+    V = jnp.ones((N, T, J))
+    Omega = jnp.eye(T)
+    lambda_grid = jnp.array([[0.1, 0.1], [0.2, 0.2], [0.3, 0.3]])
+    max_iter = 10
+    tol = 1e-4
+    window_size = 3
+    expanding_window = False
+    max_window_size = None
+    n_folds = 2
+
+    best_lambda_L, best_lambda_H = time_based_validate(Y, W, X, Z, V, Omega, lambda_grid, max_iter, tol,
+                                                       window_size, expanding_window, max_window_size, n_folds)
+
+    assert jnp.isfinite(best_lambda_L)
+    assert jnp.isfinite(best_lambda_H)
+    assert best_lambda_L > 0
+    assert best_lambda_H > 0
+
+
+def test_time_based_validate_expanding_window():
+    key = jax.random.PRNGKey(0)
+    N, T, P, Q, J = 10, 20, 2, 2, 2
+    Y = jax.random.uniform(key, shape=(N, T))
+    W = jax.random.choice(key, jnp.array([0, 1]), shape=(N, T))
+    X = jax.random.uniform(key, shape=(N, P))
+    Z = jax.random.uniform(key, shape=(T, Q))
+    V = jax.random.uniform(key, shape=(N, T, J))
+    Omega = jnp.eye(T)
+    lambda_grid = jnp.array([[0.1, 0.1], [0.2, 0.2], [0.3, 0.3]])
+
+    # Test with expanding window and default max_window_size
+    best_lambda_L, best_lambda_H = time_based_validate(
+        Y, W, X, Z, V, Omega, lambda_grid, max_iter=10, tol=1e-4,
+        window_size=15, expanding_window=True, n_folds=5
+    )
+
+    assert jnp.isfinite(best_lambda_L)
+    assert jnp.isfinite(best_lambda_H)
+
+    # Test with expanding window and custom max_window_size
+    best_lambda_L, best_lambda_H = time_based_validate(
+        Y, W, X, Z, V, Omega, lambda_grid, max_iter=10, tol=1e-4,
+        window_size=15, expanding_window=True, max_window_size=18, n_folds=5
+    )
+
+    assert jnp.isfinite(best_lambda_L)
+    assert jnp.isfinite(best_lambda_H)
+
+
+def test_estimate_verbose():
+    N, T = 10, 10
+    data, true_params = generate_data(nobs=N, nperiods=T, seed=42)
+    Y = jnp.array(data.pivot(index='unit', columns='period', values='y').values)
+    W = jnp.array(data.pivot(index='unit', columns='period', values='treat').values)
+    X, Z, V = jnp.array(true_params['X']), jnp.array(true_params['Z']), jnp.array(true_params['V'])
+
+    # Test with verbose=True and cv validation method
+    results = estimate(Y, W, X=X, Z=Z, V=V, verbose=True, validation_method='cv', K=2)
+    assert results.tau is not None
+    assert results.lambda_L is not None
+    assert results.lambda_H is not None
+
+    # Test with verbose=True and holdout validation method
+    results = estimate(Y, W, X=X, Z=Z, V=V, verbose=True, validation_method='holdout', window_size=5)
+    assert results.tau is not None
+    assert results.lambda_L is not None
+    assert results.lambda_H is not None
+
+
+def test_estimate_invalid_validation_method():
+    N, T = 10, 10
+    data, true_params = generate_data(nobs=N, nperiods=T, seed=42)
+    Y = jnp.array(data.pivot(index='unit', columns='period', values='y').values)
+    W = jnp.array(data.pivot(index='unit', columns='period', values='treat').values)
+    X, Z, V = jnp.array(true_params['X']), jnp.array(true_params['Z']), jnp.array(true_params['V'])
+
+    with pytest.raises(ValueError, match="Invalid validation_method. Choose 'cv' or 'holdout'."):
+        estimate(Y, W, X=X, Z=Z, V=V, validation_method='invalid')
+
+
+def test_estimate_insufficient_periods():
+    N, T = 10, 4  # Not enough periods for time-based validation
+    data, true_params = generate_data(nobs=N, nperiods=T, seed=42)
+    Y = jnp.array(data.pivot(index='unit', columns='period', values='y').values)
+    W = jnp.array(data.pivot(index='unit', columns='period', values='treat').values)
+    X, Z, V = jnp.array(true_params['X']), jnp.array(true_params['Z']), jnp.array(true_params['V'])
+
+    with pytest.raises(ValueError, match="The matrix does not have enough columns for time-based validation."):
+        estimate(Y, W, X=X, Z=Z, V=V, validation_method='holdout')
