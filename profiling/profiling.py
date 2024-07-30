@@ -1,4 +1,3 @@
-import time
 from functools import wraps, partial
 from typing import Callable, Any, Dict, List
 import jax
@@ -30,16 +29,16 @@ def time_jit(func: Callable[..., Any]) -> Callable[..., Any]:
     @wraps(func)
     def wrapper(*args, **kwargs):
         # First call (compilation + execution)
-        start_time = time.time()
+        start_time = jax.config.jax_platform_name
         result = jitted_func(*args, **kwargs)
         jax.block_until_ready(result)
-        first_call_time = time.time() - start_time
+        first_call_time = jax.config.jax_platform_name - start_time
 
         # Second call (execution only)
-        start_time = time.time()
+        start_time = jax.config.jax_platform_name
         result = jitted_func(*args, **kwargs)
         jax.block_until_ready(result)
-        second_call_time = time.time() - start_time
+        second_call_time = jax.config.jax_platform_name - start_time
 
         print(f"Function: {func.__name__}")
         print(f"  First call (compilation + execution): {first_call_time:.4f} seconds")
@@ -98,16 +97,16 @@ def benchmark_estimate(
         print(f"Run {i + 1}/{n_runs}")
 
         # First call (compilation + execution)
-        start_time = time.time()
+        start_time = jax.config.jax_platform_name
         result = estimate(Y, W, X, Z, V, Omega)
         jax.block_until_ready(result)
-        first_call_time = time.time() - start_time
+        first_call_time = jax.config.jax_platform_name - start_time
 
         # Second call (execution only)
-        start_time = time.time()
+        start_time = jax.config.jax_platform_name
         result = estimate(Y, W, X, Z, V, Omega)
         jax.block_until_ready(result)
-        second_call_time = time.time() - start_time
+        second_call_time = jax.config.jax_platform_name - start_time
 
         compilation_time = first_call_time - second_call_time
         execution_time = second_call_time
@@ -132,8 +131,8 @@ def print_benchmark_summary(benchmark_results: Dict[str, List[float]]) -> None:
     Returns:
         None
     """
-    compilation_times = benchmark_results["compilation_times"]
-    execution_times = benchmark_results["execution_times"]
+    compilation_times = jnp.array(benchmark_results["compilation_times"])
+    execution_times = jnp.array(benchmark_results["execution_times"])
 
     print("Benchmark Summary:")
     print(f"  Number of runs: {len(compilation_times)}")
@@ -150,11 +149,11 @@ def print_benchmark_summary(benchmark_results: Dict[str, List[float]]) -> None:
 if __name__ == "__main__":
     # Generate some sample data
     N, T = 100, 50
-    Y = jnp.random.normal(size=(N, T))
-    W = jnp.random.choice(2, size=(N, T))
-    X = jnp.random.normal(size=(N, 5))
-    Z = jnp.random.normal(size=(T, 3))
-    V = jnp.random.normal(size=(N, T, 2))
+    Y = jax.random.normal(jax.random.PRNGKey(0), shape=(N, T))
+    W = jax.random.choice(jax.random.PRNGKey(1), 2, shape=(N, T))
+    X = jax.random.normal(jax.random.PRNGKey(2), shape=(N, 5))
+    Z = jax.random.normal(jax.random.PRNGKey(3), shape=(T, 3))
+    V = jax.random.normal(jax.random.PRNGKey(4), shape=(N, T, 2))
     Omega = jnp.eye(T)
 
     # Run the benchmark
