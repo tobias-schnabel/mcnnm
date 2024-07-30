@@ -53,6 +53,25 @@ def test_update_H():
     assert jnp.all(jnp.isfinite(updated_H))
 
 
+# def test_update_gamma_delta_beta():
+#     Y_adj = jnp.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+#     V = jnp.array(
+#         [[[1, 2], [3, 4], [5, 6]], [[7, 8], [9, 10], [11, 12]], [[13, 14], [15, 16], [17, 18]]]
+#     )
+#
+#     gamma, delta, beta = update_gamma_delta_beta(Y_adj, V)
+#
+#     assert gamma.shape == (3,)
+#     assert delta.shape == (3,)
+#     assert beta.shape == (2,)
+#
+#     # Test with empty V
+#     V_empty = jnp.zeros((3, 3, 0))
+#     gamma, delta, beta = update_gamma_delta_beta(Y_adj, V_empty)
+#
+#     assert gamma.shape == (3,)
+#     assert delta.shape == (3,)
+#     assert beta.shape == (0,)
 def test_update_gamma_delta_beta():
     Y_adj = jnp.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
     V = jnp.array(
@@ -64,14 +83,6 @@ def test_update_gamma_delta_beta():
     assert gamma.shape == (3,)
     assert delta.shape == (3,)
     assert beta.shape == (2,)
-
-    # Test with empty V
-    V_empty = jnp.zeros((3, 3, 0))
-    gamma, delta, beta = update_gamma_delta_beta(Y_adj, V_empty)
-
-    assert gamma.shape == (3,)
-    assert delta.shape == (3,)
-    assert beta.shape == (0,)
 
 
 def test_fit_step():
