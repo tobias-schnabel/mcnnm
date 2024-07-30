@@ -79,14 +79,14 @@ def fit_step(
     Z_tilde: Array,
     V: Array,
     Omega: Array,
-    lambda_L: float,
-    lambda_H: float,
+    lambda_L: Scalar,
+    lambda_H: Scalar,
     L: Array,
     H: Array,
     gamma: Array,
     delta: Array,
     beta: Array,
-) -> Tuple:
+) -> Tuple[Array, Array, Array, Array, Array]:
     """
     Perform one step of the MC-NNM fitting algorithm.
 
@@ -97,8 +97,8 @@ def fit_step(
         Z_tilde (Array): The augmented time-specific covariates matrix.
         V (Array): The unit-time specific covariates tensor.
         Omega (Array): The autocorrelation matrix.
-        lambda_L (float): The regularization parameter for L.
-        lambda_H (float): The regularization parameter for H.
+        lambda_L (Scalar): The regularization parameter for L.
+        lambda_H (Scalar): The regularization parameter for H.
         L (Array): The current estimate of the low-rank matrix.
         H (Array): The current estimate of the covariate coefficient matrix.
         gamma (Array): The current estimate of unit fixed effects.
@@ -106,21 +106,26 @@ def fit_step(
         beta (Array): The current estimate of unit-time specific covariate coefficients.
 
     Returns:
-        Tuple: Updated estimates of L, H, gamma, delta, and beta.
+        Tuple[Array, Array, Array, Array, Array]: Updated estimates of L, H, gamma, delta, and beta.
     """
     O = W == 0
     Y_adj_base = Y - gamma[:, jnp.newaxis] - delta[jnp.newaxis, :]
 
-    Y_adj = Y_adj_base - jnp.dot(X_tilde, jnp.dot(H, Z_tilde.T))
-    Y_adj = Y_adj - jnp.sum(V * beta, axis=-1) if V.size > 0 else Y_adj
+    def adjust_Y_adj(Y_adj_base, X_tilde, H, Z_tilde, V, beta):
+        Y_adj = Y_adj_base - jnp.dot(X_tilde, jnp.dot(H, Z_tilde.T))
+        Y_adj = jax.lax.cond(
+            V.size > 0, lambda x: x - jnp.sum(V * beta, axis=-1), lambda x: x, Y_adj
+        )
+        return Y_adj
+
+    Y_adj = adjust_Y_adj(Y_adj_base, X_tilde, H, Z_tilde, V, beta)
     L_new = update_L(Y_adj, L, Omega, O, lambda_L)
 
-    Y_adj = Y_adj_base - L_new
-    Y_adj = Y_adj - jnp.sum(V * beta, axis=-1) if V.size > 0 else Y_adj
+    Y_adj = adjust_Y_adj(Y_adj_base, X_tilde, H, Z_tilde, V, beta)
     H_new = update_H(X_tilde, Y_adj, Z_tilde, lambda_H)
 
     Y_adj = Y_adj_base - L_new - jnp.dot(X_tilde, jnp.dot(H_new, Z_tilde.T))
-    Y_adj = Y_adj - jnp.sum(V * beta, axis=-1) if V.size > 0 else Y_adj
+    Y_adj = jax.lax.cond(V.size > 0, lambda x: x - jnp.sum(V * beta, axis=-1), lambda x: x, Y_adj)
     gamma_new, delta_new, beta_new = update_gamma_delta_beta(Y_adj, V)
 
     return L_new, H_new, gamma_new, delta_new, beta_new
@@ -135,10 +140,10 @@ def fit(
     Omega: Array,
     lambda_L: float,
     lambda_H: float,
-    initial_params: Tuple,
+    initial_params: Tuple[Array, Array, Array, Array, Array],
     max_iter: int,
     tol: float,
-) -> Tuple:
+) -> Tuple[Array, Array, Array, Array, Array]:
     """
     Fit the MC-NNM model using the given parameters and data.
 
@@ -151,12 +156,12 @@ def fit(
         Omega (Array): The autocorrelation matrix.
         lambda_L (float): The regularization parameter for L.
         lambda_H (float): The regularization parameter for H.
-        initial_params (Tuple): Initial parameter estimates.
+        initial_params (Tuple[Array, Array, Array, Array, Array]): Initial parameter estimates.
         max_iter (int): Maximum number of iterations.
         tol (float): Convergence tolerance.
 
     Returns:
-        Tuple: Final estimates of L, H, gamma, delta, and beta.
+        Tuple[Array, Array, Array, Array, Array]: Final estimates of L, H, gamma, delta, and beta.
     """
     # Unpack initial parameters
     L, H, gamma, delta, beta = initial_params
@@ -166,8 +171,10 @@ def fit(
     X_tilde = jnp.hstack((X, jnp.eye(N)))
     Z_tilde = jnp.hstack((Z, jnp.eye(T)))
 
-    # Ensure beta has the correct shape
-    beta = jnp.zeros((V.shape[-1],)) if V.size > 0 else jnp.zeros((0,))
+    # Ensure beta has the correct shape using JAX conditional
+    beta = jax.lax.cond(
+        V.size > 0, lambda _: jnp.zeros((V.shape[-1],)), lambda _: jnp.zeros((0,)), operand=None
+    )
 
     # Define the condition function for the while loop
     def cond_fn(state):
@@ -202,7 +209,7 @@ def compute_cv_loss(
     lambda_H: float,
     max_iter: int,
     tol: float,
-) -> float:
+) -> Scalar:
     """
     Compute the cross-validation loss for given regularization parameters.
 
@@ -226,8 +233,9 @@ def compute_cv_loss(
 
     key = jax.random.PRNGKey(0)
     mask = jax.random.bernoulli(key, 0.8, (N,))
-    train_idx = jnp.where(mask)[0]
-    test_idx = jnp.where(~mask)[0]
+
+    train_idx = jnp.nonzero(mask, size=N)[0]
+    test_idx = jnp.nonzero(~mask, size=N)[0]
 
     Y_train, Y_test = Y[train_idx], Y[test_idx]
     W_train, W_test = W[train_idx], W[test_idx]
@@ -256,12 +264,16 @@ def compute_cv_loss(
         + jnp.outer(jnp.ones(test_idx.shape[0]), delta)
     )
 
-    if V_test.shape[2] > 0:
-        Y_pred += jnp.sum(V_test * beta, axis=2)
+    Y_pred = jax.lax.cond(
+        V_test.shape[2] > 0,
+        lambda Y_pred: Y_pred + jnp.sum(V_test * beta, axis=2),
+        lambda Y_pred: Y_pred,
+        Y_pred,
+    )
 
     O_test = W_test == 0
     loss += jnp.sum((Y_test - Y_pred) ** 2 * O_test) / jnp.sum(O_test)
-    return float(loss)
+    return loss
 
 
 def cross_validate(
@@ -275,7 +287,7 @@ def cross_validate(
     max_iter: int,
     tol: float,
     K: int = 5,
-) -> tuple[float, float]:
+) -> tuple[Scalar, Scalar]:
     """
     Perform K-fold cross-validation to select optimal regularization parameters.
 
@@ -292,54 +304,46 @@ def cross_validate(
         K (int): Number of folds for cross-validation. Default is 5.
 
     Returns:
-        Tuple[float, float]: The optimal lambda_L and lambda_H values.
+        Tuple[Scalar, Scalar]: The optimal lambda_L and lambda_H values.
     """
-    best_lambda_L = None
-    best_lambda_H = None
-    best_loss = jnp.inf
 
-    for lambda_L, lambda_H in lambda_grid:
-        loss = 0.0
-        valid_folds = 0
+    def loss_fn(lambda_L_H):
+        lambda_L, lambda_H = lambda_L_H
         key = jax.random.PRNGKey(0)
 
-        for k in range(K):
+        def fold_loss(k):
             mask = jax.random.bernoulli(key, 0.8, (Y.shape[0],))
             test_idx = jnp.where(~mask)[0]
 
-            if jnp.sum(W[test_idx] == 1) == 0:
-                # print(f"Warning: No treated units in test set for fold {k + 1}, skipping fold")
-                continue
+            def compute_loss():
+                fold_loss = compute_cv_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H, max_iter, tol)
+                return jax.lax.cond(
+                    jnp.isfinite(fold_loss),
+                    lambda _: fold_loss,
+                    lambda _: jnp.inf,
+                    None,
+                )
 
-            fold_loss = compute_cv_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H, max_iter, tol)
-            # print(f"Fold loss for lambda_L={lambda_L}, lambda_H={lambda_H}: {fold_loss}")
-            if jnp.isfinite(fold_loss):
-                loss += fold_loss
-                valid_folds += 1
-            else:
-                # print(f"Non-finite loss for lambda_L={lambda_L}, lambda_H={lambda_H}")
-                pass
+            return jax.lax.cond(
+                jnp.sum(W[test_idx] == 1) > 0,
+                compute_loss,
+                lambda: jnp.inf,
+            )
 
-        if valid_folds > 0:
-            loss /= valid_folds
-            # print(f"Average loss for lambda_L={lambda_L}, lambda_H={lambda_H}: {loss}")
-            if loss < best_loss:
-                best_lambda_L = lambda_L
-                best_lambda_H = lambda_H
-                best_loss = loss
-                # print(f"New best loss: {best_loss} for lambda_L={best_lambda_L}, lambda_H={best_lambda_H}")
-        else:
-            # print(f"No valid folds for lambda_L={lambda_L}, lambda_H={lambda_H}")
-            pass
+        losses = jax.lax.map(fold_loss, jnp.arange(K))
+        valid_folds = jnp.sum(jnp.isfinite(losses))
 
-    if best_loss == jnp.inf:
-        print("Warning: No valid loss found in cross_validate")
-        return float(lambda_grid[0][0]), float(lambda_grid[0][1])
+        return jax.lax.cond(
+            valid_folds > 0,
+            lambda _: jnp.sum(losses) / valid_folds,
+            lambda _: jnp.inf,
+            None,
+        )
 
-    # Provide default float values if best_lambda_L or best_lambda_H is None
-    return float(best_lambda_L if best_lambda_L is not None else -1.0), float(
-        best_lambda_H if best_lambda_H is not None else -1.0
-    )
+    best_lambda_L_H = jnp.argmin(jax.vmap(loss_fn)(lambda_grid))
+    best_lambda_L, best_lambda_H = lambda_grid[best_lambda_L_H]
+
+    return best_lambda_L, best_lambda_H
 
 
 def compute_time_based_loss(
@@ -355,7 +359,7 @@ def compute_time_based_loss(
     tol: float,
     train_idx: Array,
     test_idx: Array,
-) -> float:
+) -> Scalar:
     """
     Compute the time-based holdout loss for given regularization parameters.
 
@@ -408,14 +412,23 @@ def compute_time_based_loss(
         + jnp.outer(jnp.ones(X.shape[0]), delta_test)
     )
 
-    if V_test.shape[2] > 0:
-        Y_pred += jnp.sum(V_test * beta, axis=2)
+    Y_pred = jax.lax.cond(
+        V_test.shape[2] > 0,
+        lambda Y_pred: Y_pred + jnp.sum(V_test * beta, axis=2),
+        lambda Y_pred: Y_pred,
+        Y_pred,
+    )
 
     O_test = W_test == 0
-    loss = jnp.where(
-        jnp.sum(O_test) > 0, jnp.sum((Y_test - Y_pred) ** 2 * O_test) / jnp.sum(O_test), jnp.inf
+    loss = jnp.sum((Y_test - Y_pred) ** 2 * O_test) / jnp.sum(O_test)
+    loss = jax.lax.cond(
+        jnp.sum(O_test) > 0,
+        lambda _: loss,
+        lambda _: jnp.inf,
+        None,
     )
-    return float(loss)
+
+    return loss
 
 
 def time_based_validate(
