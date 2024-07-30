@@ -1,5 +1,5 @@
 import jax
-import jax.numpy as jnp
-from typing import Union
+from typing import Union, TypeAlias
 
-Array = Union[jnp.ndarray, jax.Array]  # Define a type alias for array-like objects in JAX
+Array: TypeAlias = jax.Array
+Scalar: TypeAlias = Union[float, int, Array]
