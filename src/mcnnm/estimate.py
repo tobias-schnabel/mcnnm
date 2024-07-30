@@ -142,25 +142,6 @@ def fit(
     max_iter: int,
     tol: float,
 ) -> Tuple[Array, Array, Array, Array, Array]:
-    """
-    Fit the MC-NNM model using the given parameters and data.
-
-    Args:
-        Y (Array): The observed outcome matrix.
-        W (Array): The binary treatment matrix.
-        X (Array): The unit-specific covariates matrix.
-        Z (Array): The time-specific covariates matrix.
-        V (Array): The unit-time specific covariates tensor.
-        Omega (Array): The autocorrelation matrix.
-        lambda_L (float): The regularization parameter for L.
-        lambda_H (float): The regularization parameter for H.
-        initial_params (Tuple[Array, Array, Array, Array, Array]): Initial parameter estimates.
-        max_iter (int): Maximum number of iterations.
-        tol (float): Convergence tolerance.
-
-    Returns:
-        Tuple[Array, Array, Array, Array, Array]: Final estimates of L, H, gamma, delta, and beta.
-    """
     # Unpack initial parameters
     L, H, gamma, delta, beta = initial_params
 
@@ -171,7 +152,10 @@ def fit(
 
     # Ensure beta has the correct shape using JAX conditional
     beta = jax.lax.cond(
-        V.size > 0, lambda _: jnp.zeros((V.shape[-1],)), lambda _: jnp.zeros((0,)), operand=None
+        V.size > 0,
+        lambda _: beta,
+        lambda _: jnp.zeros_like(beta),  # This ensures the same shape as the true branch
+        operand=None,
     )
 
     # Define the condition function for the while loop
@@ -274,6 +258,185 @@ def compute_cv_loss(
     return loss
 
 
+# def cross_validate(
+#         Y: Array,
+#         W: Array,
+#         X: Array,
+#         Z: Array,
+#         V: Array,
+#         Omega: Array,
+#         lambda_grid: Array,
+#         max_iter: int,
+#         tol: float,
+#         K: int = 5,
+# ) -> tuple[Scalar, Scalar]:
+#     """
+#     Perform K-fold cross-validation to select optimal regularization parameters.
+#
+#     Args:
+#         Y (Array): The observed outcome matrix.
+#         W (Array): The binary treatment matrix.
+#         X (Array): The unit-specific covariates matrix.
+#         Z (Array): The time-specific covariates matrix.
+#         V (Array): The unit-time specific covariates tensor.
+#         Omega (Array): The autocorrelation matrix.
+#         lambda_grid (Array): Grid of (lambda_L, lambda_H) pairs to search over.
+#         max_iter (int): Maximum number of iterations for fitting.
+#         tol (float): Convergence tolerance for fitting.
+#         K (int): Number of folds for cross-validation. Default is 5.
+#
+#     Returns:
+#         Tuple[Scalar, Scalar]: The optimal lambda_L and lambda_H values.
+#     """
+#     N = Y.shape[0]
+#     fold_size = N // K
+#
+#     def loss_fn(lambda_L_H):
+#         lambda_L, lambda_H = lambda_L_H
+#
+#         def fold_loss(k):
+#             mask = (jnp.arange(N) >= k * fold_size) & (jnp.arange(N) < (k + 1) * fold_size)
+#
+#             # Use jnp.where instead of boolean indexing
+#             Y_train = jnp.where(mask[:, None], jnp.zeros_like(Y), Y)
+#             Y_test = jnp.where(mask[:, None], Y, jnp.zeros_like(Y))
+#             W_train = jnp.where(mask[:, None], jnp.zeros_like(W), W)
+#             W_test = jnp.where(mask[:, None], W, jnp.zeros_like(W))
+#             X_train = jnp.where(mask[:, None], jnp.zeros_like(X), X)
+#             V_train = jnp.where(mask[:, None, None], jnp.zeros_like(V), V)
+#             V_test = jnp.where(mask[:, None, None], V, jnp.zeros_like(V))
+#
+#             initial_params = initialize_params(Y_train, X_train, Z, V_train)
+#
+#             L, H, gamma, delta, beta = fit(
+#                 Y_train,
+#                 W_train,
+#                 X_train,
+#                 Z,
+#                 V_train,
+#                 Omega,
+#                 lambda_L,
+#                 lambda_H,
+#                 initial_params,
+#                 max_iter,
+#                 tol,
+#             )
+#
+#             Y_pred = (
+#                     L
+#                     + jnp.outer(gamma, jnp.ones(Z.shape[0]))
+#                     + jnp.outer(jnp.ones(N), delta)
+#             )
+#
+#             Y_pred = jax.lax.cond(
+#                 V_test.shape[2] > 0,
+#                 lambda Y_pred: Y_pred + jnp.sum(V_test * beta, axis=2),
+#                 lambda Y_pred: Y_pred,
+#                 Y_pred,
+#             )
+#
+#             O_test = W_test == 0
+#             loss = jnp.sum((Y_test - Y_pred) ** 2 * O_test) / (jnp.sum(O_test) + 1e-10)
+#             return loss
+#
+#         losses = jax.lax.map(fold_loss, jnp.arange(K))
+#         return jnp.mean(losses)
+#
+#     best_lambda_L_H = jnp.argmin(jax.vmap(loss_fn)(lambda_grid))
+#     best_lambda_L, best_lambda_H = lambda_grid[best_lambda_L_H]
+#
+#     return best_lambda_L, best_lambda_H
+# def cross_validate(
+#         Y: jnp.ndarray,
+#         W: jnp.ndarray,
+#         X: jnp.ndarray,
+#         Z: jnp.ndarray,
+#         V: jnp.ndarray,
+#         Omega: jnp.ndarray,
+#         lambda_grid: jnp.ndarray,
+#         max_iter: int,
+#         tol: float,
+#         K: int = 5,
+# ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+#     """
+#     Perform K-fold cross-validation to select optimal regularization parameters.
+#
+#     Args:
+#         Y (jnp.ndarray): The observed outcome matrix.
+#         W (jnp.ndarray): The binary treatment matrix.
+#         X (jnp.ndarray): The unit-specific covariates matrix.
+#         Z (jnp.ndarray): The time-specific covariates matrix.
+#         V (jnp.ndarray): The unit-time specific covariates tensor.
+#         Omega (jnp.ndarray): The autocorrelation matrix.
+#         lambda_grid (jnp.ndarray): Grid of (lambda_L, lambda_H) pairs to search over.
+#         max_iter (int): Maximum number of iterations for fitting.
+#         tol (float): Convergence tolerance for fitting.
+#         K (int): Number of folds for cross-validation. Default is 5.
+#
+#     Returns:
+#         Tuple[jnp.ndarray, jnp.ndarray]: The optimal lambda_L and lambda_H values.
+#     """
+#     N = Y.shape[0]
+#     fold_size = N // K
+#
+#     def loss_fn(lambda_L_H):
+#         lambda_L, lambda_H = lambda_L_H
+#
+#         def fold_loss(k):
+#             mask = (jnp.arange(N) >= k * fold_size) & (jnp.arange(N) < (k + 1) * fold_size)
+#
+#             Y_train = jnp.where(mask[:, None], jnp.zeros_like(Y), Y)
+#             Y_test = jnp.where(mask[:, None], Y, jnp.zeros_like(Y))
+#             W_train = jnp.where(mask[:, None], jnp.zeros_like(W), W)
+#             W_test = jnp.where(mask[:, None], W, jnp.zeros_like(W))
+#             X_train = jnp.where(mask[:, None], jnp.zeros_like(X), X)
+#             V_train = jnp.where(mask[:, None, None], jnp.zeros_like(V), V)
+#             V_test = jnp.where(mask[:, None, None], V, jnp.zeros_like(V))
+#
+#             initial_params = initialize_params(Y_train, X_train, Z, V_train)
+#
+#             L, H, gamma, delta, beta = fit(
+#                 Y_train,
+#                 W_train,
+#                 X_train,
+#                 Z,
+#                 V_train,
+#                 Omega,
+#                 lambda_L,
+#                 lambda_H,
+#                 initial_params,
+#                 max_iter,
+#                 tol,
+#             )
+#
+#             Y_pred = (
+#                     L
+#                     + jnp.outer(gamma, jnp.ones(Z.shape[0]))
+#                     + jnp.outer(jnp.ones(N), delta)
+#             )
+#
+#             Y_pred = jax.lax.cond(
+#                 V_test.shape[2] > 0,
+#                 lambda Y_pred: Y_pred + jnp.sum(V_test * beta, axis=2),
+#                 lambda Y_pred: Y_pred,
+#                 Y_pred,
+#             )
+#
+#             O_test = W_test == 0
+#             loss = jnp.sum((Y_test - Y_pred) ** 2 * O_test) / (jnp.sum(O_test) + 1e-10)
+#             return loss
+#
+#         losses = jax.lax.map(fold_loss, jnp.arange(K))
+#         return jnp.mean(losses)
+#
+#     # Compute the losses outside JIT context to ensure shapes are concrete
+#     losses = jax.vmap(loss_fn)(lambda_grid)
+#     best_lambda_L_H = jnp.argmin(losses)
+#     best_lambda_L, best_lambda_H = lambda_grid[best_lambda_L_H]
+#
+#     return best_lambda_L, best_lambda_H
+
+
 def cross_validate(
     Y: Array,
     W: Array,
@@ -285,60 +448,58 @@ def cross_validate(
     max_iter: int,
     tol: float,
     K: int = 5,
-) -> tuple[Scalar, Scalar]:
-    """
-    Perform K-fold cross-validation to select optimal regularization parameters.
-
-    Args:
-        Y (Array): The observed outcome matrix.
-        W (Array): The binary treatment matrix.
-        X (Array): The unit-specific covariates matrix.
-        Z (Array): The time-specific covariates matrix.
-        V (Array): The unit-time specific covariates tensor.
-        Omega (Array): The autocorrelation matrix.
-        lambda_grid (Array): Grid of (lambda_L, lambda_H) pairs to search over.
-        max_iter (int): Maximum number of iterations for fitting.
-        tol (float): Convergence tolerance for fitting.
-        K (int): Number of folds for cross-validation. Default is 5.
-
-    Returns:
-        Tuple[Scalar, Scalar]: The optimal lambda_L and lambda_H values.
-    """
+) -> Tuple[Scalar, Scalar]:
+    N = Y.shape[0]
+    fold_size = N // K
 
     def loss_fn(lambda_L_H):
         lambda_L, lambda_H = lambda_L_H
-        key = jax.random.PRNGKey(0)
 
         def fold_loss(k):
-            mask = jax.random.bernoulli(key, 0.8, (Y.shape[0],))
-            test_idx = jnp.where(~mask)[0]
+            mask = (jnp.arange(N) >= k * fold_size) & (jnp.arange(N) < (k + 1) * fold_size)
 
-            def compute_loss():
-                fold_loss = compute_cv_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H, max_iter, tol)
-                return jax.lax.cond(
-                    jnp.isfinite(fold_loss),
-                    lambda _: fold_loss,
-                    lambda _: jnp.inf,
-                    None,
-                )
+            Y_train = jnp.where(mask[:, None], jnp.zeros_like(Y), Y)
+            Y_test = jnp.where(mask[:, None], Y, jnp.zeros_like(Y))
+            W_train = jnp.where(mask[:, None], jnp.zeros_like(W), W)
+            W_test = jnp.where(mask[:, None], W, jnp.zeros_like(W))
+            X_train = jnp.where(mask[:, None], jnp.zeros_like(X), X)
+            V_train = jnp.where(mask[:, None, None], jnp.zeros_like(V), V)
+            V_test = jnp.where(mask[:, None, None], V, jnp.zeros_like(V))
 
-            return jax.lax.cond(
-                jnp.sum(W[test_idx] == 1) > 0,
-                compute_loss,
-                lambda: jnp.inf,
+            initial_params = initialize_params(Y_train, X_train, Z, V_train)
+
+            L, H, gamma, delta, beta = fit(
+                Y_train,
+                W_train,
+                X_train,
+                Z,
+                V_train,
+                Omega,
+                lambda_L,
+                lambda_H,
+                initial_params,
+                max_iter,
+                tol,
             )
 
+            Y_pred = L + jnp.outer(gamma, jnp.ones(Z.shape[0])) + jnp.outer(jnp.ones(N), delta)
+
+            Y_pred = jax.lax.cond(
+                V_test.shape[2] > 0,
+                lambda Y_pred: Y_pred + jnp.sum(V_test * beta, axis=2),
+                lambda Y_pred: Y_pred,
+                Y_pred,
+            )
+
+            O_test = W_test == 0
+            loss = jnp.sum((Y_test - Y_pred) ** 2 * O_test) / (jnp.sum(O_test) + 1e-10)
+            return loss
+
         losses = jax.lax.map(fold_loss, jnp.arange(K))
-        valid_folds = jnp.sum(jnp.isfinite(losses))
+        return jnp.mean(losses)
 
-        return jax.lax.cond(
-            valid_folds > 0,
-            lambda _: jnp.sum(losses) / valid_folds,
-            lambda _: jnp.inf,
-            None,
-        )
-
-    best_lambda_L_H = jnp.argmin(jax.vmap(loss_fn)(lambda_grid))
+    losses = jax.vmap(loss_fn)(lambda_grid)
+    best_lambda_L_H = jnp.argmin(losses)
     best_lambda_L, best_lambda_H = lambda_grid[best_lambda_L_H]
 
     return best_lambda_L, best_lambda_H
@@ -631,42 +792,11 @@ def estimate(
     expanding_window: bool = False,
     max_window_size: Optional[int] = None,
 ) -> MCNNMResults:
-    """
-    Estimate the MC-NNM model and return results.
-
-    Args:
-        Y (Array): The observed outcome matrix.
-        W (Array): The binary treatment matrix.
-        X (Optional[Array]): The unit-specific covariates matrix. Default is None.
-        Z (Optional[Array]): The time-specific covariates matrix. Default is None.
-        V (Optional[Array]): The unit-time specific covariates tensor. Default is None.
-        Omega (Optional[Array]): The autocorrelation matrix. Default is None.
-        lambda_L (Optional[Scalar]): The regularization parameter for L. If None, it will be selected via validation.
-        lambda_H (Optional[Scalar]): The regularization parameter for H. If None, it will be selected via validation.
-        n_lambda_L (int): Number of lambda_L values to consider in grid search. Default is 10.
-        n_lambda_H (int): Number of lambda_H values to consider in grid search. Default is 10.
-        return_tau (bool): Whether to return the estimated treatment effect. Default is True.
-        return_lambda (bool): Whether to return the selected lambda values. Default is True.
-        return_completed_L (bool): Whether to return the completed low-rank matrix. Default is True.
-        return_completed_Y (bool): Whether to return the completed outcome matrix. Default is True.
-        return_fixed_effects (bool): Whether to return the estimated fixed effects. Default is False.
-        return_covariate_coefficients (bool): Whether to return the estimated covariate coefficients. Default is False.
-        max_iter (int): Maximum number of iterations for fitting. Default is 1000.
-        tol (Scalar): Convergence tolerance for fitting. Default is 1e-4.
-        validation_method (str): Method for selecting lambda values. Either 'cv' or 'holdout'. Default is 'cv'.
-        K (int): Number of folds for cross-validation. Default is 5.
-        window_size (Optional[int]): Size of the rolling window for time-based validation. Default is None.
-        expanding_window (bool): Whether to use an expanding window for time-based validation. Default is False.
-        max_window_size (Optional[int]): Maximum size of the expanding window for time-based validation. Default None.
-
-    Returns:
-        MCNNMResults: A named tuple containing the requested results.
-    """
     X, Z, V, Omega = check_inputs(Y, W, X, Z, V, Omega)
     X, Z, V, Omega = cast(Array, X), cast(Array, Z), cast(Array, V), cast(Array, Omega)
     N, T = Y.shape
 
-    def select_lambda():
+    def select_lambda(_):
         lambda_grid = jnp.array(
             jnp.meshgrid(propose_lambda(None, n_lambda_L), propose_lambda(None, n_lambda_H))
         ).T.reshape(-1, 2)
@@ -698,8 +828,14 @@ def estimate(
         else:
             raise ValueError("Invalid validation_method. Choose 'cv' or 'holdout'.")
 
+    def use_provided_lambda(_):
+        return (lambda_L, lambda_H)
+
     lambda_L, lambda_H = jax.lax.cond(
-        (lambda_L is None) | (lambda_H is None), select_lambda, lambda: (lambda_L, lambda_H)
+        jnp.logical_or(lambda_L is None, lambda_H is None),
+        select_lambda,
+        use_provided_lambda,
+        operand=None,
     )
 
     initial_params = initialize_params(Y, X, Z, V)
