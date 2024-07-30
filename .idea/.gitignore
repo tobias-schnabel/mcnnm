@@ -3,65 +3,10 @@
 /workspace.xml
 # Editor-based HTTP Client requests
 /httpRequests/
-# Datasource local storage ignored files
 /dataSources/
 /dataSources.local.xml
 /misc.xml
 
-# Python
-__pycache__/
-*.py[cod]
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Sphinx documentation
-docs/_build/
-
-# Virtual environments
-.env
-.venv
-env/
-venv/
-ENV/
-
-# IDEs and editors
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Operating system files
-.DS_Store
-Thumbs.db
-
-# pytest
-.pytest_cache/
-*.pyc
-
-# Coverage
-.coverage
-htmlcov/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# pyenv
-.python-version
-
-# Poetry
-poetry.lock
+# IDE files
+modules.xml
+vcs.xml
