@@ -51,6 +51,7 @@ Thumbs.db
 
 # pytest
 .pytest_cache/
+*.pyc
 
 # Coverage
 .coverage
