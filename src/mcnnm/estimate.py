@@ -23,7 +23,7 @@ def update_L(Y_adj: Array, L: Array, Omega: Array, O: Array, lambda_L: float) ->
     """
     Y_adj_Omega = jnp.dot(Y_adj, Omega)
     L_new = jnp.where(O, Y_adj_Omega, L)
-    lambda_val = lambda_L * float(jnp.sum(O)) / 2
+    lambda_val = lambda_L * jnp.sum(O).astype(float) / 2
     return shrink_lambda(L_new, lambda_val)
 
 
