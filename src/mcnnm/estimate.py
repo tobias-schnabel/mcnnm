@@ -3,8 +3,6 @@ import jax.numpy as jnp
 from typing import Optional, Tuple, NamedTuple, cast
 from .types import Array, Scalar
 from mcnnm.util import shrink_lambda, initialize_params, propose_lambda, check_inputs
-from mcnnm.util import print_with_timestamp
-from jax import lax
 
 
 def update_L(Y_adj: Array, L: Array, Omega: Array, O: Array, lambda_L: Scalar) -> Array:
@@ -108,7 +106,7 @@ def fit_step(
     Returns:
         Tuple[Array, Array, Array, Array, Array]: Updated estimates of L, H, gamma, delta, and beta.
     """
-    O = W == 0
+    O = jnp.array(W == 0, dtype=jnp.int32)
     Y_adj_base = Y - gamma[:, jnp.newaxis] - delta[jnp.newaxis, :]
 
     def adjust_Y_adj(Y_adj_base, X_tilde, H, Z_tilde, V, beta):
@@ -353,10 +351,10 @@ def compute_time_based_loss(
     Z: Array,
     V: Array,
     Omega: Array,
-    lambda_L: float,
-    lambda_H: float,
+    lambda_L: Scalar,
+    lambda_H: Scalar,
     max_iter: int,
-    tol: float,
+    tol: Scalar,
     train_idx: Array,
     test_idx: Array,
 ) -> Scalar:
@@ -370,15 +368,15 @@ def compute_time_based_loss(
         Z (Array): The time-specific covariates matrix.
         V (Array): The unit-time specific covariates tensor.
         Omega (Array): The autocorrelation matrix.
-        lambda_L (float): The regularization parameter for L.
-        lambda_H (float): The regularization parameter for H.
+        lambda_L (Scalar): The regularization parameter for L.
+        lambda_H (Scalar): The regularization parameter for H.
         max_iter (int): Maximum number of iterations for fitting.
-        tol (float): Convergence tolerance for fitting.
+        tol (Scalar): Convergence tolerance for fitting.
         train_idx (Array): Indices of training data.
         test_idx (Array): Indices of test data.
 
     Returns:
-        float: The computed time-based holdout loss.
+        Scalar: The computed time-based holdout loss.
     """
     Y_train, Y_test = Y[:, train_idx], Y[:, test_idx]
     W_train, W_test = W[:, train_idx], W[:, test_idx]
@@ -387,7 +385,6 @@ def compute_time_based_loss(
     Z_train = Z[train_idx, :]
 
     initial_params = initialize_params(Y_train, X_train, Z_train, V_train)
-
     L, H, gamma, delta, beta = fit(
         Y_train,
         W_train,
@@ -421,14 +418,13 @@ def compute_time_based_loss(
 
     O_test = W_test == 0
     loss = jnp.sum((Y_test - Y_pred) ** 2 * O_test) / jnp.sum(O_test)
-    loss = jax.lax.cond(
+
+    return jax.lax.cond(
         jnp.sum(O_test) > 0,
         lambda _: loss,
-        lambda _: jnp.inf,
+        lambda _: jnp.array(jnp.inf),
         None,
     )
-
-    return loss
 
 
 def time_based_validate(
@@ -440,12 +436,12 @@ def time_based_validate(
     Omega: Array,
     lambda_grid: Array,
     max_iter: int,
-    tol: float,
+    tol: Scalar,
     window_size: Optional[int] = None,
     expanding_window: bool = False,
     max_window_size: Optional[int] = None,
     n_folds: int = 5,
-) -> Tuple[float, float]:
+) -> Tuple[Scalar, Scalar]:
     """
     Perform time-based validation to select optimal regularization parameters.
 
@@ -458,92 +454,65 @@ def time_based_validate(
         Omega (Array): The autocorrelation matrix.
         lambda_grid (Array): Grid of (lambda_L, lambda_H) pairs to search over.
         max_iter (int): Maximum number of iterations for fitting.
-        tol (float): Convergence tolerance for fitting.
+        tol (Scalar): Convergence tolerance for fitting.
         window_size (Optional[int]): Size of the rolling window. Default is None.
         expanding_window (bool): Whether to use an expanding window. Default is False.
         max_window_size (Optional[int]): Maximum size of the expanding window. Default is None.
         n_folds (int): Number of folds for time-based validation. Default is 5.
 
     Returns:
-        Tuple[float, float]: The optimal lambda_L and lambda_H values.
+        Tuple[Scalar, Scalar]: The optimal lambda_L and lambda_H values.
     """
     N, T = Y.shape
+    window_size = jax.lax.cond(
+        window_size is None, lambda _: (T * 4) // 5, lambda _: window_size, operand=None
+    )
+    max_window_size = jax.lax.cond(
+        max_window_size is None, lambda _: window_size, lambda _: max_window_size, operand=None
+    )
+    fold_size = (T - window_size) // n_folds
 
-    if window_size is None:
-        window_size = (T * 4) // 5
-
-    if expanding_window and (max_window_size is None or max_window_size < window_size):
-        max_window_size = window_size
-
-    # Ensure max_window_size is not None
-    if max_window_size is None:
-        max_window_size = window_size
-
-    best_lambda_L = None
-    best_lambda_H = None
-    best_loss = jnp.inf
-
-    # Pre-compute all train and test indices
-    all_indices = []
-    t = window_size
-    while t < T:
-        if expanding_window:
-            train_idx = jnp.arange(max(0, t - max_window_size), t)
-        else:
-            train_idx = jnp.arange(max(0, t - window_size), t)
-
-        test_idx = jnp.arange(t, min(t + (T - window_size) // n_folds, T))
-        all_indices.append((train_idx, test_idx))
-        t += (T - window_size) // n_folds
-        if t >= T:
-            break
-
-    # print(f"Number of folds: {len(all_indices)}")
-
-    def compute_loss_for_lambda(lambda_pair):
-        """
-        Compute the average loss for a given lambda pair across all folds.
-
-        Args:
-            lambda_pair (Array): A pair of lambda values (lambda_L, lambda_H).
-
-        Returns:
-            float: The average loss across all valid folds, or infinity if no valid folds.
-        """
+    def loss_fn(lambda_pair):
         lambda_L, lambda_H = lambda_pair
-        total_loss = 0.0
-        valid_folds = 0
 
-        for i, (train_idx, test_idx) in enumerate(all_indices):
-            fold_loss = compute_time_based_loss(
+        def fold_loss(t):
+            train_start = jax.lax.cond(
+                expanding_window,
+                lambda _: jnp.maximum(0, t - max_window_size),
+                lambda _: jnp.maximum(0, t - window_size),
+                operand=None,
+            )
+            train_end = t
+            test_end = jnp.minimum(t + fold_size, T)
+
+            train_idx = jnp.arange(train_start, train_end)
+            test_idx = jnp.arange(train_end, test_end)
+
+            return compute_time_based_loss(
                 Y, W, X, Z, V, Omega, lambda_L, lambda_H, max_iter, tol, train_idx, test_idx
             )
-            # print(f"Fold {i}: loss = {fold_loss}")
-            if jnp.isfinite(fold_loss):
-                total_loss += fold_loss
-                valid_folds += 1
 
-        # print(f"Lambda pair: {lambda_pair}, Valid folds: {valid_folds}, Total loss: {total_loss}")
+        t_values = jnp.arange(window_size, T, fold_size)
+        fold_losses = jax.lax.map(fold_loss, t_values)
+        valid_losses = jnp.isfinite(fold_losses)
 
-        return lax.cond(
-            valid_folds > 0, lambda _: total_loss / valid_folds, lambda _: jnp.inf, operand=None
+        return jax.lax.cond(
+            jnp.any(valid_losses),
+            lambda _: jnp.sum(jnp.where(valid_losses, fold_losses, 0)) / jnp.sum(valid_losses),
+            lambda _: jnp.array(jnp.inf),
+            operand=None,
         )
 
-    # Compute losses for all lambda pairs
-    losses = jnp.array([compute_loss_for_lambda(lambda_pair) for lambda_pair in lambda_grid])
-
-    # Find the best lambda pair
+    losses = jax.lax.map(loss_fn, lambda_grid)
     best_idx = jnp.argmin(losses)
     best_lambda_L, best_lambda_H = lambda_grid[best_idx]
-    best_loss = float(losses[best_idx])
 
-    # print(f"Best loss: {best_loss}, Best lambda_L: {best_lambda_L}, Best lambda_H: {best_lambda_H}")
-
-    if best_loss == jnp.inf:
-        print("Warning: No valid loss found in time_based_validate")
-        return float(lambda_grid[0][0]), float(lambda_grid[0][1])
-
-    return best_lambda_L, best_lambda_H
+    return jax.lax.cond(
+        jnp.isinf(losses[best_idx]),
+        lambda _: (jnp.array(lambda_grid[0][0]), jnp.array(lambda_grid[0][1])),
+        lambda _: (best_lambda_L, best_lambda_H),
+        operand=None,
+    )
 
 
 def compute_treatment_effect(
@@ -557,9 +526,13 @@ def compute_treatment_effect(
     W: Array,
     Z: Array,
     V: Array,
-) -> float:
+) -> Scalar:
     """
-    Compute the average treatment effect.
+    Compute the average treatment effect using the MC-NNM model estimates.
+
+    This function calculates the difference between the observed outcomes and the
+    completed (counterfactual) outcomes for treated units, then averages this
+    difference to estimate the average treatment effect.
 
     Args:
         Y (Array): The observed outcome matrix.
@@ -574,49 +547,63 @@ def compute_treatment_effect(
         V (Array): The unit-time specific covariates tensor.
 
     Returns:
-        float: The estimated average treatment effect.
+        Scalar: The estimated average treatment effect.
     """
     N, T = Y.shape
     X_tilde = jnp.hstack((X, jnp.eye(N)))
     Z_tilde = jnp.hstack((Z, jnp.eye(T)))
     Y_completed = L + jnp.outer(gamma, jnp.ones(T)) + jnp.outer(jnp.ones(N), delta)
 
-    if X.shape[1] > 0 and Z.shape[1] > 0:
-        Y_completed += jnp.dot(X_tilde, jnp.dot(H, Z_tilde.T))
+    Y_completed = jax.lax.cond(
+        (X.shape[1] > 0) & (Z.shape[1] > 0),
+        lambda _: Y_completed + jnp.dot(X_tilde, jnp.dot(H, Z_tilde.T)),
+        lambda _: Y_completed,
+        operand=None,
+    )
 
-    if V.shape[2] > 0:
-        Y_completed += jnp.sum(V * beta[None, None, :], axis=2)
+    Y_completed = jax.lax.cond(
+        V.shape[2] > 0,
+        lambda _: Y_completed + jnp.sum(V * beta[None, None, :], axis=2),
+        lambda _: Y_completed,
+        operand=None,
+    )
 
     treated_units = jnp.sum(W)
     tau = jnp.sum((Y - Y_completed) * W) / treated_units
-    return float(tau)
+    return tau
 
 
 class MCNNMResults(NamedTuple):
     """
-    A named tuple containing the results of the MC-NNM estimation.
+    A named tuple containing the results of the MC-NNM (Matrix Completion with Nuclear Norm Minimization) estimation.
+
+    This class encapsulates all the key outputs from the MC-NNM model, including
+    the estimated treatment effect, selected regularization parameters, and
+    various estimated matrices and vectors.
 
     Attributes:
-        tau (Optional[float]): The estimated average treatment effect.
-        lambda_L (Optional[float]): The selected regularization parameter for L.
-        lambda_H (Optional[float]): The selected regularization parameter for H.
-        L (Optional[float | Array]): The estimated low-rank matrix.
-        Y_completed (Optional[float | Array]): The completed outcome matrix.
-        gamma (Optional[float | Array]): The estimated unit fixed effects.
-        delta (Optional[float | Array]): The estimated time fixed effects.
-        beta (Optional[float | Array]): The estimated unit-time specific covariate coefficients.
-        H (Optional[float | Array]): The estimated covariate coefficient matrix.
+        tau (Optional[Scalar]): The estimated average treatment effect.
+        lambda_L (Optional[Scalar]): The selected regularization parameter for the low-rank matrix L.
+        lambda_H (Optional[Scalar]): The selected regularization parameter for the covariate coefficient matrix H.
+        L (Optional[Array]): The estimated low-rank matrix.
+        Y_completed (Optional[Array]): The completed outcome matrix (including counterfactuals).
+        gamma (Optional[Array]): The estimated unit fixed effects.
+        delta (Optional[Array]): The estimated time fixed effects.
+        beta (Optional[Array]): The estimated unit-time specific covariate coefficients.
+        H (Optional[Array]): The estimated covariate coefficient matrix.
+
+    All attributes are optional and initialized to None by default.
     """
 
-    tau: Optional[float] = None
-    lambda_L: Optional[float] = None
-    lambda_H: Optional[float] = None
-    L: Optional[float | Array] = None
-    Y_completed: Optional[float | Array] = None
-    gamma: Optional[float | Array] = None
-    delta: Optional[float | Array] = None
-    beta: Optional[float | Array] = None
-    H: Optional[float | Array] = None
+    tau: Optional[Scalar] = None
+    lambda_L: Optional[Scalar] = None
+    lambda_H: Optional[Scalar] = None
+    L: Optional[Array] = None
+    Y_completed: Optional[Array] = None
+    gamma: Optional[Array] = None
+    delta: Optional[Array] = None
+    beta: Optional[Array] = None
+    H: Optional[Array] = None
 
 
 def estimate(
@@ -626,8 +613,8 @@ def estimate(
     Z: Optional[Array] = None,
     V: Optional[Array] = None,
     Omega: Optional[Array] = None,
-    lambda_L: Optional[float] = None,
-    lambda_H: Optional[float] = None,
+    lambda_L: Optional[Scalar] = None,
+    lambda_H: Optional[Scalar] = None,
     n_lambda_L: int = 10,
     n_lambda_H: int = 10,
     return_tau: bool = True,
@@ -637,8 +624,7 @@ def estimate(
     return_fixed_effects: bool = False,
     return_covariate_coefficients: bool = False,
     max_iter: int = 1000,
-    tol: float = 1e-4,
-    verbose: bool = False,
+    tol: Scalar = 1e-4,
     validation_method: str = "cv",
     K: int = 5,
     window_size: Optional[int] = None,
@@ -655,20 +641,18 @@ def estimate(
         Z (Optional[Array]): The time-specific covariates matrix. Default is None.
         V (Optional[Array]): The unit-time specific covariates tensor. Default is None.
         Omega (Optional[Array]): The autocorrelation matrix. Default is None.
-        lambda_L (Optional[float]): The regularization parameter for L. If None, it will be selected via validation.
-        lambda_H (Optional[float]): The regularization parameter for H. If None, it will be selected via validation.
+        lambda_L (Optional[Scalar]): The regularization parameter for L. If None, it will be selected via validation.
+        lambda_H (Optional[Scalar]): The regularization parameter for H. If None, it will be selected via validation.
         n_lambda_L (int): Number of lambda_L values to consider in grid search. Default is 10.
         n_lambda_H (int): Number of lambda_H values to consider in grid search. Default is 10.
         return_tau (bool): Whether to return the estimated treatment effect. Default is True.
         return_lambda (bool): Whether to return the selected lambda values. Default is True.
         return_completed_L (bool): Whether to return the completed low-rank matrix. Default is True.
         return_completed_Y (bool): Whether to return the completed outcome matrix. Default is True.
-        return_fixed_effects (bool): (For debugging) Whether to return the estimated fixed effects. Default is False.
-        return_covariate_coefficients (bool): (For debugging) Whether to return the estimated covariate coefficients.
-        Default is False.
+        return_fixed_effects (bool): Whether to return the estimated fixed effects. Default is False.
+        return_covariate_coefficients (bool): Whether to return the estimated covariate coefficients. Default is False.
         max_iter (int): Maximum number of iterations for fitting. Default is 1000.
-        tol (float): Convergence tolerance for fitting. Default is 1e-4.
-        verbose (bool): Whether to print progress messages. Default is False.
+        tol (Scalar): Convergence tolerance for fitting. Default is 1e-4.
         validation_method (str): Method for selecting lambda values. Either 'cv' or 'holdout'. Default is 'cv'.
         K (int): Number of folds for cross-validation. Default is 5.
         window_size (Optional[int]): Size of the rolling window for time-based validation. Default is None.
@@ -679,21 +663,16 @@ def estimate(
         MCNNMResults: A named tuple containing the requested results.
     """
     X, Z, V, Omega = check_inputs(Y, W, X, Z, V, Omega)
-    # Type assertions to ensure X, Z, V, and Omega are Arrays
-    X = cast(Array, X)
-    Z = cast(Array, Z)
-    V = cast(Array, V)
-    Omega = cast(Array, Omega)
+    X, Z, V, Omega = cast(Array, X), cast(Array, Z), cast(Array, V), cast(Array, Omega)
     N, T = Y.shape
 
-    if lambda_L is None or lambda_H is None:
+    def select_lambda():
+        lambda_grid = jnp.array(
+            jnp.meshgrid(propose_lambda(None, n_lambda_L), propose_lambda(None, n_lambda_H))
+        ).T.reshape(-1, 2)
+
         if validation_method == "cv":
-            if verbose:
-                print_with_timestamp("Cross-validating lambda_L, lambda_H")
-            lambda_grid = jnp.array(
-                jnp.meshgrid(propose_lambda(None, n_lambda_L), propose_lambda(None, n_lambda_L))
-            ).T.reshape(-1, 2)
-            lambda_L, lambda_H = cross_validate(
+            return cross_validate(
                 Y, W, X, Z, V, Omega, lambda_grid, K=K, max_iter=max_iter // 10, tol=tol * 10
             )
         elif validation_method == "holdout":
@@ -702,14 +681,7 @@ def estimate(
                     "The matrix does not have enough columns for time-based validation. "
                     "Please increase the number of time periods or use cross-validation"
                 )
-            if verbose:
-                print_with_timestamp(
-                    "Selecting lambda_L, lambda_H using time-based holdout validation"
-                )
-            lambda_grid = jnp.array(
-                jnp.meshgrid(propose_lambda(None, n_lambda_L), propose_lambda(None, n_lambda_H))
-            ).T.reshape(-1, 2)
-            lambda_L, lambda_H = time_based_validate(
+            return time_based_validate(
                 Y,
                 W,
                 X,
@@ -726,8 +698,9 @@ def estimate(
         else:
             raise ValueError("Invalid validation_method. Choose 'cv' or 'holdout'.")
 
-        if verbose:
-            print_with_timestamp(f"Selected lambda_L: {lambda_L:.4f}, lambda_H: {lambda_H:.4f}")
+    lambda_L, lambda_H = jax.lax.cond(
+        (lambda_L is None) | (lambda_H is None), select_lambda, lambda: (lambda_L, lambda_H)
+    )
 
     initial_params = initialize_params(Y, X, Z, V)
     L, H, gamma, delta, beta = fit(
@@ -735,44 +708,35 @@ def estimate(
     )
 
     results = {}
-    if return_tau:
-        tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W, Z, V)
-        results["tau"] = float(tau)  # Ensure tau is a float
-    if return_lambda:
-        results["lambda_L"] = float(lambda_L)  # Ensure lambda_L is a float
-        results["lambda_H"] = float(lambda_H)  # Ensure lambda_H is a float
-    if return_completed_L:
-        results["L"] = L  # Ensure L is an Array
-    if return_completed_Y:
-        Y_completed = L + jnp.dot(
-            jnp.hstack((X, jnp.eye(N))), jnp.dot(H, jnp.hstack((Z, jnp.eye(T))).T)
-        )
-        Y_completed += jnp.outer(gamma, jnp.ones(T)) + jnp.outer(jnp.ones(N), delta)
-        if V.shape[2] > 0:
-            Y_completed += jnp.sum(V * beta, axis=2)
-        results["Y_completed"] = Y_completed  # Ensure Y_completed is an Array
-    if return_fixed_effects:
-        results["gamma"] = gamma  # Ensure gamma is an Array
-        results["delta"] = delta  # Ensure delta is an Array
-    if return_covariate_coefficients:
-        results["beta"] = beta  # Ensure beta is an Array
-        results["H"] = H  # Ensure H is an Array
 
-    # # Explicitly create MCNNMResults object, ensuring correct types
-    # mcnnm_results = MCNNMResults(
-    #     tau=results.get('tau', None),
-    #     lambda_L=results.get('lambda_L', None),
-    #     lambda_H=results.get('lambda_H', None),
-    #     L=results.get('L', None) if isinstance(results.get('L', None), jnp.ndarray) else None,
-    #     Y_completed=results.get('Y_completed', None) if isinstance(results.get('Y_completed', None),
-    #                                                                jnp.ndarray) else None,
-    #     gamma=results.get('gamma', None) if isinstance(results.get('gamma', None), jnp.ndarray) else None,
-    #     delta=results.get('delta', None) if isinstance(results.get('delta', None), jnp.ndarray) else None,
-    #     beta=results.get('beta', None) if isinstance(results.get('beta', None), jnp.ndarray) else None,
-    #     H=results.get('H', None) if isinstance(results.get('H', None), jnp.ndarray) else None
-    # )
-    #
-    # return mcnnm_results
+    def compute_tau():
+        tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W, Z, V)
+        return jnp.array(tau, dtype=jnp.float32)
+
+    def compute_Y_completed():
+        X_tilde = jnp.hstack((X, jnp.eye(N)))
+        Z_tilde = jnp.hstack((Z, jnp.eye(T)))
+        Y_completed = L + jnp.dot(X_tilde, jnp.dot(H, Z_tilde.T))
+        Y_completed += jnp.outer(gamma, jnp.ones(T)) + jnp.outer(jnp.ones(N), delta)
+        Y_completed = jax.lax.cond(
+            V.shape[2] > 0, lambda y: y + jnp.sum(V * beta, axis=2), lambda y: y, Y_completed
+        )
+        return Y_completed
+
+    results["tau"] = jax.lax.cond(return_tau, compute_tau, lambda: None)
+    results["lambda_L"] = jax.lax.cond(
+        return_lambda, lambda: jnp.array(lambda_L, dtype=jnp.float32), lambda: None
+    )
+    results["lambda_H"] = jax.lax.cond(
+        return_lambda, lambda: jnp.array(lambda_H, dtype=jnp.float32), lambda: None
+    )
+    results["L"] = jax.lax.cond(return_completed_L, lambda: L, lambda: None)
+    results["Y_completed"] = jax.lax.cond(return_completed_Y, compute_Y_completed, lambda: None)
+    results["gamma"] = jax.lax.cond(return_fixed_effects, lambda: gamma, lambda: None)
+    results["delta"] = jax.lax.cond(return_fixed_effects, lambda: delta, lambda: None)
+    results["beta"] = jax.lax.cond(return_covariate_coefficients, lambda: beta, lambda: None)
+    results["H"] = jax.lax.cond(return_covariate_coefficients, lambda: H, lambda: None)
+
     return MCNNMResults(**results)
 
 
@@ -783,19 +747,18 @@ def complete_matrix(
     Z: Optional[Array] = None,
     V: Optional[Array] = None,
     Omega: Optional[Array] = None,
-    lambda_L: Optional[float] = None,
-    lambda_H: Optional[float] = None,
+    lambda_L: Optional[Scalar] = None,
+    lambda_H: Optional[Scalar] = None,
     n_lambda_L: int = 10,
     n_lambda_H: int = 10,
     max_iter: int = 1000,
-    tol: float = 1e-4,
-    verbose: bool = False,
+    tol: Scalar = 1e-4,
     validation_method: str = "cv",
     K: int = 5,
     window_size: Optional[int] = None,
     expanding_window: bool = False,
     max_window_size: Optional[int] = None,
-) -> Tuple[Array, float, float]:
+) -> Tuple[Array, Scalar, Scalar]:
     """
     Complete the matrix Y using the MC-NNM model and return the optimal regularization parameters.
 
@@ -806,13 +769,12 @@ def complete_matrix(
         Z (Optional[Array]): The time-specific covariates matrix. Default is None.
         V (Optional[Array]): The unit-time specific covariates tensor. Default is None.
         Omega (Optional[Array]): The autocorrelation matrix. Default is None.
-        lambda_L (Optional[float]): The regularization parameter for L. If None, it will be selected via validation.
-        lambda_H (Optional[float]): The regularization parameter for H. If None, it will be selected via validation.
+        lambda_L (Optional[Scalar]): The regularization parameter for L. If None, it will be selected via validation.
+        lambda_H (Optional[Scalar]): The regularization parameter for H. If None, it will be selected via validation.
         n_lambda_L (int): Number of lambda_L values to consider in grid search. Default is 10.
         n_lambda_H (int): Number of lambda_H values to consider in grid search. Default is 10.
         max_iter (int): Maximum number of iterations for fitting. Default is 1000.
-        tol (float): Convergence tolerance for fitting. Default is 1e-4.
-        verbose (bool): Whether to print progress messages. Default is False.
+        tol (Scalar): Convergence tolerance for fitting. Default is 1e-4.
         validation_method (str): Method for selecting lambda values. Either 'cv' or 'holdout'. Default is 'cv'.
         K (int): Number of folds for cross-validation. Default is 5.
         window_size (Optional[int]): Size of the rolling window for time-based validation. Default is None.
@@ -820,7 +782,7 @@ def complete_matrix(
         max_window_size (Optional[int]): Maximum size of the expanding window for time-based validation. Default None.
 
     Returns:
-        Tuple[Array, float, float]: A tuple containing:
+        Tuple[Array, Scalar, Scalar]: A tuple containing:
             - The completed outcome matrix
             - The optimal lambda_L value
             - The optimal lambda_H value
@@ -844,7 +806,6 @@ def complete_matrix(
         return_covariate_coefficients=False,
         max_iter=max_iter,
         tol=tol,
-        verbose=verbose,
         validation_method=validation_method,
         K=K,
         window_size=window_size,
@@ -852,9 +813,21 @@ def complete_matrix(
         max_window_size=max_window_size,
     )
 
-    y_completed = results.Y_completed if results.Y_completed is not None else jnp.zeros_like(Y)
-    y_completed = cast(Array, y_completed)  # Ensure y_completed is of type Array
-    lambda_L = results.lambda_L if results.lambda_L is not None else -1.0
-    lambda_H = results.lambda_H if results.lambda_H is not None else -1.0
+    def get_y_completed():
+        return jax.lax.cond(
+            results.Y_completed is not None, lambda: results.Y_completed, lambda: jnp.zeros_like(Y)
+        )
+
+    y_completed = get_y_completed()
+    lambda_L = jax.lax.cond(
+        results.lambda_L is not None,
+        lambda: results.lambda_L,
+        lambda: jnp.array(-1.0, dtype=jnp.float32),
+    )
+    lambda_H = jax.lax.cond(
+        results.lambda_H is not None,
+        lambda: results.lambda_H,
+        lambda: jnp.array(-1.0, dtype=jnp.float32),
+    )
 
     return y_completed, lambda_L, lambda_H
