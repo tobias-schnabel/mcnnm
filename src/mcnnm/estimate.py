@@ -1,13 +1,13 @@
 import jax
 import jax.numpy as jnp
 from typing import Optional, Tuple, NamedTuple, cast
-from .types import Array
+from .types import Array, Scalar
 from mcnnm.util import shrink_lambda, initialize_params, propose_lambda, check_inputs
 from mcnnm.util import print_with_timestamp
 from jax import lax
 
 
-def update_L(Y_adj: Array, L: Array, Omega: Array, O: Array, lambda_L: float) -> Array:
+def update_L(Y_adj: Array, L: Array, Omega: Array, O: Array, lambda_L: Scalar) -> Array:
     """
     Update the low-rank matrix L in the MC-NNM algorithm.
 
@@ -16,18 +16,18 @@ def update_L(Y_adj: Array, L: Array, Omega: Array, O: Array, lambda_L: float) ->
         L (Array): The current estimate of the low-rank matrix.
         Omega (Array): The autocorrelation matrix.
         O (Array): The binary mask for observed entries.
-        lambda_L (float): The regularization parameter for L.
+        lambda_L (Scalar): The regularization parameter for L.
 
     Returns:
         Array: The updated low-rank matrix L.
     """
     Y_adj_Omega = jnp.dot(Y_adj, Omega)
     L_new = jnp.where(O, Y_adj_Omega, L)
-    lambda_val = lambda_L * jnp.sum(O).astype(float) / 2
+    lambda_val = lambda_L * jnp.sum(O) / 2
     return shrink_lambda(L_new, lambda_val)
 
 
-def update_H(X_tilde: Array, Y_adj: Array, Z_tilde: Array, lambda_H: float) -> Array:
+def update_H(X_tilde: Array, Y_adj: Array, Z_tilde: Array, lambda_H: Scalar) -> Array:
     """
     Update the covariate coefficient matrix H in the MC-NNM algorithm.
 
@@ -35,7 +35,7 @@ def update_H(X_tilde: Array, Y_adj: Array, Z_tilde: Array, lambda_H: float) -> A
         X_tilde (Array): The augmented unit-specific covariates matrix.
         Y_adj (Array): The adjusted outcome matrix.
         Z_tilde (Array): The augmented time-specific covariates matrix.
-        lambda_H (float): The regularization parameter for H.
+        lambda_H (Scalar): The regularization parameter for H.
 
     Returns:
         Array: The updated covariate coefficient matrix H.
@@ -44,27 +44,30 @@ def update_H(X_tilde: Array, Y_adj: Array, Z_tilde: Array, lambda_H: float) -> A
     return shrink_lambda(H_unreg, lambda_H)
 
 
-def update_gamma_delta_beta(Y_adj: Array, V: Array) -> Tuple[Array, Array, Array]:
+def update_gamma_delta_beta(
+    Y_adj: jnp.ndarray, V: jnp.ndarray
+) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """
     Update the fixed effects (gamma, delta) and unit-time specific covariate coefficients (beta).
 
     Args:
-        Y_adj (Array): The adjusted outcome matrix.
-        V (Array): The unit-time specific covariates tensor.
+        Y_adj (jnp.ndarray): The adjusted outcome matrix.
+        V (jnp.ndarray): The unit-time specific covariates tensor.
 
     Returns:
-        Tuple[Array, Array, Array]: Updated gamma, delta, and beta arrays.
+        Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]: Updated gamma, delta, and beta arrays.
     """
     N, T = Y_adj.shape
     gamma = jnp.mean(Y_adj, axis=1)
     delta = jnp.mean(Y_adj - gamma[:, jnp.newaxis], axis=0)
 
-    if V.size > 0:
+    def compute_beta(V, Y_adj):
         V_flat = V.reshape(-1, V.shape[-1])
         Y_adj_flat = Y_adj.reshape(-1)
-        beta = jnp.linalg.lstsq(V_flat, Y_adj_flat)[0]
-    else:
-        beta = jnp.array([])
+        return jnp.linalg.lstsq(V_flat, Y_adj_flat)[0]
+
+    # We assume V is non-empty and compatible due to initialize_params
+    beta = compute_beta(V, Y_adj)
 
     return gamma, delta, beta
 
