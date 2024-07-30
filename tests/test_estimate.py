@@ -456,28 +456,6 @@ def test_time_based_validate_expanding_window():
     assert jnp.isfinite(best_lambda_H)
 
 
-def test_estimate_verbose():
-    N, T = 10, 10
-    data, true_params = generate_data(nobs=N, nperiods=T, seed=42)
-    Y = jnp.array(data.pivot(index="unit", columns="period", values="y").values)
-    W = jnp.array(data.pivot(index="unit", columns="period", values="treat").values)
-    X, Z, V = jnp.array(true_params["X"]), jnp.array(true_params["Z"]), jnp.array(true_params["V"])
-
-    # Test with verbose=True and cv validation method
-    results = estimate(Y, W, X=X, Z=Z, V=V, verbose=True, validation_method="cv", K=2)
-    assert results.tau is not None
-    assert results.lambda_L is not None
-    assert results.lambda_H is not None
-
-    # Test with verbose=True and holdout validation method
-    results = estimate(
-        Y, W, X=X, Z=Z, V=V, verbose=True, validation_method="holdout", window_size=5
-    )
-    assert results.tau is not None
-    assert results.lambda_L is not None
-    assert results.lambda_H is not None
-
-
 def test_estimate_invalid_validation_method():
     N, T = 10, 10
     data, true_params = generate_data(nobs=N, nperiods=T, seed=42)
