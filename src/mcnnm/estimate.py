@@ -5,6 +5,26 @@ from .types import Array, Scalar
 from mcnnm.util import shrink_lambda, initialize_params, propose_lambda, check_inputs
 
 
+# def update_L(Y_adj: Array, L: Array, Omega: Array, O: Array, lambda_L: Scalar) -> Array:
+#     """
+#     Update the low-rank matrix L in the MC-NNM algorithm.
+#
+#     Args:
+#         Y_adj (Array): The adjusted outcome matrix.
+#         L (Array): The current estimate of the low-rank matrix.
+#         Omega (Array): The autocorrelation matrix.
+#         O (Array): The binary mask for observed entries.
+#         lambda_L (Scalar): The regularization parameter for L.
+#
+#     Returns:
+#         Array: The updated low-rank matrix L.
+#     """
+#     Y_adj_Omega = jnp.dot(Y_adj, Omega)
+#     L_new = jnp.where(O, Y_adj_Omega, L)
+#     lambda_val = lambda_L * jnp.sum(O) / 2
+#     return shrink_lambda(L_new, lambda_val)
+
+
 def update_L(Y_adj: Array, L: Array, Omega: Array, O: Array, lambda_L: Scalar) -> Array:
     """
     Update the low-rank matrix L in the MC-NNM algorithm.
@@ -19,7 +39,7 @@ def update_L(Y_adj: Array, L: Array, Omega: Array, O: Array, lambda_L: Scalar) -
     Returns:
         Array: The updated low-rank matrix L.
     """
-    Y_adj_Omega = jnp.dot(Y_adj, Omega)
+    Y_adj_Omega = jnp.einsum("ij,jk->ik", Y_adj, Omega[: Y_adj.shape[1], : Y_adj.shape[1]])
     L_new = jnp.where(O, Y_adj_Omega, L)
     lambda_val = lambda_L * jnp.sum(O) / 2
     return shrink_lambda(L_new, lambda_val)
@@ -136,11 +156,11 @@ def fit(
     Z: Array,
     V: Array,
     Omega: Array,
-    lambda_L: float,
-    lambda_H: float,
+    lambda_L: Scalar,
+    lambda_H: Scalar,
     initial_params: Tuple[Array, Array, Array, Array, Array],
     max_iter: int,
-    tol: float,
+    tol: Scalar,
 ) -> Tuple[Array, Array, Array, Array, Array]:
     # Unpack initial parameters
     L, H, gamma, delta, beta = initial_params
@@ -172,7 +192,15 @@ def fit(
         return i + 1, L_new, H_new, gamma_new, delta_new, beta_new, L
 
     # Set the initial state of the while loop
-    initial_state = (0, L, H, gamma, delta, beta, jnp.zeros_like(L))
+    initial_state = (
+        jnp.array(0),
+        L.astype(jnp.float64),
+        H.astype(jnp.float64),
+        gamma.astype(jnp.float64),
+        delta.astype(jnp.float64),
+        beta.astype(jnp.float64),
+        jnp.zeros_like(L, dtype=jnp.float64),
+    )
 
     # Run the while loop until convergence or max iterations
     _, L, H, gamma, delta, beta, _ = jax.lax.while_loop(cond_fn, body_fn, initial_state)
@@ -597,83 +625,100 @@ def time_based_validate(
     Omega: Array,
     lambda_grid: Array,
     max_iter: int,
-    tol: Scalar,
+    tol: float,
     window_size: Optional[int] = None,
     expanding_window: bool = False,
     max_window_size: Optional[int] = None,
     n_folds: int = 5,
 ) -> Tuple[Scalar, Scalar]:
-    """
-    Perform time-based validation to select optimal regularization parameters.
-
-    Args:
-        Y (Array): The observed outcome matrix.
-        W (Array): The binary treatment matrix.
-        X (Array): The unit-specific covariates matrix.
-        Z (Array): The time-specific covariates matrix.
-        V (Array): The unit-time specific covariates tensor.
-        Omega (Array): The autocorrelation matrix.
-        lambda_grid (Array): Grid of (lambda_L, lambda_H) pairs to search over.
-        max_iter (int): Maximum number of iterations for fitting.
-        tol (Scalar): Convergence tolerance for fitting.
-        window_size (Optional[int]): Size of the rolling window. Default is None.
-        expanding_window (bool): Whether to use an expanding window. Default is False.
-        max_window_size (Optional[int]): Maximum size of the expanding window. Default is None.
-        n_folds (int): Number of folds for time-based validation. Default is 5.
-
-    Returns:
-        Tuple[Scalar, Scalar]: The optimal lambda_L and lambda_H values.
-    """
     N, T = Y.shape
-    window_size = jax.lax.cond(
-        window_size is None, lambda _: (T * 4) // 5, lambda _: window_size, operand=None
-    )
-    max_window_size = jax.lax.cond(
-        max_window_size is None, lambda _: window_size, lambda _: max_window_size, operand=None
-    )
+    window_size = (T * 4) // 5 if window_size is None else window_size
+    max_window_size = window_size if max_window_size is None else max_window_size
     fold_size = (T - window_size) // n_folds
 
-    def loss_fn(lambda_pair):
-        lambda_L, lambda_H = lambda_pair
+    def loss_fn(lambda_L_H):
+        lambda_L, lambda_H = lambda_L_H
 
         def fold_loss(t):
-            train_start = jax.lax.cond(
-                expanding_window,
-                lambda _: jnp.maximum(0, t - max_window_size),
-                lambda _: jnp.maximum(0, t - window_size),
-                operand=None,
+            train_start = jax.lax.max(
+                jnp.array(0),
+                jax.lax.cond(
+                    expanding_window,
+                    lambda _: t - max_window_size,
+                    lambda _: t - window_size,
+                    operand=None,
+                ),
             )
             train_end = t
-            test_end = jnp.minimum(t + fold_size, T)
+            # test_end = jax.lax.min(t + fold_size, T)
 
-            train_idx = jnp.arange(train_start, train_end)
-            test_idx = jnp.arange(train_end, test_end)
+            # Use fixed shapes and pad if necessary
+            Y_train = jax.lax.dynamic_slice_in_dim(Y, train_start, window_size, axis=1)
+            Y_test = jax.lax.dynamic_slice_in_dim(Y, train_end, fold_size, axis=1)
+            W_train = jax.lax.dynamic_slice_in_dim(W, train_start, window_size, axis=1)
+            W_test = jax.lax.dynamic_slice_in_dim(W, train_end, fold_size, axis=1)
+            Z_train = jax.lax.dynamic_slice_in_dim(Z, train_start, window_size, axis=0)
+            V_train = jax.lax.dynamic_slice_in_dim(V, train_start, window_size, axis=1)
+            V_test = jax.lax.dynamic_slice_in_dim(V, train_end, fold_size, axis=1)
 
-            return compute_time_based_loss(
-                Y, W, X, Z, V, Omega, lambda_L, lambda_H, max_iter, tol, train_idx, test_idx
+            # Pad Omega to fixed size
+            Omega_train = jax.lax.dynamic_slice_in_dim(Omega, train_start, window_size, axis=0)
+            Omega_train = jax.lax.dynamic_slice_in_dim(
+                Omega_train, train_start, window_size, axis=1
             )
 
-        t_values = jnp.arange(window_size, T, fold_size)
-        fold_losses = jax.lax.map(fold_loss, t_values)
-        valid_losses = jnp.isfinite(fold_losses)
+            initial_params = initialize_params(Y_train, X, Z_train, V_train)
 
+            L, H, gamma, delta, beta = fit(
+                Y_train,
+                W_train,
+                X,
+                Z_train,
+                V_train,
+                Omega_train,
+                lambda_L,
+                lambda_H,
+                initial_params,
+                max_iter,
+                tol,
+            )
+
+            Y_pred = (
+                L
+                + jnp.outer(gamma, jnp.ones(fold_size))
+                + jnp.outer(jnp.ones(N), delta[:fold_size])
+            )
+
+            Y_pred = jax.lax.cond(
+                V_test.shape[2] > 0,
+                lambda Y_pred: Y_pred + jnp.sum(V_test * beta, axis=2),
+                lambda Y_pred: Y_pred,
+                Y_pred,
+            )
+
+            O_test = W_test == 0
+            loss = jnp.sum((Y_test - Y_pred) ** 2 * O_test) / (jnp.sum(O_test) + 1e-10)
+            return loss
+
+        t_values = jnp.arange(window_size, T, fold_size)
+        losses = jax.lax.map(fold_loss, t_values)
+        return jnp.mean(losses)
+
+    losses = jax.vmap(loss_fn)(lambda_grid)
+    best_lambda_L_H = jnp.argmin(losses)
+    best_lambda_L, best_lambda_H = lambda_grid[best_lambda_L_H]
+
+    # Error handling for invalid losses
+    def handle_invalid_losses(losses):
+        valid_losses = jnp.isfinite(losses)
         return jax.lax.cond(
             jnp.any(valid_losses),
-            lambda _: jnp.sum(jnp.where(valid_losses, fold_losses, 0)) / jnp.sum(valid_losses),
-            lambda _: jnp.array(jnp.inf),
+            lambda _: (best_lambda_L, best_lambda_H),
+            lambda _: (lambda_grid[0][0], lambda_grid[0][1]),
             operand=None,
         )
 
-    losses = jax.lax.map(loss_fn, lambda_grid)
-    best_idx = jnp.argmin(losses)
-    best_lambda_L, best_lambda_H = lambda_grid[best_idx]
-
-    return jax.lax.cond(
-        jnp.isinf(losses[best_idx]),
-        lambda _: (jnp.array(lambda_grid[0][0]), jnp.array(lambda_grid[0][1])),
-        lambda _: (best_lambda_L, best_lambda_H),
-        operand=None,
-    )
+    return handle_invalid_losses(losses)
 
 
 def compute_treatment_effect(
@@ -829,7 +874,7 @@ def estimate(
             raise ValueError("Invalid validation_method. Choose 'cv' or 'holdout'.")
 
     def use_provided_lambda(_):
-        return (lambda_L, lambda_H)
+        return (jnp.array(lambda_L), jnp.array(lambda_H))
 
     lambda_L, lambda_H = jax.lax.cond(
         jnp.logical_or(lambda_L is None, lambda_H is None),
@@ -845,10 +890,6 @@ def estimate(
 
     results = {}
 
-    def compute_tau():
-        tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W, Z, V)
-        return jnp.array(tau, dtype=jnp.float32)
-
     def compute_Y_completed():
         X_tilde = jnp.hstack((X, jnp.eye(N)))
         Z_tilde = jnp.hstack((Z, jnp.eye(T)))
@@ -859,19 +900,37 @@ def estimate(
         )
         return Y_completed
 
-    results["tau"] = jax.lax.cond(return_tau, compute_tau, lambda: None)
+    def compute_tau():
+        tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W, Z, V)
+        return jnp.array(tau, dtype=jnp.float32)
+
+    results["tau"] = jax.lax.cond(
+        return_tau, compute_tau, lambda: jnp.array(0.0, dtype=jnp.float32)
+    )
     results["lambda_L"] = jax.lax.cond(
-        return_lambda, lambda: jnp.array(lambda_L, dtype=jnp.float32), lambda: None
+        return_lambda,
+        lambda: jnp.array(lambda_L, dtype=jnp.float32),
+        lambda: jnp.array(float("nan"), dtype=jnp.float32),
     )
     results["lambda_H"] = jax.lax.cond(
-        return_lambda, lambda: jnp.array(lambda_H, dtype=jnp.float32), lambda: None
+        return_lambda,
+        lambda: jnp.array(lambda_H, dtype=jnp.float32),
+        lambda: jnp.array(float("nan"), dtype=jnp.float32),
     )
-    results["L"] = jax.lax.cond(return_completed_L, lambda: L, lambda: None)
-    results["Y_completed"] = jax.lax.cond(return_completed_Y, compute_Y_completed, lambda: None)
-    results["gamma"] = jax.lax.cond(return_fixed_effects, lambda: gamma, lambda: None)
-    results["delta"] = jax.lax.cond(return_fixed_effects, lambda: delta, lambda: None)
-    results["beta"] = jax.lax.cond(return_covariate_coefficients, lambda: beta, lambda: None)
-    results["H"] = jax.lax.cond(return_covariate_coefficients, lambda: H, lambda: None)
+    results["L"] = jax.lax.cond(return_completed_L, lambda: L, lambda: jnp.zeros_like(L))
+    results["Y_completed"] = jax.lax.cond(
+        return_completed_Y, compute_Y_completed, lambda: jnp.zeros_like(Y)
+    )
+    results["gamma"] = jax.lax.cond(
+        return_fixed_effects, lambda: gamma, lambda: jnp.zeros_like(gamma)
+    )
+    results["delta"] = jax.lax.cond(
+        return_fixed_effects, lambda: delta, lambda: jnp.zeros_like(delta)
+    )
+    results["beta"] = jax.lax.cond(
+        return_covariate_coefficients, lambda: beta, lambda: jnp.zeros_like(beta)
+    )
+    results["H"] = jax.lax.cond(return_covariate_coefficients, lambda: H, lambda: jnp.zeros_like(H))
 
     return MCNNMResults(**results)
 
