@@ -80,23 +80,35 @@ def update_gamma_delta_beta(
     gamma = jnp.mean(Y_adj, axis=1)
     delta = jnp.mean(Y_adj - gamma[:, jnp.newaxis], axis=0)
 
-    def compute_beta(V, Y_adj):
-        def solve_lstsq(_):
-            V_flat = V.reshape(-1, V.shape[-1])
-            Y_adj_flat = Y_adj.reshape(-1)
-            return jnp.linalg.lstsq(V_flat, Y_adj_flat, rcond=None)[0]
-
-        def return_empty(_):
-            # Return an array of the same shape as solve_lstsq would return but filled with zeros
-            return jnp.zeros(V.shape[-1])
-
-        beta = lax.cond(V.size > 0, solve_lstsq, return_empty, operand=None)
-        return beta
-
     # We assume V is non-empty and compatible due to initialize_params
     beta = compute_beta(V, Y_adj)
 
     return gamma, delta, beta
+
+
+def compute_beta(V: Array, Y_adj: Array) -> Array:
+    """
+    Compute beta coefficients for unit-time specific covariates.
+
+    Args:
+        V (Array): The unit-time specific covariates tensor.
+        Y_adj (Array): The adjusted outcome matrix.
+
+    Returns:
+        Array: The computed beta coefficients.
+    """
+
+    def solve_lstsq(_):
+        V_flat = V.reshape(-1, V.shape[-1])
+        Y_adj_flat = Y_adj.reshape(-1)
+        return jnp.linalg.lstsq(V_flat, Y_adj_flat, rcond=None)[0]
+
+    def return_empty(_):
+        # Return an array of the same shape as solve_lstsq would return but filled with zeros
+        return jnp.zeros(V.shape[-1])
+
+    beta = lax.cond(V.size > 0, solve_lstsq, return_empty, operand=None)
+    return beta
 
 
 def fit_step(
@@ -380,95 +392,6 @@ def compute_cv_loss(
 #         return jnp.mean(losses)
 #
 #     best_lambda_L_H = jnp.argmin(jax.vmap(loss_fn)(lambda_grid))
-#     best_lambda_L, best_lambda_H = lambda_grid[best_lambda_L_H]
-#
-#     return best_lambda_L, best_lambda_H
-# def cross_validate(
-#         Y: jnp.ndarray,
-#         W: jnp.ndarray,
-#         X: jnp.ndarray,
-#         Z: jnp.ndarray,
-#         V: jnp.ndarray,
-#         Omega: jnp.ndarray,
-#         lambda_grid: jnp.ndarray,
-#         max_iter: int,
-#         tol: float,
-#         K: int = 5,
-# ) -> Tuple[jnp.ndarray, jnp.ndarray]:
-#     """
-#     Perform K-fold cross-validation to select optimal regularization parameters.
-#
-#     Args:
-#         Y (jnp.ndarray): The observed outcome matrix.
-#         W (jnp.ndarray): The binary treatment matrix.
-#         X (jnp.ndarray): The unit-specific covariates matrix.
-#         Z (jnp.ndarray): The time-specific covariates matrix.
-#         V (jnp.ndarray): The unit-time specific covariates tensor.
-#         Omega (jnp.ndarray): The autocorrelation matrix.
-#         lambda_grid (jnp.ndarray): Grid of (lambda_L, lambda_H) pairs to search over.
-#         max_iter (int): Maximum number of iterations for fitting.
-#         tol (float): Convergence tolerance for fitting.
-#         K (int): Number of folds for cross-validation. Default is 5.
-#
-#     Returns:
-#         Tuple[jnp.ndarray, jnp.ndarray]: The optimal lambda_L and lambda_H values.
-#     """
-#     N = Y.shape[0]
-#     fold_size = N // K
-#
-#     def loss_fn(lambda_L_H):
-#         lambda_L, lambda_H = lambda_L_H
-#
-#         def fold_loss(k):
-#             mask = (jnp.arange(N) >= k * fold_size) & (jnp.arange(N) < (k + 1) * fold_size)
-#
-#             Y_train = jnp.where(mask[:, None], jnp.zeros_like(Y), Y)
-#             Y_test = jnp.where(mask[:, None], Y, jnp.zeros_like(Y))
-#             W_train = jnp.where(mask[:, None], jnp.zeros_like(W), W)
-#             W_test = jnp.where(mask[:, None], W, jnp.zeros_like(W))
-#             X_train = jnp.where(mask[:, None], jnp.zeros_like(X), X)
-#             V_train = jnp.where(mask[:, None, None], jnp.zeros_like(V), V)
-#             V_test = jnp.where(mask[:, None, None], V, jnp.zeros_like(V))
-#
-#             initial_params = initialize_params(Y_train, X_train, Z, V_train)
-#
-#             L, H, gamma, delta, beta = fit(
-#                 Y_train,
-#                 W_train,
-#                 X_train,
-#                 Z,
-#                 V_train,
-#                 Omega,
-#                 lambda_L,
-#                 lambda_H,
-#                 initial_params,
-#                 max_iter,
-#                 tol,
-#             )
-#
-#             Y_pred = (
-#                     L
-#                     + jnp.outer(gamma, jnp.ones(Z.shape[0]))
-#                     + jnp.outer(jnp.ones(N), delta)
-#             )
-#
-#             Y_pred = jax.lax.cond(
-#                 V_test.shape[2] > 0,
-#                 lambda Y_pred: Y_pred + jnp.sum(V_test * beta, axis=2),
-#                 lambda Y_pred: Y_pred,
-#                 Y_pred,
-#             )
-#
-#             O_test = W_test == 0
-#             loss = jnp.sum((Y_test - Y_pred) ** 2 * O_test) / (jnp.sum(O_test) + 1e-10)
-#             return loss
-#
-#         losses = jax.lax.map(fold_loss, jnp.arange(K))
-#         return jnp.mean(losses)
-#
-#     # Compute the losses outside JIT context to ensure shapes are concrete
-#     losses = jax.vmap(loss_fn)(lambda_grid)
-#     best_lambda_L_H = jnp.argmin(losses)
 #     best_lambda_L, best_lambda_H = lambda_grid[best_lambda_L_H]
 #
 #     return best_lambda_L, best_lambda_H
