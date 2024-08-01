@@ -2,7 +2,7 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Python Versions](https://img.shields.io/pypi/pyversions/lightweight-mcnnm.svg?cache-bust=1)](https://pypi.org/project/lightweight-mcnnm/)
-[![PyPI version](https://badge.fury.io/py/lightweight-mcnnm.svg?cache-bust=1)](https://badge.fury.io/py/lightweight-mcnnm)
+[![PyPI version](https://img.shields.io/pypi/v/lightweight-mcnnm.svg?color=brightgreen&cache-bust=2)](https://pypi.org/project/lightweight-mcnnm/)
 [![Documentation Status](https://readthedocs.org/projects/mcnnm/badge/?version=latest)](https://mcnnm.readthedocs.io/en/latest/?badge=latest)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![GitHub last commit](https://img.shields.io/github/last-commit/tobias-schnabel/mcnnm)](https://github.com/tobias-schnabel/mcnnm/commits/main)
