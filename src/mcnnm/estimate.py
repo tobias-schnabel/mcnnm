@@ -3,6 +3,7 @@ import jax.numpy as jnp
 from typing import Optional, Tuple, NamedTuple, cast
 from .types import Array, Scalar
 from mcnnm.util import shrink_lambda, initialize_params, propose_lambda, check_inputs
+from jax import lax
 
 
 # def update_L(Y_adj: Array, L: Array, Omega: Array, O: Array, lambda_L: Scalar) -> Array:
@@ -80,9 +81,17 @@ def update_gamma_delta_beta(
     delta = jnp.mean(Y_adj - gamma[:, jnp.newaxis], axis=0)
 
     def compute_beta(V, Y_adj):
-        V_flat = V.reshape(-1, V.shape[-1])
-        Y_adj_flat = Y_adj.reshape(-1)
-        return jnp.linalg.lstsq(V_flat, Y_adj_flat)[0]
+        def solve_lstsq(_):
+            V_flat = V.reshape(-1, V.shape[-1])
+            Y_adj_flat = Y_adj.reshape(-1)
+            return jnp.linalg.lstsq(V_flat, Y_adj_flat, rcond=None)[0]
+
+        def return_empty(_):
+            # Return an array of the same shape as solve_lstsq would return but filled with zeros
+            return jnp.zeros(V.shape[-1])
+
+        beta = lax.cond(V.size > 0, solve_lstsq, return_empty, operand=None)
+        return beta
 
     # We assume V is non-empty and compatible due to initialize_params
     beta = compute_beta(V, Y_adj)
