@@ -15,7 +15,7 @@ def assert_close(true_value, estimated_value, tolerance, message):
 
 jax.config.update("jax_platforms", "cpu")
 jax.config.update("jax_enable_x64", True)
-jax.config.update("jax_disable_jit", True)
+# jax.config.update("jax_disable_jit", True)
 
 
 @pytest.mark.timeout(300)
