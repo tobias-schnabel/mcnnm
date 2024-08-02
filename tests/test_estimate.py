@@ -7,10 +7,9 @@ from mcnnm.estimate import (
     compute_treatment_effect,
     compute_cv_loss,
     cross_validate,
-    compute_time_based_loss,
 )
 from mcnnm.estimate import time_based_validate, complete_matrix
-from mcnnm.util import generate_data
+from mcnnm.util import generate_data, generate_time_based_validate_defaults
 import jax
 
 jax.config.update("jax_platforms", "cpu")
@@ -322,29 +321,6 @@ def test_cross_validate():
     assert best_lambda_H > 0
 
 
-def test_compute_time_based_loss():
-    N, T, J = 5, 4, 2
-    Y = jnp.array([[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16], [17, 18, 19, 20]])
-    W = jnp.array([[0, 0, 1, 1], [0, 1, 1, 1], [1, 1, 1, 0], [1, 0, 0, 0], [0, 0, 0, 1]])
-    X = jnp.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])
-    Z = jnp.array([[1, 2], [3, 4], [5, 6], [7, 8]])
-    V = jnp.ones((N, T, J))
-    Omega = jnp.eye(T)
-    lambda_L = 0.1
-    lambda_H = 0.1
-    max_iter = 10
-    tol = 1e-4
-    train_idx = jnp.array([0, 1, 2])
-    test_idx = jnp.array([3])
-
-    loss = compute_time_based_loss(
-        Y, W, X, Z, V, Omega, lambda_L, lambda_H, max_iter, tol, train_idx, test_idx
-    )
-
-    assert jnp.isfinite(loss)
-    assert loss >= 0
-
-
 def test_time_based_validate():
     N, T, J = 5, 6, 2
     Y = jnp.array(
@@ -369,13 +345,8 @@ def test_time_based_validate():
     Z = jnp.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12]])
     V = jnp.ones((N, T, J))
     Omega = jnp.eye(T)
-    lambda_grid = jnp.array([[0.1, 0.1], [0.2, 0.2], [0.3, 0.3]])
-    max_iter = 10
-    tol = 1e-4
-    window_size = 3
-    expanding_window = False
-    max_window_size = None
-    n_folds = 2
+
+    defaults = generate_time_based_validate_defaults(Y, n_lambda_L=3, n_lambda_H=3)
 
     best_lambda_L, best_lambda_H = time_based_validate(
         Y,
@@ -384,13 +355,14 @@ def test_time_based_validate():
         Z,
         V,
         Omega,
-        lambda_grid,
-        max_iter,
-        tol,
-        window_size,
-        expanding_window,
-        max_window_size,
-        n_folds,
+        defaults["lambda_grid"],
+        defaults["max_iter"],
+        defaults["tol"],
+        defaults["initial_window"],
+        defaults["step_size"],
+        defaults["horizon"],
+        defaults["K"],
+        max_window_size=None,
     )
 
     assert jnp.isfinite(best_lambda_L)
@@ -398,19 +370,7 @@ def test_time_based_validate():
     assert best_lambda_L > 0
     assert best_lambda_H > 0
 
-
-def test_time_based_validate_expanding_window():
-    key = jax.random.PRNGKey(0)
-    N, T, P, Q, J = 10, 20, 2, 2, 2
-    Y = jax.random.uniform(key, shape=(N, T))
-    W = jax.random.choice(key, jnp.array([0, 1]), shape=(N, T))
-    X = jax.random.uniform(key, shape=(N, P))
-    Z = jax.random.uniform(key, shape=(T, Q))
-    V = jax.random.uniform(key, shape=(N, T, J))
-    Omega = jnp.eye(T)
-    lambda_grid = jnp.array([[0.1, 0.1], [0.2, 0.2], [0.3, 0.3]])
-
-    # Test with expanding window and default max_window_size
+    # Test with max_window_size
     best_lambda_L, best_lambda_H = time_based_validate(
         Y,
         W,
@@ -418,36 +378,20 @@ def test_time_based_validate_expanding_window():
         Z,
         V,
         Omega,
-        lambda_grid,
-        max_iter=10,
-        tol=1e-4,
-        window_size=15,
-        expanding_window=True,
-        n_folds=5,
+        defaults["lambda_grid"],
+        defaults["max_iter"],
+        defaults["tol"],
+        defaults["initial_window"],
+        defaults["step_size"],
+        defaults["horizon"],
+        defaults["K"],
+        max_window_size=4,
     )
 
     assert jnp.isfinite(best_lambda_L)
     assert jnp.isfinite(best_lambda_H)
-
-    # Test with expanding window and custom max_window_size
-    best_lambda_L, best_lambda_H = time_based_validate(
-        Y,
-        W,
-        X,
-        Z,
-        V,
-        Omega,
-        lambda_grid,
-        max_iter=10,
-        tol=1e-4,
-        window_size=15,
-        expanding_window=True,
-        max_window_size=18,
-        n_folds=5,
-    )
-
-    assert jnp.isfinite(best_lambda_L)
-    assert jnp.isfinite(best_lambda_H)
+    assert best_lambda_L > 0
+    assert best_lambda_H > 0
 
 
 def test_estimate_invalid_validation_method():
