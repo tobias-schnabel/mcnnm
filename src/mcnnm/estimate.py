@@ -306,6 +306,33 @@ def cross_validate(
     tol: float,
     K: int = 5,
 ) -> Tuple[Scalar, Scalar]:
+    """
+    Perform K-fold cross-validation to select optimal regularization parameters for the MC-NNM model.
+
+    This function splits the data into K folds along the unit dimension, trains the model on K-1 folds,
+    and evaluates it on the remaining fold. This process is repeated for all folds and all lambda pairs
+    in the lambda_grid. The lambda pair that yields the lowest average loss across all folds is selected.
+
+    Args:
+        Y (Array): The observed outcome matrix of shape (N, T).
+        W (Array): The binary treatment matrix of shape (N, T).
+        X (Array): The unit-specific covariates matrix of shape (N, P).
+        Z (Array): The time-specific covariates matrix of shape (T, Q).
+        V (Array): The unit-time specific covariates tensor of shape (N, T, J).
+        Omega (Array): The autocorrelation matrix of shape (T, T).
+        lambda_grid (Array): Grid of (lambda_L, lambda_H) pairs to search over.
+        max_iter (int): Maximum number of iterations for fitting the model in each fold.
+        tol (float): Convergence tolerance for fitting the model in each fold.
+        K (int, optional): Number of folds for cross-validation. Default is 5.
+
+    Returns:
+        Tuple[Scalar, Scalar]: A tuple containing the optimal lambda_L and lambda_H values.
+
+    Note:
+        This function uses JAX's `vmap` for efficient computation across different lambda pairs.
+        If all losses are infinite (e.g., due to numerical instability), it returns the middle
+        lambda pair from the lambda_grid as a fallback.
+    """
     N = Y.shape[0]
     fold_size = N // K
 
@@ -356,13 +383,23 @@ def cross_validate(
         return jnp.mean(losses)
 
     losses = jax.vmap(loss_fn)(lambda_grid)
-    best_lambda_L_H = jnp.argmin(losses)
-    best_lambda_L, best_lambda_H = lambda_grid[best_lambda_L_H]
-    # TODO: Handle invalid losses
-    return best_lambda_L, best_lambda_H
+
+    def select_best_lambda(_):
+        best_idx = jnp.argmin(losses)
+        return lambda_grid[best_idx]
+
+    def use_default_lambda(_):
+        mid_idx = len(lambda_grid) // 2
+        return lambda_grid[mid_idx]
+
+    best_lambda_L_H = jax.lax.cond(
+        jnp.any(jnp.isfinite(losses)), select_best_lambda, use_default_lambda, operand=None
+    )
+
+    return best_lambda_L_H[0], best_lambda_L_H[1]
 
 
-@partial(jax.jit, static_argnums=(7, 8, 9, 10, 11, 12, 13))
+@partial(jax.jit, static_argnums=(13, 14))
 def time_based_validate(
     Y: Array,
     W: Array,
