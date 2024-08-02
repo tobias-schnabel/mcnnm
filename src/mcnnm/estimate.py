@@ -10,6 +10,7 @@ from mcnnm.util import (
     generate_time_based_validate_defaults,
 )
 from jax import lax
+from functools import partial
 
 
 def update_L(Y_adj: Array, L: Array, Omega: Array, O: Array, lambda_L: Scalar) -> Array:
@@ -361,6 +362,7 @@ def cross_validate(
     return best_lambda_L, best_lambda_H
 
 
+@partial(jax.jit, static_argnums=(7, 8, 9, 10, 11, 12, 13))
 def time_based_validate(
     Y: Array,
     W: Array,
@@ -375,6 +377,7 @@ def time_based_validate(
     step_size: int,
     horizon: int,
     K: int,
+    T: int,
     max_window_size: Optional[int] = None,
 ) -> Tuple[Scalar, Scalar]:
     """
@@ -399,8 +402,7 @@ def time_based_validate(
     Returns:
         Tuple[Scalar, Scalar]: The optimal lambda_L and lambda_H values.
     """
-    N, T = Y.shape
-    T = jnp.int32(T)  # Ensure T is a JAX array
+    N, foo = Y.shape
 
     if max_window_size is not None:
         T = min(T, max_window_size)
@@ -479,11 +481,11 @@ def time_based_validate(
 
     def select_best_lambda(_):
         best_idx = jnp.argmin(losses)
-        return lambda_grid[best_idx]
+        return (lambda_grid[best_idx, 0], lambda_grid[best_idx, 1])
 
     def use_default_lambda(_):
         mid_idx = len(lambda_grid) // 2
-        return lambda_grid[mid_idx]
+        return (lambda_grid[mid_idx, 0], lambda_grid[mid_idx, 1])
 
     return jax.lax.cond(
         jnp.any(jnp.isfinite(losses)), select_best_lambda, use_default_lambda, operand=None
@@ -682,6 +684,7 @@ def estimate(
                 horizon=horizon or defaults["horizon"],
                 K=K or defaults["K"],
                 max_window_size=max_window_size,
+                T=T,  # Pass T as a static argument
             )
         else:
             raise ValueError("Invalid validation_method. Choose 'cv' or 'holdout'.")
