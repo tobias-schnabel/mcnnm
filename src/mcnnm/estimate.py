@@ -7,6 +7,7 @@ from mcnnm.util import (
     initialize_params,
     propose_lambda,
     check_inputs,
+    generate_time_based_validate_defaults,
 )
 from jax import lax
 
@@ -601,8 +602,9 @@ def estimate(
     tol: Scalar = 1e-4,
     validation_method: str = "cv",
     K: int = 5,
-    window_size: Optional[int] = None,
-    expanding_window: bool = False,
+    initial_window: Optional[int] = None,
+    step_size: Optional[int] = None,
+    horizon: Optional[int] = None,
     max_window_size: Optional[int] = None,
 ) -> MCNNMResults:
     """
@@ -628,14 +630,21 @@ def estimate(
         max_iter (int): Maximum number of iterations for fitting. Default is 1000.
         tol (Scalar): Convergence tolerance for fitting. Default is 1e-4.
         validation_method (str): Method for selecting lambda values. Either 'cv' or 'holdout'. Default is 'cv'.
-        K (int): Number of folds for cross-validation. Default is 5.
-        window_size (Optional[int]): Size of the rolling window for time-based validation. Default is None.
-        expanding_window (bool): Whether to use an expanding window for time-based validation. Default is False.
-        max_window_size (Optional[int]): Maximum size of the expanding window for time-based validation. Default None.
+        K (int): Number of folds for cross-validation or time-based validation. Default is 5.
+        initial_window (Optional[int]): Number of initial time periods to use for first training set in holdout
+        validation. Only used when validation_method='holdout'. If None, defaults to 80% of total time periods.
+        step_size (Optional[int]): Number of time periods to move forward for each split in holdout validation.
+                                   Only used when validation_method='holdout'.
+                                   If None, defaults to (T - initial_window) // K.
+        horizon (Optional[int]): Number of future time periods to predict (forecast horizon) in holdout validation.
+                                 Only used when validation_method='holdout'. If None, defaults to step_size.
+        max_window_size (Optional[int]): Maximum size of the window to consider in holdout validation.
+                                         Only used when validation_method='holdout'. If None, use all data.
 
     Returns:
         MCNNMResults: A named tuple containing the results of the MC-NNM estimation.
     """
+
     X, Z, V, Omega = check_inputs(Y, W, X, Z, V, Omega)
     X, Z, V, Omega = cast(Array, X), cast(Array, Z), cast(Array, V), cast(Array, Omega)
     N, T = Y.shape
@@ -655,8 +664,24 @@ def estimate(
                     "The matrix does not have enough columns for time-based validation. "
                     "Please increase the number of time periods or use cross-validation"
                 )
-            return time_based_validate(  # TODO: update to new signature
-                Y, W, X, Z, V, Omega, lambda_grid, max_iter // 10, tol * 10, K=K
+
+            defaults = generate_time_based_validate_defaults(Y, n_lambda_L, n_lambda_H)
+
+            return time_based_validate(
+                Y,
+                W,
+                X,
+                Z,
+                V,
+                Omega,
+                lambda_grid=defaults["lambda_grid"],
+                max_iter=max_iter // 10,
+                tol=tol * 10,
+                initial_window=initial_window or defaults["initial_window"],
+                step_size=step_size or defaults["step_size"],
+                horizon=horizon or defaults["horizon"],
+                K=K or defaults["K"],
+                max_window_size=max_window_size,
             )
         else:
             raise ValueError("Invalid validation_method. Choose 'cv' or 'holdout'.")
@@ -738,8 +763,9 @@ def complete_matrix(
     tol: Scalar = 1e-4,
     validation_method: str = "cv",
     K: int = 5,
-    window_size: Optional[int] = None,
-    expanding_window: bool = False,
+    initial_window: Optional[int] = None,
+    step_size: Optional[int] = None,
+    horizon: Optional[int] = None,
     max_window_size: Optional[int] = None,
 ) -> Tuple[Array, Scalar, Scalar]:
     """
@@ -759,10 +785,16 @@ def complete_matrix(
         max_iter (int): Maximum number of iterations for fitting. Default is 1000.
         tol (Scalar): Convergence tolerance for fitting. Default is 1e-4.
         validation_method (str): Method for selecting lambda values. Either 'cv' or 'holdout'. Default is 'cv'.
-        K (int): Number of folds for cross-validation. Default is 5.
-        window_size (Optional[int]): Size of the rolling window for time-based validation. Default is None.
-        expanding_window (bool): Whether to use an expanding window for time-based validation. Default is False.
-        max_window_size (Optional[int]): Maximum size of the expanding window for time-based validation. Default None.
+        K (int): Number of folds for cross-validation or time-based validation. Default is 5.
+        initial_window (Optional[int]): Number of initial time periods to use for first train set in holdout validation.
+                                        Only used when validation_method='holdout'. If None, defaults to 80% of T.
+        step_size (Optional[int]): Number of time periods to move forward for each split in holdout validation.
+                                   Only used when validation_method='holdout'.
+                                   If None, defaults to (T - initial_window) // K.
+        horizon (Optional[int]): Number of future time periods to predict (forecast horizon) in holdout validation.
+                                 Only used when validation_method='holdout'. If None, defaults to step_size.
+        max_window_size (Optional[int]): Maximum size of the window to consider in holdout validation.
+                                         Only used when validation_method='holdout'. If None, use all data.
 
     Returns:
         Tuple[Array, Scalar, Scalar]: A tuple containing:
@@ -791,8 +823,9 @@ def complete_matrix(
         tol=tol,
         validation_method=validation_method,
         K=K,
-        window_size=window_size,
-        expanding_window=expanding_window,
+        initial_window=initial_window,
+        step_size=step_size,
+        horizon=horizon,
         max_window_size=max_window_size,
     )
 
