@@ -379,7 +379,12 @@ def cross_validate(
             loss = jnp.sum((Y_test - Y_pred) ** 2 * O_test) / (jnp.sum(O_test) + 1e-10)
             return loss
 
-        losses = jax.lax.map(fold_loss, jnp.arange(K))
+        # losses = jax.lax.map(fold_loss, jnp.arange(K))
+        def fold_loss_wrapper(i, acc):
+            return acc + fold_loss(i)
+
+        losses = jax.lax.fori_loop(0, K, fold_loss_wrapper, 0.0)
+
         return jnp.mean(losses)
 
     losses = jax.vmap(loss_fn)(lambda_grid)
