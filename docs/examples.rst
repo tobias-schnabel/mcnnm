@@ -1,14 +1,15 @@
 Examples
 ========
 
-This page provides examples of how to use the lightweight-mcnnm package for various scenarios.
+This page provides examples of how to use the lightweight-mcnnm package for various scenarios. A slightly more comprehensive and executable example can be found here:
+`On Colab <https://colab.research.google.com/github/tobias-schnabel/mcnnm/blob/main/Example.ipynb>`_
 
 Basic Usage
 -----------
 
 Here's a basic example of how to use lightweight-mcnnm:
 
-.. code-block:: python
+::
 
    import jax.numpy as jnp
    from mcnnm import estimate, generate_data
@@ -30,7 +31,7 @@ Example 1: Staggered Adoption with Cross-Validation
 
 In this example, we generate a dataset with covariates and staggered adoption treatment assignment and use the default cross-validation method for selecting the regularization parameters.
 
-.. code-block:: python
+::
 
    data, true_params = generate_data(nobs=500, nperiods=100, seed=42, assignment_mechanism='staggered',
                                      X_cov=True, Z_cov=True, V_cov=True)
@@ -51,7 +52,7 @@ Example 2: Block Assignment with Holdout Validation
 
 This example demonstrates how to use block treatment assignment and holdout validation for selecting the regularization parameters.
 
-.. code-block:: python
+::
 
    data, true_params = generate_data(nobs=1000, nperiods=50, seed=123, assignment_mechanism='block',
                                      treated_fraction=0.4, X_cov=False, Z_cov=False, V_cov=False)
@@ -69,7 +70,7 @@ Example 3: Single Treated Unit with Covariates
 
 This example shows how to handle a dataset with a single treated unit and include covariates in the estimation.
 
-.. code-block:: python
+::
 
    data, true_params = generate_data(nobs=100, nperiods=200, seed=456, assignment_mechanism='single_treated_unit',
                                      X_cov=True, Z_cov=True, V_cov=True)
@@ -90,7 +91,7 @@ Matrix Completion
 
 If you're interested in just completing the matrix without estimating the treatment effect, you can use the `complete_matrix` function:
 
-.. code-block:: python
+::
 
    from mcnnm import complete_matrix
 
