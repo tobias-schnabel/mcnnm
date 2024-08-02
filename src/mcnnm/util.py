@@ -12,7 +12,7 @@ from .types import Array, Scalar
 
 def p_o(A: Array, mask: Array) -> Array:
     """
-    Projects the matrix A onto the observed entries specified by the binary mask mask.
+    Projects the matrix A onto the observed entries specified by the binary mask.
 
     Args:
         A: The input matrix.
@@ -213,9 +213,38 @@ def check_inputs(
         raise ValueError("The shape of W must match the shape of Y.")
     X = jnp.zeros((N, 0)) if X is None else X
     Z = jnp.zeros((T, 0)) if Z is None else Z
-    V = jnp.zeros((N, T, 0)) if V is None else V
+    V = (
+        jnp.zeros((N, T, 1)) if V is None else V
+    )  # Add a dummy dimension if V is None, otherwise causes issues
     Omega = jnp.eye(T) if Omega is None else Omega
     return X, Z, V, Omega
+
+
+def generate_time_based_validate_defaults(Y: Array, n_lambda_L: int = 10, n_lambda_H: int = 10):
+    N, T = Y.shape
+    T = int(T)
+
+    initial_window = int(0.8 * T)
+    K = 5
+    step_size = max(1, (T - initial_window) // K)
+    horizon = step_size
+
+    lambda_grid = jnp.array(
+        jnp.meshgrid(jnp.logspace(-3, 0, n_lambda_L), jnp.logspace(-3, 0, n_lambda_H))
+    ).T.reshape(-1, 2)
+
+    max_iter = 1000
+    tol = 1e-4
+
+    return {
+        "initial_window": initial_window,
+        "step_size": step_size,
+        "horizon": horizon,
+        "K": K,
+        "lambda_grid": lambda_grid,
+        "max_iter": max_iter,
+        "tol": tol,
+    }
 
 
 def generate_data(
