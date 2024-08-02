@@ -14,7 +14,6 @@ import jax
 
 jax.config.update("jax_platforms", "cpu")
 jax.config.update("jax_enable_x64", True)
-# jax.config.update("jax_disable_jit", True)
 
 # Set a fixed seed for reproducibility
 key = random.PRNGKey(2024)
@@ -363,6 +362,7 @@ def test_time_based_validate():
         defaults["horizon"],
         defaults["K"],
         max_window_size=None,
+        T=T,
     )
 
     assert jnp.isfinite(best_lambda_L)
@@ -386,6 +386,7 @@ def test_time_based_validate():
         defaults["horizon"],
         defaults["K"],
         max_window_size=4,
+        T=T,
     )
 
     assert jnp.isfinite(best_lambda_L)
