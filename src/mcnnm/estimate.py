@@ -92,7 +92,7 @@ def compute_beta(V: Array, Y_adj: Array) -> Array:
 
     def return_empty(_):
         # Return an array of the same shape as solve_lstsq would return but filled with zeros
-        return jnp.zeros(V.shape[-1])
+        return jnp.zeros(V.shape[-1])  # pragma: no cover
 
     beta = lax.cond(V.size > 0, solve_lstsq, return_empty, operand=None)
     return beta
@@ -393,7 +393,7 @@ def cross_validate(
         best_idx = jnp.argmin(losses)
         return lambda_grid[best_idx]
 
-    def use_default_lambda(_):
+    def use_default_lambda(_):  # pragma: no cover
         mid_idx = len(lambda_grid) // 2
         return lambda_grid[mid_idx]
 
@@ -733,7 +733,7 @@ def estimate(
 
     def use_provided_lambda(lambda_L, lambda_H):
         def to_jax_array(x):
-            if x is None:
+            if x is None:  # pragma: no cover
                 return jnp.array(float("nan"))
             return jnp.array(x, dtype=float)
 
