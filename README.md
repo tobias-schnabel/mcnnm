@@ -7,9 +7,9 @@
 [![Documentation Status](https://readthedocs.org/projects/mcnnm/badge/?version=latest)](https://mcnnm.readthedocs.io/en/latest/?badge=latest)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![mypy checked](https://img.shields.io/badge/mypy-checked-blue)](https://github.com/tobias-schnabel/mcnnm/actions/workflows/ci.yml)
-[![GitHub last commit](https://img.shields.io/github/last-commit/tobias-schnabel/mcnnm)](https://github.com/tobias-schnabel/mcnnm/commits/)
 [![codecov](https://codecov.io/gh/tobias-schnabel/mcnnm/graph/badge.svg?token=VYJ12XOQMP)](https://codecov.io/gh/tobias-schnabel/mcnnm)
 [![Tests](https://github.com/tobias-schnabel/mcnnm/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tobias-schnabel/mcnnm/actions/workflows/ci.yml)
+[![GitHub last commit](https://img.shields.io/github/last-commit/tobias-schnabel/mcnnm)](https://github.com/tobias-schnabel/mcnnm/commits/)
 ![Issues](https://img.shields.io/github/issues/tobias-schnabel/mcnnm)
 ![Pull Requests](https://img.shields.io/github/issues-pr/tobias-schnabel/mcnnm)
 
@@ -123,12 +123,6 @@ Now you're ready to start developing!
     ```bash
     poetry run pytest
    ```
-   This will run all the tests in the tests/ directory with the exception of test_estimation_options.py, which is meant to
-   exhaustively test possible combinations of estimation options and is disabled by default. To run all tests including
-   this script, use the following command:
-      ```bash
-      poetry run pytest -m "not comprehensive or comprehensive"
-      ```
 
 6. Coverage: to generate a coverage report, run the following command:
     ```bash
@@ -146,7 +140,7 @@ Now you're ready to start developing!
 This project uses pre-commit hooks to ensure code quality and consistency. Pre-commit hooks are scripts that run automatically every time you commit changes to your version control system. They help catch common issues before they get into the codebase. To set up:
 1. Install pre-commit:
     ```bash
-    poetry run pre-commit install
+    poetry add pre-commit
     ```
 2. Install the hooks:
     ```bash
