@@ -6,9 +6,6 @@ from mcnnm.util import generate_data, element_wise_l1_norm, generate_time_based_
 import jax
 from jax import random
 
-jax.config.update("jax_platforms", "cpu")
-jax.config.update("jax_enable_x64", True)
-
 key = jax.random.PRNGKey(2024)
 
 
