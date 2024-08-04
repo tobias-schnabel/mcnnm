@@ -4,9 +4,10 @@ from mcnnm.estimate import estimate
 from mcnnm.util import generate_data
 import jax.numpy as jnp
 
-jax.config.update("jax_platforms", "cpu")
-jax.config.update("jax_enable_x64", True)
-# jax.config.update("jax_disable_jit", True)
+jax.config.update(
+    "jax_disable_jit", True
+)  # Tests also pass with JIT enabled, but large number of tests means
+# that compilation time is significant, so disabled for convenience
 
 
 @pytest.mark.parametrize(
