@@ -94,10 +94,14 @@ If you're interested in just completing the matrix without estimating the treatm
 ::
 
    from mcnnm import complete_matrix
+   data, true_params = generate_data(nobs=200, nperiods=40, seed=404, treatment_probability=0.2)
+   Y = jnp.array(data.pivot(index='unit', columns='period', values='y').values)
+   W = jnp.array(data.pivot(index='unit', columns='period', values='treat').values)  # randomly mask out entries
 
-   Y_completed, lambda_L, lambda_H = complete_matrix(Y, W, X=X, Z=Z, V=V)
+   results = complete_matrix(Y, W, X=X, Z=Z, V=V)
 
-   print(f"Chosen lambda_L: {lambda_L:.4f}, lambda_H: {lambda_H:.4f}")
+   print(f"Chosen lambda_L: {results.lambda_L:.4f}, lambda_H: {results.lambda_H:.4f}")
    print(f"Completed matrix shape: {Y_completed.shape}")
+   print(f"Mean absolute error of imputation: {jnp.mean(jnp.abs(Y - results.Y_completed)):.4f}")
 
 These examples demonstrate various use cases of the lightweight-mcnnm package. You can adjust the parameters and data generation process to fit your specific needs.

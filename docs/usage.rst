@@ -3,13 +3,15 @@ Usage
 
 JIT Compilation
 ---------------
-By default, this package disables JAX's JIT compilation for better performance in typical use cases. If you want to re-enable JIT compilation, you can add the following line at the top of your script:
+By default, this package uses JAX's JIT compilation for better performance in typical use cases. If you want to disable JIT compilation, you can add the following line at the top of your script:
 
 .. code-block:: python
 
-   jax.config.update('jax_disable_jit', False)
+   jax.config.update('jax_disable_jit', True)
 
-Note that enabling JIT may impact performance depending on your specific use case. I have found leaving JIT disabled to be the best option for most use cases.
+Note that disabling JIT may impact performance depending on your specific use case. I have found leaving JIT enabled to be the best option for most use cases. An example use case where disabling JIT may be sensible is calling estimate() multiple times on datasets of different sizes, which triggers recompilation any time the input data shape changes.
+
+
 
 Comprehensive Example
 ---------------------
