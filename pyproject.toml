@@ -7,7 +7,7 @@ include = [
 
 [tool.poetry]
 name = "lightweight-mcnnm"
-version = "0.4.3"
+version = "0.1.5"
 description = "Leightweight Implementation of Athey et al. (2021)'s MC-NNM estimator"
 packages = [{include = "mcnnm", from = "src"}]
 include = [
@@ -34,20 +34,11 @@ classifiers = [
 python = "^3.10"
 pandas = "^2.0.3"
 numpy = "^1.22.4"
-jax = [
-    {platform = "darwin", version = "^0.4.25"},
-    {platform = "linux", version = "^0.4.25", extras = ["cuda"], optional = true},
-    {platform = "linux", version = "^0.4.25", extras = ["cuda"], optional = true}
-]
+jax = "^0.4.25"
 
 [[tool.poetry.source]]
 name = "testpypi"
 url = "https://test.pypi.org/legacy/"
-priority = "supplemental"
-
-[[tool.poetry.source]]
-name = "jorenham/jax_pep503"
-url = "https://jorenham.github.io/jax_pep503/"
 priority = "supplemental"
 
 [tool.poetry.group.dev.dependencies]
