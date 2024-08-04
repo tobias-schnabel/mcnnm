@@ -1,4 +1,3 @@
-import numpy as np
 import jax.numpy as jnp
 import pytest
 from mcnnm.estimate import estimate
@@ -7,14 +6,13 @@ import jax
 
 
 def assert_close(true_value, estimated_value, tolerance, message):
-    assert np.abs(true_value - estimated_value) < tolerance, (
+    assert jnp.abs(true_value - estimated_value) < tolerance, (
         f"{message}: true={true_value:.4f}, estimated={estimated_value:.4f}, "
-        f"difference={np.abs(true_value - estimated_value):.4f}"
+        f"difference={jnp.abs(true_value - estimated_value):.4f}"
     )
 
 
 jax.config.update("jax_platforms", "cpu")
-jax.config.update("jax_enable_x64", True)
 # jax.config.update("jax_disable_jit", True)
 
 
