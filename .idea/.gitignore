@@ -10,3 +10,6 @@
 # IDE files
 modules.xml
 vcs.xml
+
+# Poetry
+poetry.lock
