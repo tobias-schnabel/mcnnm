@@ -9,7 +9,7 @@ import pytest
 # jax.config.update("jax_enable_x64", True)
 
 # Enable compilation logging
-jax.config.update("jax_log_compiles", True)
+# jax.config.update("jax_log_compiles", True)
 
 
 def run_estimate(N, T, jit_enabled, pre_compiled_fn=None):
