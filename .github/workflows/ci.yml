@@ -6,7 +6,7 @@ on:
 
 jobs:
   lint:
-    name: Lint
+    name: Type Checking, Security Scanning, and Code Formatting
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
