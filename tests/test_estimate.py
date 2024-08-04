@@ -468,6 +468,17 @@ def test_estimate_invalid_validation_method():
     with pytest.raises(ValueError, match="Invalid validation_method. Choose 'cv' or 'holdout'."):
         estimate(Y, W, X=X, Z=Z, V=V, validation_method="invalid")
 
+    N, T = 10, 4  # Not enough periods for time-based validation
+    data, true_params = generate_data(nobs=N, nperiods=T, seed=42)
+    Y = jnp.array(data.pivot(index="unit", columns="period", values="y").values)
+    W = jnp.array(data.pivot(index="unit", columns="period", values="treat").values)
+    X, Z, V = jnp.array(true_params["X"]), jnp.array(true_params["Z"]), jnp.array(true_params["V"])
+
+    with pytest.raises(
+        ValueError, match="The matrix does not have enough columns for time-based validation."
+    ):
+        estimate(Y, W, X=X, Z=Z, V=V, validation_method="holdout")
+
 
 def test_estimate_with_provided_lambda():
     N, T = 10, 10
