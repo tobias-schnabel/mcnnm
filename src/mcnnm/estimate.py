@@ -510,7 +510,7 @@ def time_based_validate(
             )
             new_total_loss = total_loss + fold_loss
             new_count = count + 1
-            return (new_total_loss, new_count)
+            return new_total_loss, new_count
 
         initial_acc = (0.0, 0)
         total_loss, count = jax.lax.fori_loop(0, K, body_fun, initial_acc)
@@ -748,7 +748,7 @@ def estimate(
 
     initial_params = initialize_params(Y, X, Z, V)
     L, H, gamma, delta, beta = fit(
-        Y, W, X, Z, V, Omega, lambda_L, lambda_H, initial_params, max_iter, tol
+        Y, W, X, Z, V, Omega, lambda_L, lambda_H, initial_params, max_iter, tol  # type: ignore
     )
 
     results = {}
