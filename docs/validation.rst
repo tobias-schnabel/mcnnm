@@ -5,7 +5,7 @@ This package supports two validation methods for selecting optimal regularizatio
 
 1. Cross-Validation
 -------------------
-This is the default used in the `estimate` function: `validation_method: str = 'cv'`
+This is the default method used in the `estimate` function: `validation_method: str = 'cv'`
 Cross-validation is implemented in the `cross_validate` function. This method performs K-fold cross-validation to select optimal regularization parameters (lambda_L and lambda_H).
 
 The process works as follows:
@@ -18,17 +18,52 @@ The process works as follows:
 
 Key features:
 
-• Uses jax.random.bernoulli for random splitting of data.
-• Skips folds with no treated units in the test set.
-• Handles cases where no valid folds are found.
+- Uses jax.random.bernoulli for random splitting of data.
+- Skips folds with no treated units in the test set.
+- Handles cases where no valid folds are found.
+
+Key Parameters:
+
+1. `K` (int):
+   This parameter sets the number of folds for cross-validation. It is user-selectable, with a default value of 5.
+
+   Example: If `K=10`, the data will be split into 10 folds, and the model will be trained and validated 10 times.
+
+   Why it's useful: A higher K value provides a more thorough evaluation but increases computation time. A lower K value is faster but may be less robust.
+
+2. `n_lambda_L` and `n_lambda_H` (int):
+   These parameters determine the number of lambda values to consider in the grid search for lambda_L and lambda_H respectively.
+
+   Example: If `n_lambda_L=10` and `n_lambda_H=10`, the grid search will consider 100 different combinations of lambda values.
+
+Example Usage:
+
+::
+
+   results = estimate(Y, W, X=X, Z=Z, V=V,
+                   validation_method='cv',
+                   K=10,
+                   n_lambda_L=8,
+                   n_lambda_H=8)
+
+This configuration would:
+
+- Use 10-fold cross-validation
+- Consider 8 different values for lambda_L and 8 for lambda_H, resulting in 64 lambda pairs to evaluate
+
+Choosing Parameters:
+
+- `K`: Common choices are 5 or 10. Higher values provide more thorough validation but increase computation time. For smaller datasets, you might use leave-one-out cross-validation by setting K equal to the number of observations.
+- `n_lambda_L` and `n_lambda_H`: These control the granularity of your lambda search. Higher values provide a more comprehensive search but increase computation time. Start with moderate values (e.g., 5-10) and adjust based on your computational resources and the sensitivity of your results to lambda values.
 
 When to use Cross-Validation:
 
-• Random or quasi-random treatment assignment: If treatments are assigned randomly or in a pattern that doesn't heavily depend on time, cross-validation is appropriate.
-• Balanced treatment across time: When the proportion of treated units is relatively stable across different time periods.
-• Small to medium-sized datasets: Cross-validation is generally more efficient for smaller datasets where time-based splitting might result in too little data for reliable estimation.
-• No strong temporal trends: If your data doesn't exhibit strong time trends or seasonality that might affect the treatment effect estimation.
+- Random or quasi-random treatment assignment: If treatments are assigned randomly or in a pattern that doesn't heavily depend on time, cross-validation is appropriate.
+- Balanced treatment across time: When the proportion of treated units is relatively stable across different time periods.
+- Small to medium-sized datasets: Cross-validation is generally more efficient for smaller datasets where time-based splitting might result in too little data for reliable estimation.
+- No strong temporal trends: If your data doesn't exhibit strong time trends or seasonality that might affect the treatment effect estimation.
 
+While cross-validation is often a good default choice, it's important to consider the structure of your data and the nature of your research question when deciding between cross-validation and time-based validation methods.
 
 2. Holdout Validation
 ---------------------
@@ -44,72 +79,105 @@ The process works as follows:
 3. The average loss across all valid periods is calculated for each lambda pair.
 4. The lambda pair that results in the lowest average loss is selected.
 
-Key features:
+Key Parameters:
 
-- Supports both fixed window size and expanding window for training data:
-    a. Fixed Window (default): Use this if you believe only recent data is relevant for predicting the near future.
-    b. Expanding Window: Use this if you believe all historical data is useful, but you want to limit how far back you go.
-- Allows for multiple folds within each time-based split.
-- Handles cases where no valid folds are found.
+1. `initial_window` (int):
+   This parameter sets the number of initial time periods to use for the first training set.
+   It determines how much historical data is used for the initial model training.
+
+   Example: If `initial_window=50` and you have 100 time periods, the first training set will use periods 0-49.
+
+   Why it's useful: This allows you to control how much historical data is considered relevant for prediction.
+
+2. `step_size` (int):
+   This parameter determines how many time periods to move forward for each subsequent split.
+   It controls the granularity of your validation process.
+
+   Example: If `step_size=10`, after the initial training, the next split will start at period 10, then 20, and so on.
+
+   Why it's useful: Smaller step sizes provide more validation points but increase computation time. Larger step sizes are faster but may miss important temporal patterns.
+
+3. `horizon` (int):
+   This sets the number of future time periods to predict (forecast horizon).
+   It determines how far into the future the model is expected to predict accurately.
+
+   Example: If `horizon=5`, each validation step will predict 5 time periods ahead.
+
+   Why it's useful: This allows you to tailor the validation to your specific forecasting needs. A longer horizon tests the model's long-term predictive power, while a shorter horizon focuses on immediate future predictions.
+
+4. `K` (int):
+   This parameter sets the number of folds (splits) to use in the time-based validation.
+   It determines how many train-test splits are created and evaluated.
+
+   Example: If `K=5`, the function will create 5 different train-test splits to evaluate the model.
+
+   Why it's useful: More folds provide a more robust evaluation but increase computation time. Fewer folds are faster but may be less reliable.
+
+5. `max_window_size` (Optional[int]):
+   This parameter sets the maximum size of the window to consider. If None, all data is used.
+   It effectively limits how far back in time the model will look for training data.
+
+   Example: If `max_window_size=80` and you have 100 time periods, only the most recent 80 periods will be used for any training set.
+
+   Why it's useful: This can be helpful if you believe that very old data is no longer relevant to current predictions, or if you want to limit computational resources.
+
+Example Usage:
+
+::
+
+   results = estimate(Y, W, X=X, Z=Z, V=V,
+                      validation_method='holdout',
+                      initial_window=50,
+                      step_size=10,
+                      horizon=5,
+                      K=5,
+                      max_window_size=80)
+
+This configuration would:
+
+• Start with an initial training window of 50 time periods
+• Move forward by 10 periods for each subsequent split
+• Predict 5 periods into the future for each validation step
+• Create 5 different train-test splits for validation
+• Use at most the 80 most recent time periods for any training set
+
+Choosing Parameters:
+
+1. `initial_window`: Set this based on how much historical data you believe is necessary to train a good initial model. If your data has strong seasonality, consider setting this to at least one full cycle.
+2. `step_size`: Smaller values provide more granular validation but increase computation time. A good starting point might be 5-10% of your total time periods.
+3. `horizon`: Set this to match your forecasting needs. If you're interested in short-term predictions, a small horizon (1-5 periods) might be appropriate. For long-term forecasting, consider larger values.
+4. `K`: More folds generally provide more robust results but increase computation time. 5-10 folds are common choices.
+5. `max_window_size`: If you believe very old data might not be relevant, set this to limit the historical data used. Otherwise, leaving it as None allows the model to use all available data.
+
+These parameters allow for flexible time-based validation strategies. You can create a rolling window approach by setting step_size equal to horizon, or an expanding window approach by setting step_size smaller than horizon. The max_window_size parameter allows you to implement a sliding window approach if desired.
 
 When to use Holdout Validation:
 
-- Large datasets with many time periods
-- Presence of temporal trends or seasonality
-- Forecasting applications where predicting future outcomes is the goal
+• Large datasets with many time periods
+• Presence of temporal trends or seasonality
+• When you want to explicitly test the model's predictive performance over time
+• When you believe recent data is more relevant for prediction than older data
+• When you want to simulate real-world forecasting scenarios in your validation process
 
-Configuring Holdout Validation in `estimate()`:
-
-To use holdout validation, set the following parameters in the `estimate()` function:
-
-- `validation_method='holdout'`: Activates holdout validation (default is 'cv').
-- `window_size`: Set the size of the training window (default is 80% of total time periods).
-- `expanding_window`: Set to True for expanding window, False for fixed window (default is False).
-- `max_window_size`: Set the maximum window size when using expanding window (default is None).
-- `n_folds`: Set the number of folds for time-based validation (default is 5).
-
-Example:
-```python
-results = estimate(Y, W, X=X, Z=Z, V=V,
-                   validation_method='holdout',
-                   window_size=50,
-                   expanding_window=True,
-                   max_window_size=80,
-                   n_folds=3)
-```
-
-This call uses time-based holdout validation with an expanding window, starting with a window size of 50, expanding up to 80, and using 3 folds for validation.
-Notes:
-
-- The `window_size` must be less than the total number of time periods.
-- If `expanding_window` is True and max_window_size is not set, it defaults to window_size.
-- The actual number of folds used might be less than `n_folds` if there aren't enough time periods.
-- Time-based validation requires at least 5 time periods in total.
-
-Choosing between Cross-Validation and Holdout Validation:
-Consider:
-
-- Data structure and temporal importance
-- Sample size and computational efficiency
-- Treatment mechanism's relation to time
-- Stability of effects over time
-
-If resources allow, trying both methods can provide insights into temporal structures in your data.
+The optimal configuration may depend on your specific dataset and prediction task. It's often beneficial to experiment with different parameter settings to find what works best for your particular case.
 
 Proposing Lambda Values
 -------------------
 The internal `propose_lambda` function in the `util.py` file is used to generate a sequence of lambda values for grid search. It works as follows:
 
 1. If no `proposed_lambda` is provided:
-   - Returns a logarithmically spaced sequence of `n_lambdas` values between 10^-3 and 10^0.
+
+   • Returns a logarithmically spaced sequence of `n_lambdas` values between 10^-3 and 10^0.
 
 2. If a `proposed_lambda` is provided:
-   - Creates a logarithmically spaced sequence of `n_lambdas` values centered around the `proposed_lambda`.
-   - The range spans from `10^(log10(proposed_lambda) - 2)` to `10^(log10(proposed_lambda) + 2)`.
+
+   • Creates a logarithmically spaced sequence of `n_lambdas` values centered around the `proposed_lambda`.
+   • The range spans from `10^(log10(proposed_lambda) - 2)` to `10^(log10(proposed_lambda) + 2)`.
 
 Usage:
-- When called without arguments, it provides a default range of lambda values.
-- When called with a specific lambda value, it provides a range of values around that lambda for fine-tuning.
+
+• When called without arguments, it provides a default range of lambda values.
+• When called with a specific lambda value, it provides a range of values around that lambda for fine-tuning.
 
 Customizing Validation in estimate()
 -------------------

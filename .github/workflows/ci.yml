@@ -2,13 +2,11 @@ name: Tests
 
 on:
   push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
 
 jobs:
   lint:
-    name: Lint
+    name: Type Checking, Security Scanning, and Code Formatting
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
@@ -19,25 +17,19 @@ jobs:
       with:
         python-version: '3.12'
 
-    - name: Cache Poetry
-      uses: actions/cache@v3
+    - name: Install poetry
+      uses: abatilo/actions-poetry@v2
+    - name: Setup a local virtual environment (if no poetry.toml file)
+      run: |
+        poetry config virtualenvs.create true --local
+        poetry config virtualenvs.in-project true --local
+    - uses: actions/cache@v3
+      name: Define a cache for the virtual environment based on the dependencies lock file
       with:
-        path: |
-          ~/.cache/pypoetry
-          ~/.local/share/pypoetry/venv
-        key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}-${{ hashFiles('**/pyproject.toml') }}
-        restore-keys: |
-          ${{ runner.os }}-poetry-
-
-    - name: Install Poetry and dependencies
-      run: |
-        curl -sSL https://install.python-poetry.org | python3 -
-        echo "$HOME/.local/bin" >> $GITHUB_PATH
-        poetry install
-
-    - name: Run linter
-      run: |
-        poetry run flake8 .
+        path: ./.venv
+        key: venv-${{ hashFiles('poetry.lock') }}
+    - name: Install the project dependencies
+      run: poetry install
 
     - name: Run type checker
       run: |
@@ -52,10 +44,11 @@ jobs:
         poetry run black --check .
 
   test:
-    name: Test
-    runs-on: ubuntu-latest
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ['3.10', '3.11', '3.12']
     steps:
     - name: Checkout code
@@ -66,21 +59,19 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Cache Poetry
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cache/pypoetry
-          ~/.local/share/pypoetry/venv
-        key: ${{ runner.os }}-poetry-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}-${{ hashFiles('**/pyproject.toml') }}
-        restore-keys: |
-          ${{ runner.os }}-poetry-${{ matrix.python-version }}-
-
-    - name: Install Poetry and dependencies
+    - name: Install poetry
+      uses: abatilo/actions-poetry@v2
+    - name: Setup a local virtual environment (if no poetry.toml file)
       run: |
-        curl -sSL https://install.python-poetry.org | python3 -
-        echo "$HOME/.local/bin" >> $GITHUB_PATH
-        poetry install
+        poetry config virtualenvs.create true --local
+        poetry config virtualenvs.in-project true --local
+    - uses: actions/cache@v3
+      name: Define a cache for the virtual environment based on the dependencies lock file
+      with:
+        path: ./.venv
+        key: venv-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('poetry.lock') }}
+    - name: Install the project dependencies
+      run: poetry install
 
     - name: Run tests with coverage
       run: |

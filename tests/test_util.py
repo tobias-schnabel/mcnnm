@@ -2,13 +2,9 @@ import pytest
 import jax.numpy as jnp
 from mcnnm.util import p_o, p_perp_o, shrink_lambda, frobenius_norm, nuclear_norm
 from mcnnm.util import propose_lambda, print_with_timestamp, initialize_params, check_inputs
-from mcnnm.util import generate_data, element_wise_l1_norm
+from mcnnm.util import generate_data, element_wise_l1_norm, generate_time_based_validate_defaults
 import jax
 from jax import random
-
-jax.config.update("jax_platforms", "cpu")
-jax.config.update("jax_enable_x64", True)
-jax.config.update("jax_disable_jit", True)
 
 key = jax.random.PRNGKey(2024)
 
@@ -82,7 +78,7 @@ def test_check_inputs():
     X, Z, V, Omega = check_inputs(Y, W)
     assert X.shape == (2, 0)
     assert Z.shape == (2, 0)
-    assert V.shape == (2, 2, 0)
+    assert V.shape == (2, 2, 1)
     assert Omega.shape == (2, 2)
 
 
@@ -217,10 +213,38 @@ def test_check_inputs_with_na():
     X, Z, V, Omega = check_inputs(Y, W)
     assert X.shape == (2, 0)
     assert Z.shape == (2, 0)
-    assert V.shape == (2, 2, 0)
+    assert V.shape == (2, 2, 1)
     assert Omega.shape == (2, 2)
 
 
 def test_generate_data_invalid_assignment():
     with pytest.raises(ValueError, match="Invalid assignment mechanism specified."):
         generate_data(assignment_mechanism="invalid_mechanism")
+
+
+def test_generate_time_based_validate_defaults():
+    Y = jnp.ones((10, 20))  # 10 units, 20 time periods
+    defaults = generate_time_based_validate_defaults(Y, n_lambda_L=5, n_lambda_H=5)
+
+    assert "initial_window" in defaults
+    assert "step_size" in defaults
+    assert "horizon" in defaults
+    assert "K" in defaults
+    assert "lambda_grid" in defaults
+    assert "max_iter" in defaults
+    assert "tol" in defaults
+
+    assert defaults["initial_window"] == 16  # 0.8 * 20
+    assert defaults["K"] == 5
+    assert defaults["step_size"] == 1  # (20 - 16) // 5 = 0, so it defaults to 1
+    assert defaults["horizon"] == 1  # Same as step_size
+    assert defaults["max_iter"] == 1000
+    assert jnp.isclose(defaults["tol"], 1e-4)
+
+    assert defaults["lambda_grid"].shape == (25, 2)  # 5 * 5 grid
+    assert jnp.all(defaults["lambda_grid"] >= 0.001)
+    assert jnp.all(defaults["lambda_grid"] <= 1.0)
+
+    # Test with different n_lambda values
+    defaults2 = generate_time_based_validate_defaults(Y, n_lambda_L=3, n_lambda_H=4)
+    assert defaults2["lambda_grid"].shape == (12, 2)  # 3 * 4 grid

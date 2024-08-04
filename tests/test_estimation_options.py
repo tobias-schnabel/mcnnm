@@ -4,12 +4,12 @@ from mcnnm.estimate import estimate
 from mcnnm.util import generate_data
 import jax.numpy as jnp
 
-jax.config.update("jax_platforms", "cpu")
-jax.config.update("jax_enable_x64", True)
-jax.config.update("jax_disable_jit", True)
+jax.config.update(
+    "jax_disable_jit", True
+)  # Tests also pass with JIT enabled, but large number of tests means
+# that compilation time is significant, so disabled for convenience
 
 
-@pytest.mark.comprehensive
 @pytest.mark.parametrize(
     "fixed_effects", [(False, False), (True, False), (False, True), (True, True)]
 )
@@ -36,7 +36,17 @@ jax.config.update("jax_disable_jit", True)
         (True, True, True, True, True, True),  # return everything
     ],
 )
-def test_mcnnm_estimation(fixed_effects, covariates, Omega, validation_method, return_options):
+@pytest.mark.parametrize(
+    "holdout_options",
+    [
+        (None, None, None, None),  # use defaults
+        (8, 1, 1, None),  # specify initial_window, step_size, horizon
+        (5, 2, 2, 8),  # specify all options including max_window_size
+    ],
+)
+def test_mcnnm_estimation(
+    fixed_effects, covariates, Omega, validation_method, return_options, holdout_options
+):
     unit_fe, time_fe = fixed_effects
     X_cov, Z_cov, V_cov = covariates
     (
@@ -47,6 +57,7 @@ def test_mcnnm_estimation(fixed_effects, covariates, Omega, validation_method, r
         return_fixed_effects,
         return_covariate_coefficients,
     ) = return_options
+    initial_window, step_size, horizon, max_window_size = holdout_options
 
     nobs, nperiods = 10, 10
     autocorrelation = 0.5 if Omega == "autocorrelated" else 0.0
@@ -83,7 +94,6 @@ def test_mcnnm_estimation(fixed_effects, covariates, Omega, validation_method, r
         V=V,
         Omega=Omega,
         validation_method=validation_method,
-        window_size=5,
         return_tau=return_tau,
         return_lambda=return_lambda,
         return_completed_L=return_completed_L,
@@ -92,10 +102,13 @@ def test_mcnnm_estimation(fixed_effects, covariates, Omega, validation_method, r
         return_covariate_coefficients=return_covariate_coefficients,
         max_iter=100,
         tol=1e-4,
-        verbose=True,
         n_lambda_L=3,
         n_lambda_H=3,
         K=2,
+        initial_window=initial_window,
+        step_size=step_size,
+        horizon=horizon,
+        max_window_size=max_window_size,
     )
 
     if return_tau:
@@ -125,3 +138,16 @@ def test_mcnnm_estimation(fixed_effects, covariates, Omega, validation_method, r
             jnp.isfinite(results.beta)
         ), "Estimated V coefficients contain non-finite values"
         assert jnp.all(jnp.isfinite(results.H)), "Estimated H matrix contains non-finite values"
+
+    # Additional checks for holdout validation
+    if validation_method == "holdout":
+        if initial_window is not None:
+            assert initial_window <= nperiods, "initial_window is larger than the number of periods"
+        if step_size is not None:
+            assert step_size > 0, "step_size must be positive"
+        if horizon is not None:
+            assert horizon > 0, "horizon must be positive"
+        if max_window_size is not None:
+            assert (
+                max_window_size <= nperiods
+            ), "max_window_size is larger than the number of periods"

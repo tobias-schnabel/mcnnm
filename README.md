@@ -1,13 +1,15 @@
 # lightweight-mcnnm
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Python Versions](https://img.shields.io/pypi/pyversions/lightweight-mcnnm.svg?cache-bust=1)](https://pypi.org/project/lightweight-mcnnm/)
-[![PyPI version](https://badge.fury.io/py/lightweight-mcnnm.svg?cache-bust=1)](https://badge.fury.io/py/lightweight-mcnnm)
+[![Python Versions](https://img.shields.io/pypi/pyversions/lightweight-mcnnm.svg)](https://pypi.org/project/lightweight-mcnnm/)
+![OS](https://img.shields.io/badge/OS-Linux%20|%20Windows%20|%20macOS-blue)
+[![PyPI version](https://img.shields.io/pypi/v/lightweight-mcnnm.svg?color=brightgreen&cache-bust=2)](https://pypi.org/project/lightweight-mcnnm/)
 [![Documentation Status](https://readthedocs.org/projects/mcnnm/badge/?version=latest)](https://mcnnm.readthedocs.io/en/latest/?badge=latest)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![GitHub last commit](https://img.shields.io/github/last-commit/tobias-schnabel/mcnnm)](https://github.com/tobias-schnabel/mcnnm/commits/main)
+[![mypy checked](https://img.shields.io/badge/mypy-checked-blue)](https://github.com/tobias-schnabel/mcnnm/actions/workflows/ci.yml)
+[![GitHub last commit](https://img.shields.io/github/last-commit/tobias-schnabel/mcnnm)](https://github.com/tobias-schnabel/mcnnm/commits/)
 [![codecov](https://codecov.io/gh/tobias-schnabel/mcnnm/graph/badge.svg?token=VYJ12XOQMP)](https://codecov.io/gh/tobias-schnabel/mcnnm)
-[![Tests](https://github.com/tobias-schnabel/mcnnm/actions/workflows/ci.yml/badge.svg?branch=main&cache-bust=1)](https://github.com/tobias-schnabel/mcnnm/actions/workflows/ci.yml)
+[![Tests](https://github.com/tobias-schnabel/mcnnm/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tobias-schnabel/mcnnm/actions/workflows/ci.yml)
 ![Issues](https://img.shields.io/github/issues/tobias-schnabel/mcnnm)
 ![Pull Requests](https://img.shields.io/github/issues-pr/tobias-schnabel/mcnnm)
 
@@ -62,13 +64,13 @@ pip install --upgrade lightweight-mcnnm
 ```
 
 #### JIT Compilation
-By default, this package disables JAX's JIT compilation for better performance in typical use cases. If you want to re-enable JIT compilation, you can add the following line at the top of your script:
+By default, this package uses JAX's JIT compilation for better performance in typical use cases. If you want to disable JIT compilation, you can add the following line at the top of your script:
 
 ```python
-jax.config.update('jax_disable_jit', False)
+jax.config.update('jax_disable_jit', True)
 ```
 
-Note that enabling JIT may impact performance depending on your specific use case. I have found leaving JIT disabled to be the best option for most use cases.
+Note that disabling JIT may impact performance depending on your specific use case. I have found leaving JIT enabled to be the best option for most use cases. An example use case where disabling JIT may be sensible is calling estimate() multiple times on datasets of different sizes, which triggers recompilation any time the input data shape changes.
 
 ## Documentation
 The full documentation for lightweight-mcnnm is available at:

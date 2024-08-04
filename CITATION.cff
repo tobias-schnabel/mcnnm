@@ -1,0 +1,44 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: "Schnabel"
+    given-names: "Tobias"
+title: "lightweight-mcnnm: A Python package for Matrix Completion with Nuclear Norm Minimization"
+version: 0.1.5
+date-released: 2024-08-04
+url: "https://github.com/tobias-schnabel/mcnnm"
+repository-code: "https://github.com/tobias-schnabel/mcnnm"
+license: GPL-3.0
+type: software
+keywords:
+  - causal-inference
+  - panel-data
+  - matrix-completion
+  - nuclear-norm-minimization
+  - python
+abstract: >
+  lightweight-mcnnm is a Python package that provides a lightweight and performant implementation
+  of the Matrix Completion with Nuclear Norm Minimization (MC-NNM) estimator for causal inference
+  in panel data settings. It implements the MC-NNM estimator exactly as described in "Matrix Completion
+  Methods for Causal Panel Data Models" by Susan Athey, Mohsen Bayati, Nikolay Doudchenko, Guido Imbens,
+  and Khashayar Khosravi (2021).
+references:
+  - type: article
+    authors:
+      - family-names: "Athey"
+        given-names: "Susan"
+      - family-names: "Bayati"
+        given-names: "Mohsen"
+      - family-names: "Doudchenko"
+        given-names: "Nikolay"
+      - family-names: "Imbens"
+        given-names: "Guido"
+      - family-names: "Khosravi"
+        given-names: "Khashayar"
+    title: "Matrix Completion Methods for Causal Panel Data Models"
+    journal: "Journal of the American Statistical Association"
+    volume: 116
+    issue: 536
+    year: 2021
+    pages: "1716-1730"
+    doi: "10.1080/01621459.2021.1891924"
