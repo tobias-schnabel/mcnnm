@@ -202,12 +202,12 @@ def fit(
     # Set the initial state of the while loop
     initial_state = (
         jnp.array(0),
-        L.astype(jnp.float64),
-        H.astype(jnp.float64),
-        gamma.astype(jnp.float64),
-        delta.astype(jnp.float64),
-        beta.astype(jnp.float64),
-        jnp.zeros_like(L, dtype=jnp.float64),
+        L.astype(jnp.float32),
+        H.astype(jnp.float32),
+        gamma.astype(jnp.float32),
+        delta.astype(jnp.float32),
+        beta.astype(jnp.float32),
+        jnp.zeros_like(L, dtype=jnp.float32),
     )
 
     # Run the while loop until convergence or max iterations
@@ -731,13 +731,18 @@ def estimate(
         else:
             raise ValueError("Invalid validation_method. Choose 'cv' or 'holdout'.")
 
-    def use_provided_lambda(_):
-        return (jnp.array(lambda_L), jnp.array(lambda_H))
+    def use_provided_lambda(lambda_L, lambda_H):
+        def to_jax_array(x):
+            if x is None:
+                return jnp.array(float("nan"))
+            return jnp.array(x, dtype=float)
+
+        return (to_jax_array(lambda_L), to_jax_array(lambda_H))
 
     lambda_L, lambda_H = jax.lax.cond(
         jnp.logical_or(lambda_L is None, lambda_H is None),
-        select_lambda,
-        use_provided_lambda,
+        lambda _: select_lambda(None),
+        lambda _: use_provided_lambda(lambda_L, lambda_H),
         operand=None,
     )
 
@@ -812,7 +817,7 @@ def complete_matrix(
     step_size: Optional[int] = None,
     horizon: Optional[int] = None,
     max_window_size: Optional[int] = None,
-) -> Tuple[Array, Scalar, Scalar]:
+) -> MCNNMResults:
     """
     Complete the matrix Y using the MC-NNM model and return the optimal regularization parameters.
 
@@ -874,21 +879,6 @@ def complete_matrix(
         max_window_size=max_window_size,
     )
 
-    def get_y_completed():
-        return jax.lax.cond(
-            results.Y_completed is not None, lambda: results.Y_completed, lambda: jnp.zeros_like(Y)
-        )
-
-    y_completed = get_y_completed()
-    lambda_L = jax.lax.cond(
-        results.lambda_L is not None,
-        lambda: results.lambda_L,
-        lambda: jnp.array(-1.0, dtype=jnp.float32),
+    return MCNNMResults(
+        Y_completed=results.Y_completed, lambda_L=results.lambda_L, lambda_H=results.lambda_H
     )
-    lambda_H = jax.lax.cond(
-        results.lambda_H is not None,
-        lambda: results.lambda_H,
-        lambda: jnp.array(-1.0, dtype=jnp.float32),
-    )
-
-    return y_completed, lambda_L, lambda_H
