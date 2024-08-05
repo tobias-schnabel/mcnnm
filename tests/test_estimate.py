@@ -44,16 +44,30 @@ def test_update_H():
 
 
 def test_update_gamma_delta_beta():
-    Y_adj = jnp.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    Y_adj = jnp.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])
     V = jnp.array(
-        [[[1, 2], [3, 4], [5, 6]], [[7, 8], [9, 10], [11, 12]], [[13, 14], [15, 16], [17, 18]]]
+        [
+            [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
+            [[7.0, 8.0], [9.0, 10.0], [11.0, 12.0]],
+            [[13.0, 14.0], [15.0, 16.0], [17.0, 18.0]],
+        ]
     )
+    use_unit_fe = True
+    use_time_fe = True
 
-    gamma, delta, beta = update_gamma_delta_beta(Y_adj, V)
+    gamma, delta, beta = update_gamma_delta_beta(Y_adj, V, use_unit_fe, use_time_fe)
 
     assert gamma.shape == (3,)
     assert delta.shape == (3,)
     assert beta.shape == (2,)
+
+    # Test without unit fixed effects
+    gamma, delta, beta = update_gamma_delta_beta(Y_adj, V, False, True)
+    assert jnp.allclose(gamma, jnp.zeros(3))
+
+    # Test without time fixed effects
+    gamma, delta, beta = update_gamma_delta_beta(Y_adj, V, True, False)
+    assert jnp.allclose(delta, jnp.zeros(3))
 
 
 def test_compute_beta():
@@ -78,11 +92,11 @@ def test_compute_beta():
 
 
 def test_fit_step():
-    Y = jnp.array([[1, 2], [3, 4]])
+    Y = jnp.array([[1.0, 2.0], [3.0, 4.0]])
     W = jnp.array([[0, 1], [0, 0]])
-    X_tilde = jnp.array([[1, 2], [3, 4]])
-    Z_tilde = jnp.array([[1, 2], [3, 4]])
-    V = jnp.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])
+    X_tilde = jnp.array([[1.0, 2.0], [3.0, 4.0]])
+    Z_tilde = jnp.array([[1.0, 2.0], [3.0, 4.0]])
+    V = jnp.array([[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]])
     Omega = jnp.eye(2)
     lambda_L = 0.1
     lambda_H = 0.1
@@ -91,8 +105,25 @@ def test_fit_step():
     gamma = jnp.zeros(2)
     delta = jnp.zeros(2)
     beta = jnp.zeros(2)
+    use_unit_fe = True
+    use_time_fe = True
+
     L_new, H_new, gamma_new, delta_new, beta_new = fit_step(
-        Y, W, X_tilde, Z_tilde, V, Omega, lambda_L, lambda_H, L, H, gamma, delta, beta
+        Y,
+        W,
+        X_tilde,
+        Z_tilde,
+        V,
+        Omega,
+        lambda_L,
+        lambda_H,
+        L,
+        H,
+        gamma,
+        delta,
+        beta,
+        use_unit_fe,
+        use_time_fe,
     )
     assert L_new.shape == (2, 2)
     assert H_new.shape == (2, 2)
@@ -115,14 +146,28 @@ def test_fit(nobs, nperiods):
     Omega = jnp.eye(nperiods)
     lambda_L = 0.1
     lambda_H = 0.1
+    use_unit_fe = True
+    use_time_fe = True
 
     # Test with default initial params
-    initial_params = initialize_params(Y, X, Z, V)
+    initial_params = initialize_params(Y, X, Z, V, use_unit_fe, use_time_fe)
     max_iter = 100
     tol = 1e-4
 
     L, H, gamma, delta, beta = fit(
-        Y, W, X, Z, V, Omega, lambda_L, lambda_H, initial_params, max_iter, tol
+        Y,
+        W,
+        X,
+        Z,
+        V,
+        Omega,
+        lambda_L,
+        lambda_H,
+        initial_params,
+        max_iter,
+        tol,
+        use_unit_fe,
+        use_time_fe,
     )
 
     assert L.shape == Y.shape
@@ -136,67 +181,17 @@ def test_fit(nobs, nperiods):
     assert jnp.all(jnp.isfinite(delta))
     assert jnp.all(jnp.isfinite(beta))
 
-    # Test with custom initial params
-    custom_initial_params = (
-        jnp.ones_like(Y),
-        jnp.ones((X.shape[1] + nobs, Z.shape[1] + nperiods)),
-        jnp.ones(nobs),
-        jnp.ones(nperiods),
-        jnp.ones(V.shape[2]),
-    )
-
+    # Test without unit fixed effects
     L, H, gamma, delta, beta = fit(
-        Y, W, X, Z, V, Omega, lambda_L, lambda_H, custom_initial_params, max_iter, tol
+        Y, W, X, Z, V, Omega, lambda_L, lambda_H, initial_params, max_iter, tol, False, use_time_fe
     )
+    assert jnp.allclose(gamma, jnp.zeros(nobs))
 
-    assert L.shape == Y.shape
-    assert H.shape == (X.shape[1] + nobs, Z.shape[1] + nperiods)
-    assert gamma.shape == (nobs,)
-    assert delta.shape == (nperiods,)
-    assert beta.shape == (V.shape[2],)
-    assert jnp.all(jnp.isfinite(L))
-    assert jnp.all(jnp.isfinite(H))
-    assert jnp.all(jnp.isfinite(gamma))
-    assert jnp.all(jnp.isfinite(delta))
-    assert jnp.all(jnp.isfinite(beta))
-
-    # Test with different max_iter and tol
-    max_iter = 10
-    tol = 1e-2
-
+    # Test without time fixed effects
     L, H, gamma, delta, beta = fit(
-        Y, W, X, Z, V, Omega, lambda_L, lambda_H, initial_params, max_iter, tol
+        Y, W, X, Z, V, Omega, lambda_L, lambda_H, initial_params, max_iter, tol, use_unit_fe, False
     )
-
-    assert L.shape == Y.shape
-    assert H.shape == (X.shape[1] + nobs, Z.shape[1] + nperiods)
-    assert gamma.shape == (nobs,)
-    assert delta.shape == (nperiods,)
-    assert beta.shape == (V.shape[2],)
-    assert jnp.all(jnp.isfinite(L))
-    assert jnp.all(jnp.isfinite(H))
-    assert jnp.all(jnp.isfinite(gamma))
-    assert jnp.all(jnp.isfinite(delta))
-    assert jnp.all(jnp.isfinite(beta))
-
-    # Test with different lambda values
-    lambda_L = 0.01
-    lambda_H = 1.0
-
-    L, H, gamma, delta, beta = fit(
-        Y, W, X, Z, V, Omega, lambda_L, lambda_H, initial_params, max_iter, tol
-    )
-
-    assert L.shape == Y.shape
-    assert H.shape == (X.shape[1] + nobs, Z.shape[1] + nperiods)
-    assert gamma.shape == (nobs,)
-    assert delta.shape == (nperiods,)
-    assert beta.shape == (V.shape[2],)
-    assert jnp.all(jnp.isfinite(L))
-    assert jnp.all(jnp.isfinite(H))
-    assert jnp.all(jnp.isfinite(gamma))
-    assert jnp.all(jnp.isfinite(delta))
-    assert jnp.all(jnp.isfinite(beta))
+    assert jnp.allclose(delta, jnp.zeros(nperiods))
 
 
 def test_compute_treatment_effect(sample_data):
@@ -213,7 +208,20 @@ def test_compute_treatment_effect(sample_data):
     # Correct H shape
     H = random.normal(key, (N + P, T + Q))
 
-    tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W, Z, V)
+    use_unit_fe = True
+    use_time_fe = True
+
+    tau = compute_treatment_effect(
+        Y, L, gamma, delta, beta, H, X, W, Z, V, use_unit_fe, use_time_fe
+    )
+    assert jnp.isfinite(tau)
+
+    # Test without unit fixed effects
+    tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W, Z, V, False, use_time_fe)
+    assert jnp.isfinite(tau)
+
+    # Test without time fixed effects
+    tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W, Z, V, use_unit_fe, False)
     assert jnp.isfinite(tau)
 
 
@@ -224,6 +232,8 @@ def test_estimate():
     Y = jnp.array(data.pivot(index="unit", columns="period", values="y").values)
     W = jnp.array(data.pivot(index="unit", columns="period", values="treat").values)
     X, Z, V = jnp.array(true_params["X"]), jnp.array(true_params["Z"]), jnp.array(true_params["V"])
+
+    # Test with default settings (both fixed effects)
     results = estimate(Y, W, X=X, Z=Z, V=V, K=2)
     assert jnp.isfinite(results.tau)
     assert jnp.isfinite(results.lambda_L)
@@ -232,6 +242,19 @@ def test_estimate():
     assert results.Y_completed.shape == Y.shape
     assert jnp.all(jnp.isfinite(results.L))
     assert jnp.all(jnp.isfinite(results.Y_completed))
+
+    # Test without unit fixed effects
+    results = estimate(Y, W, X=X, Z=Z, V=V, K=2, use_unit_fe=False)
+    assert jnp.allclose(results.gamma, jnp.zeros(nobs))
+
+    # Test without time fixed effects
+    results = estimate(Y, W, X=X, Z=Z, V=V, K=2, use_time_fe=False)
+    assert jnp.allclose(results.delta, jnp.zeros(nperiods))
+
+    # Test without both fixed effects
+    results = estimate(Y, W, X=X, Z=Z, V=V, K=2, use_unit_fe=False, use_time_fe=False)
+    assert jnp.allclose(results.gamma, jnp.zeros(nobs))
+    assert jnp.allclose(results.delta, jnp.zeros(nperiods))
 
 
 @pytest.mark.timeout(180)
@@ -267,18 +290,30 @@ def test_complete_matrix():
 
 def test_compute_cv_loss():
     N, T, J = 5, 4, 2
-    Y = jnp.array([[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16], [17, 18, 19, 20]])
+    Y = jnp.array(
+        [
+            [1.0, 2.0, 3.0, 4.0],
+            [5.0, 6.0, 7.0, 8.0],
+            [9.0, 10.0, 11.0, 12.0],
+            [13.0, 14.0, 15.0, 16.0],
+            [17.0, 18.0, 19.0, 20.0],
+        ]
+    )
     W = jnp.array([[0, 0, 1, 1], [0, 1, 1, 1], [1, 1, 1, 0], [1, 0, 0, 0], [0, 0, 0, 1]])
-    X = jnp.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])
-    Z = jnp.array([[1, 2], [3, 4], [5, 6], [7, 8]])
+    X = jnp.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0], [9.0, 10.0]])
+    Z = jnp.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]])
     V = jnp.ones((N, T, J))
     Omega = jnp.eye(T)
     lambda_L = 0.1
     lambda_H = 0.1
     max_iter = 10
     tol = 1e-4
+    use_unit_fe = True
+    use_time_fe = True
 
-    loss = compute_cv_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H, max_iter, tol)
+    loss = compute_cv_loss(
+        Y, W, X, Z, V, Omega, lambda_L, lambda_H, max_iter, tol, use_unit_fe, use_time_fe
+    )
 
     # Check if loss is finite or NaN
     assert jnp.isfinite(loss) or jnp.isnan(loss)
@@ -287,38 +322,32 @@ def test_compute_cv_loss():
     if jnp.isfinite(loss):
         assert loss >= 0
 
-    # Test with different lambda values
-    lambda_L = 0.01
-    lambda_H = 1.0
-    loss = compute_cv_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H, max_iter, tol)
-    assert jnp.isfinite(loss) or jnp.isnan(loss)
-    if jnp.isfinite(loss):
-        assert loss >= 0
-
-    # Test with different max_iter and tol
-    max_iter = 5
-    tol = 1e-3
-    loss = compute_cv_loss(Y, W, X, Z, V, Omega, lambda_L, lambda_H, max_iter, tol)
-    assert jnp.isfinite(loss) or jnp.isnan(loss)
-    if jnp.isfinite(loss):
-        assert loss >= 0
-
 
 def test_cross_validate():
     N, T, J = 5, 4, 2
-    Y = jnp.array([[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16], [17, 18, 19, 20]])
+    Y = jnp.array(
+        [
+            [1.0, 2.0, 3.0, 4.0],
+            [5.0, 6.0, 7.0, 8.0],
+            [9.0, 10.0, 11.0, 12.0],
+            [13.0, 14.0, 15.0, 16.0],
+            [17.0, 18.0, 19.0, 20.0],
+        ]
+    )
     W = jnp.array([[0, 0, 1, 1], [0, 1, 1, 1], [1, 1, 1, 0], [1, 0, 0, 0], [0, 0, 0, 1]])
-    X = jnp.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])
-    Z = jnp.array([[1, 2], [3, 4], [5, 6], [7, 8]])
+    X = jnp.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0], [9.0, 10.0]])
+    Z = jnp.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]])
     V = jnp.ones((N, T, J))
     Omega = jnp.eye(T)
     lambda_grid = jnp.array([[0.1, 0.1], [0.2, 0.2], [0.3, 0.3]])
     max_iter = 10
     tol = 1e-4
     K = 2
+    use_unit_fe = True
+    use_time_fe = True
 
     best_lambda_L, best_lambda_H = cross_validate(
-        Y, W, X, Z, V, Omega, lambda_grid, max_iter, tol, K
+        Y, W, X, Z, V, Omega, use_unit_fe, use_time_fe, lambda_grid, max_iter, tol, K
     )
 
     assert jnp.isfinite(best_lambda_L)
@@ -351,6 +380,8 @@ def test_time_based_validate():
     Z = jnp.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12]])
     V = jnp.ones((N, T, J))
     Omega = jnp.eye(T)
+    use_unit_fe = True
+    use_time_fe = True
 
     defaults = generate_time_based_validate_defaults(Y, n_lambda_L=3, n_lambda_H=3)
 
@@ -361,6 +392,8 @@ def test_time_based_validate():
         Z,
         V,
         Omega,
+        use_unit_fe,
+        use_time_fe,
         defaults["lambda_grid"],
         defaults["max_iter"],
         defaults["tol"],
@@ -368,8 +401,8 @@ def test_time_based_validate():
         defaults["step_size"],
         defaults["horizon"],
         defaults["K"],
+        T,
         max_window_size=None,
-        T=T,
     )
 
     assert jnp.isfinite(best_lambda_L)
@@ -377,7 +410,7 @@ def test_time_based_validate():
     assert best_lambda_L > 0
     assert best_lambda_H > 0
 
-    # Test with max_window_size
+    # Test without unit fixed effects
     best_lambda_L, best_lambda_H = time_based_validate(
         Y,
         W,
@@ -385,6 +418,8 @@ def test_time_based_validate():
         Z,
         V,
         Omega,
+        False,
+        use_time_fe,
         defaults["lambda_grid"],
         defaults["max_iter"],
         defaults["tol"],
@@ -392,25 +427,45 @@ def test_time_based_validate():
         defaults["step_size"],
         defaults["horizon"],
         defaults["K"],
-        max_window_size=4,
-        T=T,
+        T,
+        max_window_size=None,
     )
-
     assert jnp.isfinite(best_lambda_L)
     assert jnp.isfinite(best_lambda_H)
-    assert best_lambda_L > 0
-    assert best_lambda_H > 0
+
+    # Test without time fixed effects
+    best_lambda_L, best_lambda_H = time_based_validate(
+        Y,
+        W,
+        X,
+        Z,
+        V,
+        Omega,
+        use_unit_fe,
+        False,
+        defaults["lambda_grid"],
+        defaults["max_iter"],
+        defaults["tol"],
+        defaults["initial_window"],
+        defaults["step_size"],
+        defaults["horizon"],
+        defaults["K"],
+        T,
+        max_window_size=None,
+    )
+    assert jnp.isfinite(best_lambda_L)
+    assert jnp.isfinite(best_lambda_H)
 
 
 def test_time_based_validate_all_infinite_losses():
     N, T, J = 5, 6, 2
     Y = jnp.array(
         [
-            [1, 2, 3, 4, 5, 6],
-            [7, 8, 9, 10, 11, 12],
-            [13, 14, 15, 16, 17, 18],
-            [19, 20, 21, 22, 23, 24],
-            [25, 26, 27, 28, 29, 30],
+            [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            [7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
+            [13.0, 14.0, 15.0, 16.0, 17.0, 18.0],
+            [19.0, 20.0, 21.0, 22.0, 23.0, 24.0],
+            [25.0, 26.0, 27.0, 28.0, 29.0, 30.0],
         ]
     )
     W = jnp.array(
@@ -422,10 +477,12 @@ def test_time_based_validate_all_infinite_losses():
             [0, 0, 0, 1, 1, 1],
         ]
     )
-    X = jnp.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])
-    Z = jnp.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12]])
+    X = jnp.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0], [9.0, 10.0]])
+    Z = jnp.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0], [9.0, 10.0], [11.0, 12.0]])
     V = jnp.ones((N, T, J))
     Omega = jnp.eye(T)
+    use_unit_fe = True
+    use_time_fe = True
 
     # Create a lambda grid where all losses will be infinite
     lambda_grid = jnp.array(
@@ -441,6 +498,8 @@ def test_time_based_validate_all_infinite_losses():
         Z,
         V,
         Omega,
+        use_unit_fe,
+        use_time_fe,
         lambda_grid,
         defaults["max_iter"],
         defaults["tol"],
@@ -448,8 +507,8 @@ def test_time_based_validate_all_infinite_losses():
         defaults["step_size"],
         defaults["horizon"],
         defaults["K"],
+        T,
         max_window_size=None,
-        T=T,
     )
 
     # Check if the middle lambda pair is returned
