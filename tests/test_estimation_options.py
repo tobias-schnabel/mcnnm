@@ -1,9 +1,11 @@
 import pytest
+import jax
 from mcnnm.estimate import estimate
 from mcnnm.util import generate_data
 import jax.numpy as jnp
 
-# jax.config.update("jax_disable_jit", True)
+jax.config.update("jax_disable_jit", True)  # Disable JIT because of very large number of tests,
+# recompilation takes too long
 
 
 @pytest.mark.parametrize("use_unit_fe", [False, True])
