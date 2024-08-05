@@ -8,7 +8,7 @@ Main Functions
 
 estimate
 ^^^^^^^^
-.. autofunction:: lightweight_mcnnm.estimate
+.. autofunction:: mcnnm.estimate
 
 Parameters:
     - Y (Array): The observed outcome matrix.
@@ -41,7 +41,7 @@ Returns:
 
 complete_matrix
 ^^^^^^^^^^^^^^^
-.. autofunction:: lightweight_mcnnm.complete_matrix
+.. autofunction:: mcnnm.complete_matrix
 
 Parameters:
     - Y (Array): The observed outcome matrix.
@@ -68,7 +68,7 @@ Returns:
 
 generate_data
 ^^^^^^^^^^^^^
-.. autofunction:: lightweight_mcnnm.generate_data
+.. autofunction:: mcnnm.generate_data
 
 Parameters:
     - nobs (int): Number of units. Default is 500.
@@ -98,19 +98,20 @@ Classes
 
 MCNNMResults
 ^^^^^^^^^^^^
-.. autoclass:: lightweight_mcnnm.MCNNMResults
+.. autoclass:: mcnnm.MCNNMResults
    :members:
+   :noindex:
 
 Attributes:
-    - tau (Optional[float]): The estimated average treatment effect.
-    - lambda_L (Optional[float]): The selected regularization parameter for L.
-    - lambda_H (Optional[float]): The selected regularization parameter for H.
-    - L (Optional[Array]): The estimated low-rank matrix.
-    - Y_completed (Optional[Array]): The completed outcome matrix.
-    - gamma (Optional[Array]): The estimated unit fixed effects.
-    - delta (Optional[Array]): The estimated time fixed effects.
-    - beta (Optional[Array]): The estimated unit-time specific covariate coefficients.
-    - H (Optional[Array]): The estimated covariate coefficient matrix.
+    - tau (Optional[float]): The estimated average treatment effect. :noindex:
+    - lambda_L (Optional[float]): The selected regularization parameter for L. :noindex:
+    - lambda_H (Optional[float]): The selected regularization parameter for H. :noindex:
+    - L (Optional[Array]): The estimated low-rank matrix. :noindex:
+    - Y_completed (Optional[Array]): The completed outcome matrix. :noindex:
+    - gamma (Optional[Array]): The estimated unit fixed effects. :noindex:
+    - delta (Optional[Array]): The estimated time fixed effects. :noindex:
+    - beta (Optional[Array]): The estimated unit-time specific covariate coefficients. :noindex:
+    - H (Optional[Array]): The estimated covariate coefficient matrix. :noindex:
 
 Internal Functions
 ------------------
@@ -126,17 +127,17 @@ When the `estimate()` function is called, the following sequence of operations o
 
 2. Lambda Selection (if not provided):
    - If `lambda_L` or `lambda_H` are not provided, the function enters a lambda selection process:
-     - `propose_lambda()` generates a grid of lambda values.
-     - Depending on the `validation_method`:
-       - For 'cv': `cross_validate()` is called, which in turn calls `compute_cv_loss()` for each fold.
-       - For 'holdout': `time_based_validate()` is called, which performs time-based validation.
+   - `propose_lambda()` generates a grid of lambda values.
+   - Depending on the `validation_method`:
+   - For 'cv': `cross_validate()` is called, which in turn calls `compute_cv_loss()` for each fold.
+   - For 'holdout': `time_based_validate()` is called, which performs time-based validation.
 
 3. Model Fitting:
    - `initialize_params()` is called to set initial values for L, H, gamma, delta, and beta.
    - `fit()` is called, which iteratively calls `fit_step()` until convergence or max iterations:
-     - `update_L()` updates the low-rank matrix L (corresponds to Equation (7) in Athey et al.)
-     - `update_H()` updates the covariate coefficient matrix H (corresponds to Equation (8))
-     - `update_gamma_delta_beta()` updates fixed effects and unit-time specific coefficients
+   - `update_L()` updates the low-rank matrix L (corresponds to Equation (7) in Athey et al.)
+   - `update_H()` updates the covariate coefficient matrix H (corresponds to Equation (8))
+   - `update_gamma_delta_beta()` updates fixed effects and unit-time specific coefficients
 
 4. Treatment Effect Computation (if requested):
    - If `return_tau` is True, `compute_treatment_effect()` is called to estimate the average treatment effect.
@@ -206,87 +207,87 @@ Functions from estimate.py
 
 update_L
 ~~~~~~~~
-.. autofunction:: lightweight_mcnnm.estimate.update_L
+.. autofunction:: mcnnm.estimate.update_L
 
 update_H
 ~~~~~~~~
-.. autofunction:: lightweight_mcnnm.estimate.update_H
+.. autofunction:: mcnnm.estimate.update_H
 
 update_gamma_delta_beta
 ~~~~~~~~~~~~~~~~~~~~~~~
-.. autofunction:: lightweight_mcnnm.estimate.update_gamma_delta_beta
+.. autofunction:: mcnnm.estimate.update_gamma_delta_beta
 
 compute_beta
 ~~~~~~~~~~~~
-.. autofunction:: lightweight_mcnnm.estimate.compute_beta
+.. autofunction:: mcnnm.estimate.compute_beta
 
 fit_step
 ~~~~~~~~
-.. autofunction:: lightweight_mcnnm.estimate.fit_step
+.. autofunction:: mcnnm.estimate.fit_step
 
 fit
 ~~~
-.. autofunction:: lightweight_mcnnm.estimate.fit
+.. autofunction:: mcnnm.estimate.fit
 
 compute_cv_loss
 ~~~~~~~~~~~~~~~
-.. autofunction:: lightweight_mcnnm.estimate.compute_cv_loss
+.. autofunction:: mcnnm.estimate.compute_cv_loss
 
 cross_validate
 ~~~~~~~~~~~~~~
-.. autofunction:: lightweight_mcnnm.estimate.cross_validate
+.. autofunction:: mcnnm.estimate.cross_validate
 
 time_based_validate
 ~~~~~~~~~~~~~~~~~~~
-.. autofunction:: lightweight_mcnnm.estimate.time_based_validate
+.. autofunction:: mcnnm.estimate.time_based_validate
 
 compute_treatment_effect
 ~~~~~~~~~~~~~~~~~~~~~~~~
-.. autofunction:: lightweight_mcnnm.estimate.compute_treatment_effect
+.. autofunction:: mcnnm.estimate.compute_treatment_effect
 
 Functions from util.py
 ^^^^^^^^^^^^^^^^^^^^^^
 
 p_o
 ~~~
-.. autofunction:: lightweight_mcnnm.util.p_o
+.. autofunction:: mcnnm.util.p_o
 
 p_perp_o
 ~~~~~~~~
-.. autofunction:: lightweight_mcnnm.util.p_perp_o
+.. autofunction:: mcnnm.util.p_perp_o
 
 shrink_lambda
 ~~~~~~~~~~~~~
-.. autofunction:: lightweight_mcnnm.util.shrink_lambda
+.. autofunction:: mcnnm.util.shrink_lambda
 
 frobenius_norm
 ~~~~~~~~~~~~~~
-.. autofunction:: lightweight_mcnnm.util.frobenius_norm
+.. autofunction:: mcnnm.util.frobenius_norm
 
 nuclear_norm
 ~~~~~~~~~~~~
-.. autofunction:: lightweight_mcnnm.util.nuclear_norm
+.. autofunction:: mcnnm.util.nuclear_norm
 
 element_wise_l1_norm
 ~~~~~~~~~~~~~~~~~~~~
-.. autofunction:: lightweight_mcnnm.util.element_wise_l1_norm
+.. autofunction:: mcnnm.util.element_wise_l1_norm
 
 propose_lambda
 ~~~~~~~~~~~~~~
-.. autofunction:: lightweight_mcnnm.util.propose_lambda
+.. autofunction:: mcnnm.util.propose_lambda
 
 initialize_params
 ~~~~~~~~~~~~~~~~~
-.. autofunction:: lightweight_mcnnm.util.initialize_params
+.. autofunction:: mcnnm.util.initialize_params
 
 check_inputs
 ~~~~~~~~~~~~
-.. autofunction:: lightweight_mcnnm.util.check_inputs
+.. autofunction:: mcnnm.util.check_inputs
 
 generate_time_based_validate_defaults
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-.. autofunction:: lightweight_mcnnm.util.generate_time_based_validate_defaults
+.. autofunction:: mcnnm.util.generate_time_based_validate_defaults
 
 print_with_timestamp
 ~~~~~~~~~~~~~~~~~~~~
-.. autofunction:: lightweight_mcnnm.util.print_with_timestamp
+.. autofunction:: mcnnm.util.print_with_timestamp
