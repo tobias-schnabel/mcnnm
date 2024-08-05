@@ -399,6 +399,7 @@ def generate_data(
     else:
         raise ValueError("Invalid assignment mechanism specified.")
 
+    Y_0 = Y.flatten()  # untreated potential outcome
     Y += treat * treatment_effect
 
     data["y"] = Y.flatten()
@@ -418,12 +419,13 @@ def generate_data(
         "noise_scale": noise_scale,
         "assignment_mechanism": assignment_mechanism,
         "autocorrelation": autocorrelation,
+        "Y(0)": Y_0,
     }
 
     return data, true_params
 
 
-def print_with_timestamp(message: str) -> None:
+def print_with_timestamp(message: str) -> None:  # pragma: no cover
     """
     Print a message with a human-readable timestamp (hhmmss) prefix.
 
