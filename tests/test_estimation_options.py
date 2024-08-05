@@ -1,72 +1,49 @@
 import pytest
-import jax
 from mcnnm.estimate import estimate
 from mcnnm.util import generate_data
 import jax.numpy as jnp
 
-jax.config.update(
-    "jax_disable_jit", True
-)  # Tests also pass with JIT enabled, but large number of tests means
-# that compilation time is significant, so disabled for convenience
+# jax.config.update("jax_disable_jit", True)
 
 
-@pytest.mark.parametrize(
-    "fixed_effects", [(False, False), (True, False), (False, True), (True, True)]
-)
-@pytest.mark.parametrize(
-    "covariates",
-    [
-        (False, False, False),
-        (True, False, False),
-        (False, True, False),
-        (False, False, True),
-        (True, True, True),
-    ],
-)
+@pytest.mark.parametrize("use_unit_fe", [False, True])
+@pytest.mark.parametrize("use_time_fe", [False, True])
+@pytest.mark.parametrize("X_cov", [False, True])
+@pytest.mark.parametrize("Z_cov", [False, True])
+@pytest.mark.parametrize("V_cov", [False, True])
 @pytest.mark.parametrize("Omega", [None, "autocorrelated"])
 @pytest.mark.parametrize("validation_method", ["cv", "holdout"])
 @pytest.mark.parametrize(
     "return_options",
     [
-        (False, False, False, False, False, False),  # return nothing
-        (True, False, False, False, False, False),  # return only the estimated treatment effect
-        (True, True, False, False, False, False),  # return tau and optimal lambdas
-        (False, False, False, True, False, False),  # return only completed Y
-        (False, True, False, True, False, False),  # return completed Y and optimal lambdas
-        (True, True, True, True, True, True),  # return everything
+        "tau_only",
+        "lambdas_only",
+        "completed_matrices",
+        "fixed_effects",
+        "covariate_coefficients",
+        "all",
     ],
 )
-@pytest.mark.parametrize(
-    "holdout_options",
-    [
-        (None, None, None, None),  # use defaults
-        (8, 1, 1, None),  # specify initial_window, step_size, horizon
-        (5, 2, 2, 8),  # specify all options including max_window_size
-    ],
-)
+@pytest.mark.parametrize("holdout_options", ["default", "custom_window", "all_custom"])
 def test_mcnnm_estimation(
-    fixed_effects, covariates, Omega, validation_method, return_options, holdout_options
+    use_unit_fe,
+    use_time_fe,
+    X_cov,
+    Z_cov,
+    V_cov,
+    Omega,
+    validation_method,
+    return_options,
+    holdout_options,
 ):
-    unit_fe, time_fe = fixed_effects
-    X_cov, Z_cov, V_cov = covariates
-    (
-        return_tau,
-        return_lambda,
-        return_completed_L,
-        return_completed_Y,
-        return_fixed_effects,
-        return_covariate_coefficients,
-    ) = return_options
-    initial_window, step_size, horizon, max_window_size = holdout_options
-
     nobs, nperiods = 10, 10
     autocorrelation = 0.5 if Omega == "autocorrelated" else 0.0
     data, true_params = generate_data(
         nobs=nobs,
         nperiods=nperiods,
         seed=42,
-        unit_fe=unit_fe,
-        time_fe=time_fe,
+        unit_fe=use_unit_fe,
+        time_fe=use_time_fe,
         X_cov=X_cov,
         Z_cov=Z_cov,
         V_cov=V_cov,
@@ -86,6 +63,22 @@ def test_mcnnm_estimation(
     else:
         Omega = None
 
+    return_tau = "tau" in return_options or return_options == "all"
+    return_lambda = "lambda" in return_options or return_options == "all"
+    return_completed_L = "completed_matrices" in return_options or return_options == "all"
+    return_completed_Y = "completed_matrices" in return_options or return_options == "all"
+    return_fixed_effects = "fixed_effects" in return_options or return_options == "all"
+    return_covariate_coefficients = (
+        "covariate_coefficients" in return_options or return_options == "all"
+    )
+
+    if holdout_options == "default":
+        initial_window, step_size, horizon, max_window_size = None, None, None, None
+    elif holdout_options == "custom_window":
+        initial_window, step_size, horizon, max_window_size = 8, 1, 1, None
+    else:  # all_custom
+        initial_window, step_size, horizon, max_window_size = 5, 2, 2, 8
+
     results = estimate(
         Y,
         W,
@@ -93,6 +86,8 @@ def test_mcnnm_estimation(
         Z=Z,
         V=V,
         Omega=Omega,
+        use_unit_fe=use_unit_fe,
+        use_time_fe=use_time_fe,
         validation_method=validation_method,
         return_tau=return_tau,
         return_lambda=return_lambda,
@@ -114,10 +109,12 @@ def test_mcnnm_estimation(
     if return_tau:
         assert jnp.isfinite(results.tau), "Estimated treatment effect is not finite"
     if return_lambda:
-        assert results.lambda_L is not None, "Chosen lambda_L is None"
-        assert results.lambda_H is not None, "Chosen lambda_H is None"
-        assert jnp.isfinite(results.lambda_L), "Chosen lambda_L is not finite"
-        assert jnp.isfinite(results.lambda_H), "Chosen lambda_H is not finite"
+        assert results.lambda_L is not None and jnp.isfinite(
+            results.lambda_L
+        ), "Chosen lambda_L is not valid"
+        assert results.lambda_H is not None and jnp.isfinite(
+            results.lambda_H
+        ), "Chosen lambda_H is not valid"
     if return_completed_L:
         assert results.L.shape == Y.shape, "Completed L matrix has incorrect shape"
         assert jnp.all(jnp.isfinite(results.L)), "Completed L matrix contains non-finite values"
@@ -127,19 +124,38 @@ def test_mcnnm_estimation(
             jnp.isfinite(results.Y_completed)
         ), "Completed Y matrix contains non-finite values"
     if return_fixed_effects:
-        assert jnp.all(
-            jnp.isfinite(results.gamma)
-        ), "Estimated unit fixed effects contain non-finite values"
-        assert jnp.all(
-            jnp.isfinite(results.delta)
-        ), "Estimated time fixed effects contain non-finite values"
-    if return_covariate_coefficients:
-        assert jnp.all(
-            jnp.isfinite(results.beta)
-        ), "Estimated V coefficients contain non-finite values"
-        assert jnp.all(jnp.isfinite(results.H)), "Estimated H matrix contains non-finite values"
+        if use_unit_fe:
+            assert results.gamma is not None and jnp.all(
+                jnp.isfinite(results.gamma)
+            ), "Estimated unit fixed effects are not valid"
+        else:
+            # change this from asserting that they're none to asserting that they're all zero
+            jnp.allclose(
+                results.gamma, jnp.zeros_like(results.gamma)
+            ), "Unit fixed effects should be zero when not used"
 
-    # Additional checks for holdout validation
+        if use_time_fe:
+            assert results.delta is not None and jnp.all(
+                jnp.isfinite(results.delta)
+            ), "Estimated time fixed effects are not valid"
+        else:
+            # change this from asserting that they're none to asserting that they're all zero
+            jnp.allclose(
+                results.delta, jnp.zeros_like(results.delta)
+            ), "Time fixed effects should be zero when not used"
+    if return_covariate_coefficients:
+        if V_cov:
+            assert results.beta is not None and jnp.all(
+                jnp.isfinite(results.beta)
+            ), "Estimated V coefficients are not valid"
+        else:
+            assert results.beta is None or jnp.all(
+                results.beta == 0
+            ), "V coefficients should be None or zero when not used"
+        assert results.H is not None and jnp.all(
+            jnp.isfinite(results.H)
+        ), "Estimated H matrix is not valid"
+
     if validation_method == "holdout":
         if initial_window is not None:
             assert initial_window <= nperiods, "initial_window is larger than the number of periods"
