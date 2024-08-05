@@ -702,26 +702,6 @@ files = [
 devel = ["colorama", "json-spec", "jsonschema", "pylint", "pytest", "pytest-benchmark", "pytest-cache", "validictory"]
 
 [[package]]
-name = "fect_python"
-version = "0.1.0"
-description = "counterfactural estimation and general synthetic control (FEct)"
-optional = false
-python-versions = "*"
-files = []
-develop = false
-
-[package.dependencies]
-numpy = ">=1.17"
-pandas = ">=1.1.2"
-rpy2 = "<=3.5.4"
-
-[package.source]
-type = "git"
-url = "https://github.com/xuyiqing/fect_python.git"
-reference = "HEAD"
-resolved_reference = "dc2c47ee2a9bf405781aca2b8ef50b8a2e46a909"
-
-[[package]]
 name = "filelock"
 version = "3.15.4"
 description = "A platform independent file lock."
@@ -2711,34 +2691,6 @@ files = [
 ]
 
 [[package]]
-name = "rpy2"
-version = "3.5.4"
-description = "Python interface to the R language (embedded R)"
-optional = false
-python-versions = "*"
-files = [
-    {file = "rpy2-3.5.4-cp310-cp310-macosx_10_15_x86_64.whl", hash = "sha256:9984fc765f02123eb82f74bbe27177165651eeb04b364181a59752f2e213ef41"},
-    {file = "rpy2-3.5.4-cp37-cp37m-macosx_10_15_x86_64.whl", hash = "sha256:816560379f893403ddd96d9e364414b223c0d51ef6f7d8b6c42dacbafe27b1d8"},
-    {file = "rpy2-3.5.4-cp38-cp38-macosx_10_15_x86_64.whl", hash = "sha256:d3839ee3a030311afe8084746a76e025dd683e65a38d1e7876e5e56a2203d9ac"},
-    {file = "rpy2-3.5.4-cp39-cp39-macosx_10_15_x86_64.whl", hash = "sha256:99bce1c37763fc1639fb4c5a263e975b5be65f29dbbd50c3e75d284075802fde"},
-    {file = "rpy2-3.5.4.tar.gz", hash = "sha256:ba0a877b2b96e27d2091383d4652b82aa2271cff4a505243d45da430b712aaf5"},
-]
-
-[package.dependencies]
-cffi = ">=1.10.0"
-jinja2 = "*"
-packaging = {version = "*", markers = "platform_system == \"Windows\""}
-pytz = "*"
-tzlocal = "*"
-
-[package.extras]
-all = ["numpy", "pandas", "pytest", "setuptools"]
-numpy = ["numpy"]
-pandas = ["numpy", "pandas"]
-setup = ["setuptools"]
-test = ["pytest"]
-
-[[package]]
 name = "scipy"
 version = "1.14.0"
 description = "Fundamental algorithms for scientific computing in Python"
@@ -3047,23 +2999,6 @@ files = [
 ]
 
 [[package]]
-name = "tzlocal"
-version = "5.2"
-description = "tzinfo object for the local timezone"
-optional = false
-python-versions = ">=3.8"
-files = [
-    {file = "tzlocal-5.2-py3-none-any.whl", hash = "sha256:49816ef2fe65ea8ac19d19aa7a1ae0551c834303d5014c6d5a62e4cbda8047b8"},
-    {file = "tzlocal-5.2.tar.gz", hash = "sha256:8d399205578f1a9342816409cc1e46a93ebd5755e39ea2d85334bea911bf0e6e"},
-]
-
-[package.dependencies]
-tzdata = {version = "*", markers = "platform_system == \"Windows\""}
-
-[package.extras]
-devenv = ["check-manifest", "pytest (>=4.3)", "pytest-cov", "pytest-mock (>=3.3)", "zest.releaser"]
-
-[[package]]
 name = "uri-template"
 version = "1.3.0"
 description = "RFC 6570 URI Template Processor"
@@ -3196,4 +3131,4 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "e5206b2ad87cc40e62439c20de54e1d31263fde60f3154010d8d88693b986c08"
+content-hash = "9603aafb417664c8f3c1dce045cd4fe9c1287f7dd64e63249c131973517cd678"
