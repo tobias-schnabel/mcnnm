@@ -1,5 +1,7 @@
 import pytest
 import jax.numpy as jnp
+import numpy as np
+import pandas as pd
 from mcnnm.util import p_o, p_perp_o, shrink_lambda, frobenius_norm, nuclear_norm
 from mcnnm.util import propose_lambda, print_with_timestamp, initialize_params, check_inputs
 from mcnnm.util import generate_data, element_wise_l1_norm, generate_time_based_validate_defaults
@@ -174,6 +176,9 @@ def test_generate_data(
         assert true_params["V"].shape == (nobs, nperiods, 0)
         assert true_params["V_coef"].size == 0
     assert set(data["treat"].unique()) == {0, 1}
+    assert np.all(data["y"] == true_params["Y(0)"] + data["treat"] * treatment_effect)
+    # This assertion ensures that the function returns the expected output
+    assert isinstance(data, pd.DataFrame) and isinstance(true_params, dict)
 
 
 def test_generate_data_autocorrelation():
