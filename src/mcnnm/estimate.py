@@ -45,27 +45,31 @@ def update_H(X_tilde: Array, Y_adj: Array, Z_tilde: Array, lambda_H: Scalar) -> 
 
     The objective function for H in the MC-NNM model can be written as:
 
-    \[
-    \min_{H} \frac{1}{2} \|Y - X H Z^T\|_F^2 + \lambda_H \|H\|_1
-    \]
+    .. math::
 
-    where $\|\cdot\|_F$ is the Frobenius norm and $\|\cdot\|_1$ is the L1 norm.
+        \min_{H} \frac{1}{2} \|Y - X H Z^T\|_F^2 + \lambda_H \|H\|_1
+
+    where :math:`\|\cdot\|_F` is the Frobenius norm and :math:`\|\cdot\|_1` is the L1 norm.
 
     Our approach solves this in two steps:
 
     1. Least Squares: Solve the unregularized problem
-       \[
-       \hat{H} = \arg\min_{H} \|Y - X H Z^T\|_F^2
-       \]
+
+       .. math::
+
+          \hat{H} = \arg\min_{H} \|Y - X H Z^T\|_F^2
+
        This has the closed-form solution:
-       \[
-       \hat{H} = (X^T X)^{-1} X^T Y Z (Z^T Z)^{-1}
-       \]
+
+       .. math::
+
+          \hat{H} = (X^T X)^{-1} X^T Y Z (Z^T Z)^{-1}
 
     2. Soft Thresholding: Apply the soft thresholding operator to promote sparsity
-       \[
-       H_{ij} = \text{sign}(\hat{H}_{ij}) \max(|\hat{H}_{ij}| - \lambda_H, 0)
-       \]
+
+       .. math::
+
+          H_{ij} = \text{sign}(\hat{H}_{ij}) \max(|\hat{H}_{ij}| - \lambda_H, 0)
 
     This approach is computationally efficient and often numerically stable. While it may not
     achieve the exact solution of the coordinate descent method, it provides a good approximation
@@ -99,36 +103,39 @@ def update_gamma_delta_beta(
 
     The MC-NNM model with fixed effects and unit-time specific covariates can be written as:
 
-    \[
-    Y_{it} = L_{it} + X_i' H Z_t + \gamma_i + \delta_t + V_{it}' \beta + \epsilon_{it}
-    \]
+    .. math::
+
+        Y_{it} = L_{it} + X_i' H Z_t + \gamma_i + \delta_t + V_{it}' \beta + \epsilon_{it}
 
     where:
-    - $Y_{it}$ is the outcome for unit i at time t
-    - $L_{it}$ is the (i,t) element of the low-rank matrix L
-    - $X_i' H Z_t$ represents the effect of unit and time-specific covariates
-    - $\gamma_i$ is the unit fixed effect
-    - $\delta_t$ is the time fixed effect
-    - $V_{it}' \beta$ represents the effect of unit-time specific covariates
+    - :math:`Y_{it}` is the outcome for unit i at time t
+    - :math:`L_{it}` is the (i,t) element of the low-rank matrix L
+    - :math:`X_i' H Z_t` represents the effect of unit and time-specific covariates
+    - :math:`\gamma_i` is the unit fixed effect
+    - :math:`\delta_t` is the time fixed effect
+    - :math:`V_{it}' \beta` represents the effect of unit-time specific covariates
 
-    This function updates $\gamma$, $\delta$, and $\beta$ as follows:
+    This function updates :math:`\gamma`, :math:`\delta`, and :math:`\beta` as follows:
 
-    1. Unit Fixed Effects ($\gamma$):
-       \[
-       \hat{\gamma}_i = \frac{1}{T} \sum_{t=1}^T Y_{it}^{adj}
-       \]
+    1. Unit Fixed Effects (:math:`\gamma`):
 
-    2. Time Fixed Effects ($\delta$):
-       \[
-       \hat{\delta}_t = \frac{1}{N} \sum_{i=1}^N (Y_{it}^{adj} - \hat{\gamma}_i)
-       \]
+       .. math::
 
-    3. Unit-Time Specific Coefficients ($\beta$):
+          \hat{\gamma}_i = \frac{1}{T} \sum_{t=1}^T Y_{it}^{adj}
+
+    2. Time Fixed Effects (:math:`\delta`):
+
+       .. math::
+
+          \hat{\delta}_t = \frac{1}{N} \sum_{i=1}^N (Y_{it}^{adj} - \hat{\gamma}_i)
+
+    3. Unit-Time Specific Coefficients (:math:`\beta`):
        Estimated using least squares on the residuals after removing fixed effects.
 
     Justification for Implementation:
     The use of mean calculations (jnp.mean) for γ and δ is equivalent to coordinate descent
     because:
+
     1. The objective function is smooth with respect to these parameters.
     2. For smooth, convex problems, coordinate descent often has a closed-form solution
        for each coordinate update, which in this case is the mean of the residuals.
@@ -232,21 +239,21 @@ def fit_step(
 
     The MC-NNM model can be represented as:
 
-    \[
-    Y_{it} = L_{it} + X_i' H Z_t + \gamma_i + \delta_t + V_{it}' \beta + \epsilon_{it}
-    \]
+    .. math::
 
-    where $W_{it}$ is an indicator for whether $Y_{it}$ is observed.
+        Y_{it} = L_{it} + X_i' H Z_t + \gamma_i + \delta_t + V_{it}' \beta + \epsilon_{it}
+
+    where :math:`W_{it}` is an indicator for whether :math:`Y_{it}` is observed.
 
     The algorithm minimizes the following objective function:
 
-    \[
-    \min_{L,H,\gamma,\delta,\beta} \frac{1}{2} \sum_{(i,t): W_{it}=0} (Y_{it} - L_{it} - X_i' H Z_t - \gamma_i -
-    \delta_t - V_{it}' \beta)^2
-    + \lambda_L \|L\|_* + \lambda_H \|H\|_1
-    \]
+    .. math::
 
-    where $\|L\|_*$ is the nuclear norm of L and $\|H\|_1$ is the L1 norm of H.
+        \min_{L,H,\gamma,\delta,\beta} \frac{1}{2} \sum_{(i,t): W_{it}=0} (Y_{it} - L_{it} - X_i' H Z_t - \gamma_i -
+        \delta_t - V_{it}' \beta)^2
+        + \lambda_L \|L\|_* + \lambda_H \|H\|_1
+
+    where :math:`\|L\|_*` is the nuclear norm of L and :math:`\|H\|_1` is the L1 norm of H.
 
     The function performs the following steps:
     1. Update L using soft-thresholding of singular values (see update_L function)

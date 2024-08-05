@@ -1,2 +1,5 @@
 sphinx
-sphinx_rtd_theme
+sphinx-book-theme
+jax
+numpy
+sphinx-autodoc-typehints

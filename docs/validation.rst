@@ -11,9 +11,11 @@ Cross-validation is implemented in the `cross_validate` function. This method pe
 The process works as follows:
 1. The data is randomly split into K folds.
 2. For each pair of lambda values in the provided grid:
-   a. The model is trained K times, each time using K-1 folds for training and the remaining fold for validation.
-   b. The loss is computed for each validation fold.
-   c. The average loss across all valid folds is calculated.
+
+a. The model is trained K times, each time using K-1 folds for training and the remaining fold for validation.
+b. The loss is computed for each validation fold.
+c. The average loss across all valid folds is calculated.
+
 3. The lambda pair that results in the lowest average loss is selected.
 
 Key features:
@@ -162,7 +164,7 @@ When to use Holdout Validation:
 The optimal configuration may depend on your specific dataset and prediction task. It's often beneficial to experiment with different parameter settings to find what works best for your particular case.
 
 Proposing Lambda Values
--------------------
+-----------------------
 The internal `propose_lambda` function in the `util.py` file is used to generate a sequence of lambda values for grid search. It works as follows:
 
 1. If no `proposed_lambda` is provided:
@@ -180,7 +182,7 @@ Usage:
 • When called with a specific lambda value, it provides a range of values around that lambda for fine-tuning.
 
 Customizing Validation in estimate()
--------------------
+------------------------------------
 The `estimate` function in `estimate.py` allows for customization of the validation process through several parameters:
 
 1. `validation_method` (str): Choose between 'cv' for cross-validation (the default) or 'holdout' for time-based holdout validation.

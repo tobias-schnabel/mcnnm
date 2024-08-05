@@ -53,6 +53,18 @@ We use Black for code formatting. To format your code:
 
    poetry run black .
 
+Pre-commit Hooks
+----------------
+This project uses pre-commit hooks to ensure code quality and consistency. Pre-commit hooks are scripts that run automatically every time you commit changes to your version control system. They help catch common issues before they get into the codebase. To set up:
+
+.. code-block:: bash
+
+    poetry add pre-commit
+    poetry run pre-commit install
+    poetry run pre-commit run --all-files
+
+
+
 Contributing
 ------------
 

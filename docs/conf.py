@@ -1,49 +1,54 @@
-# Configuration file for the Sphinx documentation builder.
-#
-# For the full list of built-in configuration values, see the documentation:
-# https://www.sphinx-doc.org/en/master/usage/configuration.html
-
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath(".."))
-
-# -- Project information -----------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
+# Add the src directory to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join("..", "src")))
 
 project = "lightweight-mcnnm"
 copyright = "2024, Tobias Schnabel"
 author = "Tobias Schnabel"
-release = "0.1.0"
-
-# -- General configuration ---------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
+release = "0.1.6"
 
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
-    "sphinx.ext.mathjax",  # Add this line
+    "sphinx.ext.mathjax",
 ]
 
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
-# -- Options for HTML output -------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
+# Use the Sphinx Book Theme
+html_theme = "sphinx_book_theme"
 
-html_theme = "alabaster"
+html_theme_options = {
+    "repository_url": "https://github.com/tobias-schnabel/mcnnm",
+    "use_repository_button": True,
+    "use_issues_button": True,
+    "use_edit_page_button": True,
+}
 html_static_path = ["_static"]
 
-# -- Intersphinx mapping -----------------------------------------------------
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
     "jax": ("https://jax.readthedocs.io/en/latest/", None),
 }
 
-# -- Napoleon settings -------------------------------------------------------
+# Configurations for sphinx_autodoc_typehints
+set_type_checking_flag = True
+typehints_fully_qualified = False
+always_document_param_types = True
+
+autodoc_default_options = {
+    "members": True,
+    "undoc-members": True,
+    "show-inheritance": True,
+}
+
+# Napoleon settings
 napoleon_google_docstring = True
 napoleon_numpy_docstring = True
 napoleon_include_init_with_doc = False
@@ -55,6 +60,17 @@ napoleon_use_admonition_for_references = False
 napoleon_use_ivar = False
 napoleon_use_param = True
 napoleon_use_rtype = True
-napoleon_preprocess_types = False
-napoleon_type_aliases = None
-napoleon_attr_annotations = True
+
+# Enable LaTeX rendering
+mathjax_path = (
+    "https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-AMS-MML_HTMLorMML"
+)
+mathjax3_config = {
+    "tex": {
+        "inlineMath": [["$", "$"], ["\\(", "\\)"]],
+        "displayMath": [["$$", "$$"], ["\\[", "\\]"]],
+    },
+}
+
+# Add any Sphinx extension module names here, as strings
+extensions.append("sphinx_book_theme")
