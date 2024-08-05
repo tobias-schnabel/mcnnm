@@ -45,7 +45,7 @@ priority = "supplemental"
 pytest = "^8.2.2"
 pytest-cov = "^5.0.0"
 mypy = "^1.10.1"
-flake8 = "^7.1.0"
+flake8 = "^7.1.1"
 bandit = "^1.7.0"
 black = "^24.4.2"
 click = "^8.1.7"
@@ -59,8 +59,6 @@ optional = true
 
 [tool.poetry.group.comparison.dependencies]
 causaltensor = "^0.1.8"
-fect-python = { git = "https://github.com/xuyiqing/fect_python.git" }
-
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

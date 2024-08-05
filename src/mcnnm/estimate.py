@@ -251,7 +251,7 @@ def fit(
         return (i < max_iter) & (jnp.linalg.norm(L - prev_L, ord="fro") >= tol)
 
     # Define the body function for the while loop
-    def body_fn(state):
+    def body_fn(state):  # pragma: no cover
         i, L, H, gamma, delta, beta, prev_L = state
         L_new, H_new, gamma_new, delta_new, beta_new = fit_step(
             Y,
