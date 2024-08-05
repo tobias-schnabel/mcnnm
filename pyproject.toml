@@ -7,7 +7,7 @@ include = [
 
 [tool.poetry]
 name = "lightweight-mcnnm"
-version = "0.1.5"
+version = "0.1.6"
 description = "Leightweight Implementation of Athey et al. (2021)'s MC-NNM estimator"
 packages = [{include = "mcnnm", from = "src"}]
 include = [
@@ -53,6 +53,14 @@ importlib-metadata = "^8.2.0"
 pre-commit = "^3.8.0"
 typed-ast = "^1.5.5"
 jupyter = "*"
+
+[tool.poetry.group.comparison]
+optional = true
+
+[tool.poetry.group.comparison.dependencies]
+causaltensor = "^0.1.8"
+fect-python = { git = "https://github.com/xuyiqing/fect_python.git" }
+
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
