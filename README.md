@@ -44,6 +44,12 @@ The implementation focuses on performance and minimal dependencies, making it su
 - Includes unit-specific, time-specific, and unit-time specific covariates
 - Offers flexible validation methods for parameter selection
 
+### Comparison to Other Implementations
+lightweight-mcnnm is designed to be lightweight and easy to use, with a focus on performance and minimal dependencies.
+The other two main implementations of the MC-NNM estimator are [CausalTensor](https://github.com/TianyiPeng/causaltensor) and
+[fect](https://yiqingxu.org/packages/fect/fect.html). Both packages implement MC-NNM as part of a broader set of causal inference methods. Both implement covariates and cross-validation differently from this package.
+For a detailed comparison, see this notebook:
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/tobias-schnabel/mcnnm/blob/main/Comparison.ipynb)
 ## Installation
 
 ### Requirements
