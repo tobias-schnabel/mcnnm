@@ -51,7 +51,7 @@ def update_H(X_tilde: Array, Y_adj: Array, Z_tilde: Array, lambda_H: Scalar) -> 
 
 
 def update_gamma_delta_beta(
-    Y_adj: jnp.ndarray, V: jnp.ndarray
+    Y_adj: jnp.ndarray, V: jnp.ndarray, use_unit_fe: bool, use_time_fe: bool
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """
     Update the fixed effects (gamma, delta) and unit-time specific covariate coefficients (beta).
@@ -59,13 +59,35 @@ def update_gamma_delta_beta(
     Args:
         Y_adj (jnp.ndarray): The adjusted outcome matrix.
         V (jnp.ndarray): The unit-time specific covariates tensor.
+        use_unit_fe (bool): Whether to use unit fixed effects.
+        use_time_fe (bool): Whether to use time fixed effects.
 
     Returns:
         Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]: Updated gamma, delta, and beta arrays.
     """
     N, T = Y_adj.shape
-    gamma = jnp.mean(Y_adj, axis=1)
-    delta = jnp.mean(Y_adj - gamma[:, jnp.newaxis], axis=0)
+
+    def compute_gamma(_):
+        return jnp.mean(Y_adj, axis=1)
+
+    def compute_delta(Y_residual):
+        return jnp.mean(Y_residual, axis=0)
+
+    gamma = jax.lax.cond(
+        use_unit_fe,
+        compute_gamma,
+        lambda _: jnp.zeros(N),  # Changed from jnp.zeros(1) to jnp.zeros(N)
+        operand=None,
+    )
+
+    Y_residual = jax.lax.cond(use_unit_fe, lambda y: y - gamma[:, jnp.newaxis], lambda y: y, Y_adj)
+
+    delta = jax.lax.cond(
+        use_time_fe,
+        compute_delta,
+        lambda _: jnp.zeros(T),  # Changed from jnp.zeros(1) to jnp.zeros(T)
+        Y_residual,
+    )
 
     # We assume V is non-empty and compatible due to initialize_params
     beta = compute_beta(V, Y_adj)
@@ -112,6 +134,8 @@ def fit_step(
     gamma: Array,
     delta: Array,
     beta: Array,
+    use_unit_fe: bool,
+    use_time_fe: bool,
 ) -> Tuple[Array, Array, Array, Array, Array]:
     """
     Perform one step of the MC-NNM fitting algorithm.
@@ -130,12 +154,24 @@ def fit_step(
         gamma (Array): The current estimate of unit fixed effects.
         delta (Array): The current estimate of time fixed effects.
         beta (Array): The current estimate of unit-time specific covariate coefficients.
+        use_unit_fe (bool): Whether to use unit fixed effects.
+        use_time_fe (bool): Whether to use time fixed effects.
 
     Returns:
         Tuple[Array, Array, Array, Array, Array]: Updated estimates of L, H, gamma, delta, and beta.
     """
     O = jnp.array(W == 0, dtype=jnp.int32)
-    Y_adj_base = Y - gamma[:, jnp.newaxis] - delta[jnp.newaxis, :]
+    Y_adj_base = Y
+
+    def subtract_unit_fe(y):
+        return y - gamma[:, jnp.newaxis]
+
+    def subtract_time_fe(y):
+        return y - delta[jnp.newaxis, :]
+
+    Y_adj_base = jax.lax.cond(use_unit_fe, subtract_unit_fe, lambda y: y, Y_adj_base)
+
+    Y_adj_base = jax.lax.cond(use_time_fe, subtract_time_fe, lambda y: y, Y_adj_base)
 
     def adjust_Y_adj(Y_adj_base, X_tilde, H, Z_tilde, V, beta):
         Y_adj = Y_adj_base - jnp.dot(X_tilde, jnp.dot(H, Z_tilde.T))
@@ -152,7 +188,7 @@ def fit_step(
 
     Y_adj = Y_adj_base - L_new - jnp.dot(X_tilde, jnp.dot(H_new, Z_tilde.T))
     Y_adj = jax.lax.cond(V.size > 0, lambda x: x - jnp.sum(V * beta, axis=-1), lambda x: x, Y_adj)
-    gamma_new, delta_new, beta_new = update_gamma_delta_beta(Y_adj, V)
+    gamma_new, delta_new, beta_new = update_gamma_delta_beta(Y_adj, V, use_unit_fe, use_time_fe)
 
     return L_new, H_new, gamma_new, delta_new, beta_new
 
@@ -169,7 +205,30 @@ def fit(
     initial_params: Tuple[Array, Array, Array, Array, Array],
     max_iter: int,
     tol: Scalar,
+    use_unit_fe: bool,
+    use_time_fe: bool,
 ) -> Tuple[Array, Array, Array, Array, Array]:
+    """
+    Fit the MC-NNM model using iterative updates.
+
+    Args:
+        Y (Array): The observed outcome matrix.
+        W (Array): The binary treatment matrix.
+        X (Array): The unit-specific covariates matrix.
+        Z (Array): The time-specific covariates matrix.
+        V (Array): The unit-time specific covariates tensor.
+        Omega (Array): The autocorrelation matrix.
+        lambda_L (Scalar): The regularization parameter for L.
+        lambda_H (Scalar): The regularization parameter for H.
+        initial_params (Tuple[Array, Array, Array, Array, Array]): Initial parameter values.
+        max_iter (int): Maximum number of iterations for fitting.
+        tol (Scalar): Convergence tolerance for fitting.
+        use_unit_fe (bool): Whether to use unit fixed effects.
+        use_time_fe (bool): Whether to use time fixed effects.
+
+    Returns:
+        Tuple[Array, Array, Array, Array, Array]: Final estimates of L, H, gamma, delta, and beta.
+    """
     # Unpack initial parameters
     L, H, gamma, delta, beta = initial_params
 
@@ -195,7 +254,21 @@ def fit(
     def body_fn(state):
         i, L, H, gamma, delta, beta, prev_L = state
         L_new, H_new, gamma_new, delta_new, beta_new = fit_step(
-            Y, W, X_tilde, Z_tilde, V, Omega, lambda_L, lambda_H, L, H, gamma, delta, beta
+            Y,
+            W,
+            X_tilde,
+            Z_tilde,
+            V,
+            Omega,
+            lambda_L,
+            lambda_H,
+            L,
+            H,
+            gamma,
+            delta,
+            beta,
+            use_unit_fe,
+            use_time_fe,
         )
         return i + 1, L_new, H_new, gamma_new, delta_new, beta_new, L
 
@@ -227,6 +300,8 @@ def compute_cv_loss(
     lambda_H: float,
     max_iter: int,
     tol: float,
+    use_unit_fe: bool,
+    use_time_fe: bool,
 ) -> Scalar:
     """
     Compute the cross-validation loss for given regularization parameters.
@@ -242,6 +317,8 @@ def compute_cv_loss(
         lambda_H (float): The regularization parameter for H.
         max_iter (int): Maximum number of iterations for fitting.
         tol (float): Convergence tolerance for fitting.
+        use_unit_fe (bool): Whether to use unit fixed effects.
+        use_time_fe (bool): Whether to use time fixed effects.
 
     Returns:
         float: The computed cross-validation loss.
@@ -260,7 +337,7 @@ def compute_cv_loss(
     X_train = X[train_idx]
     V_train, V_test = V[train_idx], V[test_idx]
 
-    initial_params = initialize_params(Y_train, X_train, Z, V_train)
+    initial_params = initialize_params(Y_train, X_train, Z, V_train, use_unit_fe, use_time_fe)
 
     L, H, gamma, delta, beta = fit(
         Y_train,
@@ -274,13 +351,15 @@ def compute_cv_loss(
         initial_params,
         max_iter,
         tol,
+        use_unit_fe,
+        use_time_fe,
     )
 
-    Y_pred = (
-        L[test_idx]
-        + jnp.outer(gamma[test_idx], jnp.ones(Z.shape[0]))
-        + jnp.outer(jnp.ones(test_idx.shape[0]), delta)
-    )
+    Y_pred = L[test_idx]
+    if use_unit_fe:
+        Y_pred += jnp.outer(gamma[test_idx], jnp.ones(Z.shape[0]))
+    if use_time_fe:
+        Y_pred += jnp.outer(jnp.ones(test_idx.shape[0]), delta)
 
     Y_pred = jax.lax.cond(
         V_test.shape[2] > 0,
@@ -301,6 +380,8 @@ def cross_validate(
     Z: Array,
     V: Array,
     Omega: Array,
+    use_unit_fe: bool,
+    use_time_fe: bool,
     lambda_grid: Array,
     max_iter: int,
     tol: float,
@@ -320,6 +401,8 @@ def cross_validate(
         Z (Array): The time-specific covariates matrix of shape (T, Q).
         V (Array): The unit-time specific covariates tensor of shape (N, T, J).
         Omega (Array): The autocorrelation matrix of shape (T, T).
+        use_unit_fe (bool): Whether to use unit fixed effects.
+        use_time_fe (bool): Whether to use time fixed effects.
         lambda_grid (Array): Grid of (lambda_L, lambda_H) pairs to search over.
         max_iter (int): Maximum number of iterations for fitting the model in each fold.
         tol (float): Convergence tolerance for fitting the model in each fold.
@@ -327,11 +410,6 @@ def cross_validate(
 
     Returns:
         Tuple[Scalar, Scalar]: A tuple containing the optimal lambda_L and lambda_H values.
-
-    Note:
-        This function uses JAX's `vmap` for efficient computation across different lambda pairs.
-        If all losses are infinite (e.g., due to numerical instability), it returns the middle
-        lambda pair from the lambda_grid as a fallback.
     """
     N = Y.shape[0]
     fold_size = N // K
@@ -350,7 +428,9 @@ def cross_validate(
             V_train = jnp.where(mask[:, None, None], jnp.zeros_like(V), V)
             V_test = jnp.where(mask[:, None, None], V, jnp.zeros_like(V))
 
-            initial_params = initialize_params(Y_train, X_train, Z, V_train)
+            initial_params = initialize_params(
+                Y_train, X_train, Z, V_train, use_unit_fe, use_time_fe
+            )
 
             L, H, gamma, delta, beta = fit(
                 Y_train,
@@ -364,9 +444,15 @@ def cross_validate(
                 initial_params,
                 max_iter,
                 tol,
+                use_unit_fe,
+                use_time_fe,
             )
 
-            Y_pred = L + jnp.outer(gamma, jnp.ones(Z.shape[0])) + jnp.outer(jnp.ones(N), delta)
+            Y_pred = L
+            if use_unit_fe:
+                Y_pred += jnp.outer(gamma, jnp.ones(Z.shape[0]))
+            if use_time_fe:
+                Y_pred += jnp.outer(jnp.ones(N), delta)
 
             Y_pred = jax.lax.cond(
                 V_test.shape[2] > 0,
@@ -379,7 +465,6 @@ def cross_validate(
             loss = jnp.sum((Y_test - Y_pred) ** 2 * O_test) / (jnp.sum(O_test) + 1e-10)
             return loss
 
-        # losses = jax.lax.map(fold_loss, jnp.arange(K))
         def fold_loss_wrapper(i, acc):
             return acc + fold_loss(i)
 
@@ -404,7 +489,7 @@ def cross_validate(
     return best_lambda_L_H[0], best_lambda_L_H[1]
 
 
-@partial(jax.jit, static_argnums=(13, 14))
+@partial(jax.jit, static_argnums=(6, 7, 13, 14, 15, 16))
 def time_based_validate(
     Y: Array,
     W: Array,
@@ -412,6 +497,8 @@ def time_based_validate(
     Z: Array,
     V: Array,
     Omega: Array,
+    use_unit_fe: bool,
+    use_time_fe: bool,
     lambda_grid: Array,
     max_iter: int,
     tol: Scalar,
@@ -432,6 +519,8 @@ def time_based_validate(
         Z (Array): The time-specific covariates matrix of shape (T, Q).
         V (Array): The unit-time specific covariates tensor of shape (N, T, J).
         Omega (Array): The autocorrelation matrix of shape (T, T).
+        use_unit_fe (bool): Whether to use unit fixed effects.
+        use_time_fe (bool): Whether to use time fixed effects.
         lambda_grid (Array): Grid of (lambda_L, lambda_H) pairs to search over.
         max_iter (int): Maximum number of iterations for fitting.
         tol (Scalar): Convergence tolerance for fitting.
@@ -439,6 +528,7 @@ def time_based_validate(
         step_size (int): Number of time periods to move forward for each split.
         horizon (int): Number of future time periods to predict (forecast horizon).
         K (int): Number of folds to use in the time-based validation.
+        T (int): Total number of time periods.
         max_window_size (Optional[int]): Maximum size of the window to consider. If None, use all data.
 
     Returns:
@@ -468,7 +558,7 @@ def time_based_validate(
         V_train = jnp.where(train_mask[None, :, None], V, 0.0)
         V_test = jnp.where(test_mask[None, :, None], V, 0.0)
 
-        initial_params = initialize_params(Y_train, X, Z_train, V_train)
+        initial_params = initialize_params(Y_train, X, Z_train, V_train, use_unit_fe, use_time_fe)
         L, H, gamma, delta, beta = fit(
             Y_train,
             W_train,
@@ -481,9 +571,16 @@ def time_based_validate(
             initial_params,
             max_iter,
             tol,
+            use_unit_fe,
+            use_time_fe,
         )
 
-        Y_pred = L + jnp.outer(gamma, jnp.ones(T)) + jnp.outer(jnp.ones(N), delta)
+        Y_pred = L
+        if use_unit_fe:
+            Y_pred += jnp.outer(gamma, jnp.ones(T))
+        if use_time_fe:
+            Y_pred += jnp.outer(jnp.ones(N), delta)
+
         Y_pred = jax.lax.cond(
             V_test.shape[2] > 0,
             lambda _: Y_pred + jnp.sum(V_test * beta, axis=2),
@@ -545,6 +642,8 @@ def compute_treatment_effect(
     W: Array,
     Z: Array,
     V: Array,
+    use_unit_fe: bool,
+    use_time_fe: bool,
 ) -> Scalar:
     """
     Compute the average treatment effect using the MC-NNM model estimates.
@@ -564,6 +663,8 @@ def compute_treatment_effect(
         W (Array): The binary treatment matrix.
         Z (Array): The time-specific covariates matrix.
         V (Array): The unit-time specific covariates tensor.
+        use_unit_fe (bool): Whether to use unit fixed effects.
+        use_time_fe (bool): Whether to use time fixed effects.
 
     Returns:
         Scalar: The estimated average treatment effect.
@@ -571,20 +672,23 @@ def compute_treatment_effect(
     N, T = Y.shape
     X_tilde = jnp.hstack((X, jnp.eye(N)))
     Z_tilde = jnp.hstack((Z, jnp.eye(T)))
-    Y_completed = L + jnp.outer(gamma, jnp.ones(T)) + jnp.outer(jnp.ones(N), delta)
+    Y_completed = L + jnp.dot(X_tilde, jnp.dot(H, Z_tilde.T))
 
-    Y_completed = jax.lax.cond(
-        (X.shape[1] > 0) & (Z.shape[1] > 0),
-        lambda _: Y_completed + jnp.dot(X_tilde, jnp.dot(H, Z_tilde.T)),
-        lambda _: Y_completed,
-        operand=None,
-    )
+    def add_unit_fe(y):
+        return y + jnp.outer(gamma, jnp.ones(T))
+
+    def add_time_fe(y):
+        return y + jnp.outer(jnp.ones(N), delta)
+
+    Y_completed = jax.lax.cond(use_unit_fe, add_unit_fe, lambda y: y, Y_completed)
+
+    Y_completed = jax.lax.cond(use_time_fe, add_time_fe, lambda y: y, Y_completed)
 
     Y_completed = jax.lax.cond(
         V.shape[2] > 0,
-        lambda _: Y_completed + jnp.sum(V * beta[None, None, :], axis=2),
-        lambda _: Y_completed,
-        operand=None,
+        lambda y: y + jnp.sum(V * beta[None, None, :], axis=2),
+        lambda y: y,
+        Y_completed,
     )
 
     treated_units = jnp.sum(W)
@@ -632,6 +736,8 @@ def estimate(
     Z: Optional[Array] = None,
     V: Optional[Array] = None,
     Omega: Optional[Array] = None,
+    use_unit_fe: bool = True,
+    use_time_fe: bool = True,
     lambda_L: Optional[Scalar] = None,
     lambda_H: Optional[Scalar] = None,
     n_lambda_L: int = 10,
@@ -661,6 +767,8 @@ def estimate(
         Z (Optional[Array]): The time-specific covariates matrix. Default is None.
         V (Optional[Array]): The unit-time specific covariates tensor. Default is None.
         Omega (Optional[Array]): The autocorrelation matrix. Default is None.
+        use_unit_fe (bool): Whether to use unit fixed effects. Default is True.
+        use_time_fe (bool): Whether to use time fixed effects. Default is True.
         lambda_L (Optional[Scalar]): The regularization parameter for L. If None, it will be selected via validation.
         lambda_H (Optional[Scalar]): The regularization parameter for H. If None, it will be selected via validation.
         n_lambda_L (int): Number of lambda_L values to consider in grid search. Default is 10.
@@ -700,7 +808,18 @@ def estimate(
 
         if validation_method == "cv":
             return cross_validate(
-                Y, W, X, Z, V, Omega, lambda_grid, K=K, max_iter=max_iter // 10, tol=tol * 10
+                Y,
+                W,
+                X,
+                Z,
+                V,
+                Omega,
+                use_unit_fe,
+                use_time_fe,
+                lambda_grid,
+                K=K,
+                max_iter=max_iter // 10,
+                tol=tol * 10,
             )
         elif validation_method == "holdout":
             if T < 5:
@@ -718,6 +837,8 @@ def estimate(
                 Z,
                 V,
                 Omega,
+                use_unit_fe,
+                use_time_fe,
                 lambda_grid=defaults["lambda_grid"],
                 max_iter=max_iter // 10,
                 tol=tol * 10,
@@ -746,9 +867,21 @@ def estimate(
         operand=None,
     )
 
-    initial_params = initialize_params(Y, X, Z, V)
+    initial_params = initialize_params(Y, X, Z, V, use_unit_fe, use_time_fe)
     L, H, gamma, delta, beta = fit(
-        Y, W, X, Z, V, Omega, lambda_L, lambda_H, initial_params, max_iter, tol  # type: ignore
+        Y,
+        W,
+        X,
+        Z,
+        V,
+        Omega,
+        lambda_L,
+        lambda_H,
+        initial_params,
+        max_iter,
+        tol,  # type: ignore
+        use_unit_fe,
+        use_time_fe,
     )
 
     results = {}
@@ -757,14 +890,21 @@ def estimate(
         X_tilde = jnp.hstack((X, jnp.eye(N)))
         Z_tilde = jnp.hstack((Z, jnp.eye(T)))
         Y_completed = L + jnp.dot(X_tilde, jnp.dot(H, Z_tilde.T))
-        Y_completed += jnp.outer(gamma, jnp.ones(T)) + jnp.outer(jnp.ones(N), delta)
+        Y_completed = jax.lax.cond(
+            use_unit_fe, lambda y: y + jnp.outer(gamma, jnp.ones(T)), lambda y: y, Y_completed
+        )
+        Y_completed = jax.lax.cond(
+            use_time_fe, lambda y: y + jnp.outer(jnp.ones(N), delta), lambda y: y, Y_completed
+        )
         Y_completed = jax.lax.cond(
             V.shape[2] > 0, lambda y: y + jnp.sum(V * beta, axis=2), lambda y: y, Y_completed
         )
         return Y_completed
 
     def compute_tau():
-        tau = compute_treatment_effect(Y, L, gamma, delta, beta, H, X, W, Z, V)
+        tau = compute_treatment_effect(
+            Y, L, gamma, delta, beta, H, X, W, Z, V, use_unit_fe, use_time_fe
+        )
         return jnp.array(tau, dtype=jnp.float32)
 
     results["tau"] = jax.lax.cond(
@@ -785,10 +925,10 @@ def estimate(
         return_completed_Y, compute_Y_completed, lambda: jnp.zeros_like(Y)
     )
     results["gamma"] = jax.lax.cond(
-        return_fixed_effects, lambda: gamma, lambda: jnp.zeros_like(gamma)
+        return_fixed_effects & use_unit_fe, lambda: gamma, lambda: jnp.zeros_like(gamma)
     )
     results["delta"] = jax.lax.cond(
-        return_fixed_effects, lambda: delta, lambda: jnp.zeros_like(delta)
+        return_fixed_effects & use_time_fe, lambda: delta, lambda: jnp.zeros_like(delta)
     )
     results["beta"] = jax.lax.cond(
         return_covariate_coefficients, lambda: beta, lambda: jnp.zeros_like(beta)
@@ -805,6 +945,8 @@ def complete_matrix(
     Z: Optional[Array] = None,
     V: Optional[Array] = None,
     Omega: Optional[Array] = None,
+    use_unit_fe: bool = True,
+    use_time_fe: bool = True,
     lambda_L: Optional[Scalar] = None,
     lambda_H: Optional[Scalar] = None,
     n_lambda_L: int = 10,
@@ -828,6 +970,8 @@ def complete_matrix(
         Z (Optional[Array]): The time-specific covariates matrix. Default is None.
         V (Optional[Array]): The unit-time specific covariates tensor. Default is None.
         Omega (Optional[Array]): The autocorrelation matrix. Default is None.
+        use_unit_fe (bool): Whether to use unit fixed effects. Default is True.
+        use_time_fe (bool): Whether to use time fixed effects. Default is True.
         lambda_L (Optional[Scalar]): The regularization parameter for L. If None, it will be selected via validation.
         lambda_H (Optional[Scalar]): The regularization parameter for H. If None, it will be selected via validation.
         n_lambda_L (int): Number of lambda_L values to consider in grid search. Default is 10.
@@ -847,10 +991,7 @@ def complete_matrix(
                                          Only used when validation_method='holdout'. If None, use all data.
 
     Returns:
-        Tuple[Array, Scalar, Scalar]: A tuple containing:
-            - The completed outcome matrix
-            - The optimal lambda_L value
-            - The optimal lambda_H value
+        MCNNMResults: A named tuple containing the completed outcome matrix and the optimal lambda values.
     """
     results = estimate(
         Y,
@@ -859,6 +1000,8 @@ def complete_matrix(
         Z,
         V,
         Omega,
+        use_unit_fe,
+        use_time_fe,
         lambda_L,
         lambda_H,
         n_lambda_L,

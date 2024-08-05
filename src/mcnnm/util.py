@@ -150,7 +150,7 @@ def propose_lambda(proposed_lambda: Optional[Scalar] = None, n_lambdas: int = 6)
 
 
 def initialize_params(
-    Y: Array, X: Array, Z: Array, V: Array
+    Y: Array, X: Array, Z: Array, V: Array, use_unit_fe: bool, use_time_fe: bool
 ) -> Tuple[Array, Array, Array, Array, Array]:
     """
     Initialize parameters for the MC-NNM model.
@@ -160,6 +160,8 @@ def initialize_params(
         X (Array): The unit-specific covariates matrix of shape (N, P).
         Z (Array): The time-specific covariates matrix of shape (T, Q).
         V (Array): The unit-time specific covariates tensor of shape (N, T, J).
+        use_unit_fe (bool): Whether to use unit fixed effects.
+        use_time_fe (bool): Whether to use time fixed effects.
 
     Returns:
         Tuple[Array, Array, Array, Array, Array]: A tuple containing initial values for L,
@@ -168,14 +170,29 @@ def initialize_params(
     N, T = Y.shape
     L = jnp.zeros_like(Y)
     H = jnp.zeros((X.shape[1] + N, Z.shape[1] + T))
-    gamma = jnp.zeros(N)
-    delta = jnp.zeros(T)
 
-    # Calculate beta_shape as a concrete value
+    def init_gamma(_):
+        return jnp.zeros(N)
+
+    def init_delta(_):
+        return jnp.zeros(T)
+
+    gamma = jax.lax.cond(
+        use_unit_fe,
+        init_gamma,
+        lambda _: jnp.zeros(N),  # Changed from jnp.zeros(1) to jnp.zeros(N)
+        operand=None,
+    )
+
+    delta = jax.lax.cond(
+        use_time_fe,
+        init_delta,
+        lambda _: jnp.zeros(T),  # Changed from jnp.zeros(1) to jnp.zeros(T)
+        operand=None,
+    )
+
     beta_shape = max(V.shape[2], 1)
     beta = jnp.zeros((beta_shape,))
-
-    # Use JAX conditional to initialize beta correctly
     beta = jax.lax.cond(
         V.shape[2] > 0, lambda _: beta, lambda _: jnp.zeros_like(beta), operand=None
     )
