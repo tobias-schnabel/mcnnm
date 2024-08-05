@@ -141,6 +141,7 @@ extend-exclude = '''
   | \.tox
   | \.venv
   | build
+  | build
   | dist
 )/
 '''
