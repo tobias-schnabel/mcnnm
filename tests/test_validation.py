@@ -2,7 +2,6 @@ import jax.numpy as jnp
 import pytest
 from mcnnm.estimate import estimate
 from mcnnm.util import generate_data
-import jax
 
 
 def assert_close(true_value, estimated_value, tolerance, message):
@@ -10,10 +9,6 @@ def assert_close(true_value, estimated_value, tolerance, message):
         f"{message}: true={true_value:.4f}, estimated={estimated_value:.4f}, "
         f"difference={jnp.abs(true_value - estimated_value):.4f}"
     )
-
-
-jax.config.update("jax_platforms", "cpu")
-# jax.config.update("jax_disable_jit", True)
 
 
 @pytest.mark.timeout(30)
