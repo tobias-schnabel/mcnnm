@@ -38,12 +38,6 @@ To run the tests:
 
    poetry run pytest
 
-To run all tests including comprehensive ones:
-
-.. code-block:: bash
-
-   poetry run pytest -m "not comprehensive or comprehensive"
-
 Code Style
 ----------
 

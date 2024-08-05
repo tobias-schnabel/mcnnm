@@ -27,7 +27,7 @@ lightweight-mcnnm is a Python package that provides a lightweight and performant
 What is lightweight-mcnnm?
 --------------------------
 
-lightweight-mcnnm implements the MC-NNM estimator exactly as described in "Matrix Completion Methods for Causal Panel Data Models" by Susan Athey, Mohsen Bayati, Nikolay Doudchenko, Guido Imbens, and Khashayar Khosravi (2021). This estimator provides a powerful tool for estimating causal effects in panel data settings, particularly when dealing with complex treatment patterns and potential confounders.
+lightweight-mcnnm implements the MC-NNM estimator exactly as described in `Matrix Completion Methods for Causal Panel Data Models <https://www.tandfonline.com/doi/full/10.1080/01621459.2021.1891924>`_ by Susan Athey, Mohsen Bayati, Nikolay Doudchenko, Guido Imbens, and Khashayar Khosravi (2021). This estimator provides a powerful tool for estimating causal effects in panel data settings, particularly when dealing with complex treatment patterns and potential confounders.
 
 The implementation focuses on performance and minimal dependencies, making it suitable for use in various environments, including GPUs and cloud clusters.
 
@@ -41,6 +41,16 @@ Features
 * Supports various treatment assignment mechanisms (staggered adoption, block assignment, single treated unit)
 * Includes unit-specific, time-specific, and unit-time specific covariates
 * Offers flexible validation methods for parameter selection (cross-validation and holdout)
+
+Comparison to Other Implementations
+-----------------------------------
+lightweight-mcnnm is designed to be lightweight and easy to use, with a focus on performance and minimal dependencies.
+The other two main implementations of the MC-NNM estimator are
+`CausalTensor <https://github.com/TianyiPeng/causaltensor>`_
+and
+`fect <https://yiqingxu.org/packages/fect/fect.html>`_ .
+Both packages implement MC-NNM as part of a broader set of causal inference methods. Both implement covariates and cross-validation differently from this package.
+For a detailed comparison, see `this notebook <https://colab.research.google.com/github/tobias-schnabel/mcnnm/blob/main/Comparison.ipynb>`_.
 
 Quick Start
 -----------
