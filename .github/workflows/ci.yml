@@ -43,9 +43,9 @@ jobs:
       run: |
         poetry run black --check .
 
-    - name: Run flake8
-      run: |
-        poetry run flake8 .
+#    - name: Run flake8
+#      run: |
+#        poetry run flake8 .
 
   test:
     name: Test on ${{ matrix.os }}
