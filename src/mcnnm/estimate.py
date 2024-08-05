@@ -991,8 +991,8 @@ def estimate(
         Z,
         V,
         Omega,
-        lambda_L,
-        lambda_H,
+        lambda_L,  # type: ignore
+        lambda_H,  # type: ignore
         initial_params,
         max_iter,
         tol,  # type: ignore
