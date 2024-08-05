@@ -64,7 +64,28 @@ def test_propose_lambda():
 
 def test_initialize_params(sample_data):
     Y, W, X, Z, V = sample_data
-    L, H, gamma, delta, beta = initialize_params(Y, X, Z, V)
+    L, H, gamma, delta, beta = initialize_params(Y, X, Z, V, False, False)
+    assert L.shape == Y.shape
+    assert H.shape == (X.shape[1] + Y.shape[0], Z.shape[1] + Y.shape[1])
+    assert gamma.shape == (Y.shape[0],)
+    assert delta.shape == (Y.shape[1],)
+    assert beta.shape == (V.shape[2],)
+
+    L, H, gamma, delta, beta = initialize_params(Y, X, Z, V, True, True)
+    assert L.shape == Y.shape
+    assert H.shape == (X.shape[1] + Y.shape[0], Z.shape[1] + Y.shape[1])
+    assert gamma.shape == (Y.shape[0],)
+    assert delta.shape == (Y.shape[1],)
+    assert beta.shape == (V.shape[2],)
+
+    L, H, gamma, delta, beta = initialize_params(Y, X, Z, V, False, True)
+    assert L.shape == Y.shape
+    assert H.shape == (X.shape[1] + Y.shape[0], Z.shape[1] + Y.shape[1])
+    assert gamma.shape == (Y.shape[0],)
+    assert delta.shape == (Y.shape[1],)
+    assert beta.shape == (V.shape[2],)
+
+    L, H, gamma, delta, beta = initialize_params(Y, X, Z, V, True, False)
     assert L.shape == Y.shape
     assert H.shape == (X.shape[1] + Y.shape[0], Z.shape[1] + Y.shape[1])
     assert gamma.shape == (Y.shape[0],)
