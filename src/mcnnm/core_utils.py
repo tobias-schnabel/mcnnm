@@ -1,13 +1,12 @@
 from typing import Tuple
 
-import jax
 import jax.numpy as jnp
 from jax.numpy.linalg import norm
 
 from .types import Array, Scalar
 
 
-def project_matrix(A: Array, mask: Array) -> Array:
+def mask_observed(A: Array, mask: Array) -> Array:
     r"""
     Projects the matrix A onto the observed entries specified by the binary mask.
     Corresponds to :math:`P_{\mathcal{O}}` in the paper.
@@ -130,19 +129,17 @@ def shrink_lambda(A: Array, lambda_: Scalar) -> Array:
     return u @ jnp.diag(s_shrunk) @ vt
 
 
-def initialize_params(
-    Y: Array, X: Array, Z: Array, V: Array, use_unit_fe: bool, use_time_fe: bool
+def initialize_coefficients(
+    Y: Array, X: Array, Z: Array, V: Array
 ) -> Tuple[Array, Array, Array, Array, Array]:
     """
-    Initialize parameters for the MC-NNM model.
+    Initialize covariate and fixed effects coefficients  for the MC-NNM model.
 
     Args:
         Y (Array): The observed outcome matrix of shape (N, T).
         X (Array): The unit-specific covariates matrix of shape (N, P).
         Z (Array): The time-specific covariates matrix of shape (T, Q).
         V (Array): The unit-time specific covariates tensor of shape (N, T, J).
-        use_unit_fe (bool): Whether to use unit fixed effects.
-        use_time_fe (bool): Whether to use time fixed effects.
 
     Returns:
         Tuple[Array, Array, Array, Array, Array]: A tuple containing initial values for L,
@@ -150,32 +147,12 @@ def initialize_params(
     """
     N, T = Y.shape
     L = jnp.zeros_like(Y)
-    H = jnp.zeros((X.shape[1] + N, Z.shape[1] + T))
+    gamma = jnp.zeros(N)  # unit FE coefficients
+    delta = jnp.zeros(T)  # time FE coefficients
 
-    def init_gamma(_):
-        return jnp.zeros(N)
-
-    def init_delta(_):
-        return jnp.zeros(T)
-
-    gamma = jax.lax.cond(
-        use_unit_fe,
-        init_gamma,
-        lambda _: jnp.zeros(N),
-        operand=None,
-    )
-
-    delta = jax.lax.cond(
-        use_time_fe,
-        init_delta,
-        lambda _: jnp.zeros(T),
-        operand=None,
-    )
+    H = jnp.zeros((X.shape[1] + N, Z.shape[1] + T))  # X and Z-covariate coefficients
 
     beta_shape = max(V.shape[2], 1)
-    beta = jnp.zeros((beta_shape,))
-    beta = jax.lax.cond(
-        V.shape[2] > 0, lambda _: beta, lambda _: jnp.zeros_like(beta), operand=None
-    )
+    beta = jnp.zeros((beta_shape,))  # unit-time covariate coefficients
 
     return L, H, gamma, delta, beta
