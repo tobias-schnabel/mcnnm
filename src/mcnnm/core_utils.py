@@ -7,9 +7,10 @@ from jax.numpy.linalg import norm
 from .types import Array, Scalar
 
 
-def p_o(A: Array, mask: Array) -> Array:
-    """
+def project_matrix(A: Array, mask: Array) -> Array:
+    r"""
     Projects the matrix A onto the observed entries specified by the binary mask.
+    Corresponds to :math:`P_{\mathcal{O}}` in the paper.
 
     Args:
         A: The input matrix.
@@ -20,15 +21,22 @@ def p_o(A: Array, mask: Array) -> Array:
 
     Raises:
         ValueError: If the shapes of A and mask do not match.
+
+    .. math::
+
+        P_{\mathcal{O}}(A) = A \odot \text{mask}
+
+    where :math:`\odot` denotes the element-wise product.
     """
     if A.shape != mask.shape:
-        raise ValueError("Shapes of A and mask must match.")
-    return jnp.where(mask, A, jnp.zeros_like(A))
+        raise ValueError(f"The shapes of A ({A.shape}) and mask ({mask.shape}) do not match.")
+    return A * mask
 
 
-def p_perp_o(A: Array, mask: Array) -> Array:
-    """
+def mask_unobserved(A: Array, mask: Array) -> Array:
+    r"""
     Projects the matrix A onto the unobserved entries specified by the binary mask.
+    Corresponds to :math:`P_{\mathcal{O}}^\perp` in the paper.
 
     Args:
         A: The input matrix.
@@ -39,9 +47,15 @@ def p_perp_o(A: Array, mask: Array) -> Array:
 
     Raises:
         ValueError: If the shapes of A and mask do not match.
+
+    .. math::
+
+        P_{\mathcal{O}}^\perp(A) = A \odot (\mathbf{1} - \text{mask})
+
+    where :math:`\odot` denotes the element-wise product and :math:`\mathbf{1}` is a matrix of 1s.
     """
     if A.shape != mask.shape:
-        raise ValueError("Shapes of A and mask must match.")
+        raise ValueError(f"The shapes of A ({A.shape}) and mask ({mask.shape}) do not match.")
     return jnp.where(mask, jnp.zeros_like(A), A)
 
 
