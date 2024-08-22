@@ -74,7 +74,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["src"]
+source = ["src/mcnnmn"]
 omit = ["tests/*"]
 
 [tool.coverage.report]
