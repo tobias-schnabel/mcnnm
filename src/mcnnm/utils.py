@@ -1,10 +1,47 @@
-from typing import Optional, Tuple, Dict, Literal
-
+from typing import Optional, Tuple, List, Literal, Dict, Any
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 
 from .types import Array
+
+
+def convert_inputs(
+    Y: pd.DataFrame,
+    W: pd.DataFrame,
+    X: Optional[pd.DataFrame] = None,
+    Z: Optional[pd.DataFrame] = None,
+    V: Optional[List[pd.DataFrame]] = None,
+    Omega: Optional[pd.DataFrame] = None,
+) -> Tuple[Array, Array, Array | None, Array | None, List[Any] | None, Array | None]:
+    """
+    Convert input DataFrames to JAX arrays for the MC-NNM model.
+
+    Args:
+        Y (pd.DataFrame): The observed outcome matrix of shape (N, T).
+        W (pd.DataFrame): The binary treatment matrix of shape (N, T).
+        X (Optional[pd.DataFrame]): The unit-specific covariates matrix of shape (N, P). Default is None.
+        Z (Optional[pd.DataFrame]): The time-specific covariates matrix of shape (T, Q). Default is None.
+        V (Optional[List[pd.DataFrame]]): The unit-time specific covariates tensor of shape (N, T, J). Default is None.
+        Omega (Optional[pd.DataFrame]): The autocorrelation matrix of shape (T, T). Default is None.
+
+    Returns:
+        Tuple[Array, Array, Array, Array, Array, Array]: A tuple containing JAX arrays for Y, W, X, Z, V, and Omega.
+    """
+    Y = jnp.array(Y.values)
+    W = jnp.array(W.values)
+
+    if X is not None:
+        X = jnp.array(X.values)
+    if Z is not None:
+        Z = jnp.array(Z.values)
+    if V is not None:
+        V_list = [jnp.array(df.values) for df in V]
+        V = jnp.stack(V_list, axis=2)
+    if Omega is not None:
+        Omega = jnp.array(Omega.values)
+
+    return Y, W, X, Z, V, Omega
 
 
 def check_inputs(
@@ -73,7 +110,7 @@ def check_inputs(
 def generate_data(
     nobs: int = 500,
     nperiods: int = 100,
-    y_mean: float = 10.0,
+    Y_mean: float = 10.0,
     treatment_probability: float = 0.5,
     rank: int = 5,
     treatment_effect: float = 1.0,
@@ -92,52 +129,19 @@ def generate_data(
     last_treated_periods: int = 10,
     autocorrelation: float = 0.0,
     seed: Optional[int] = None,
-) -> Tuple[pd.DataFrame, Dict]:
-    """
-    Generate synthetic data for testing the MC-NNM model with various treatment assignment mechanisms and
-    autocorrelated errors.
-
-    Args:
-        nobs: Number of observations (units).
-        nperiods: Number of time periods.
-        y_mean: The mean of the outcome variable.
-        treatment_probability: The probability of a unit being treated (for staggered adoption).
-        rank: The rank of the low-rank matrix L.
-        treatment_effect: The true treatment effect.
-        unit_fe: Whether to include unit fixed effects.
-        time_fe: Whether to include time fixed effects.
-        X_cov: Whether to include unit-specific covariates.
-        Z_cov: Whether to include time-specific covariates.
-        V_cov: Whether to include unit-time specific covariates.
-        fixed_effects_scale: The scale of the fixed effects.
-        covariates_scale: The scale of the covariates and their coefficients.
-        noise_scale: The scale of the noise.
-        assignment_mechanism: The treatment assignment mechanism to use.
-            - 'staggered': Staggered adoption (default)
-            - 'block': Block structure
-            - 'single_treated_period': Single treated period
-            - 'single_treated_unit': Single treated unit
-            - 'last_periods': All units treated for the last few periods
-        treated_fraction: Fraction of units to be treated (for block and single_treated_period).
-        last_treated_periods: Number of periods to treat all units at the end (for last_periods mechanism).
-        autocorrelation: The autocorrelation coefficient for the error term (0 <= autocorrelation < 1).
-        seed: Random seed for reproducibility.
-
-    Returns:
-        A tuple containing:
-        - pandas DataFrame with the generated data
-        - Dictionary with true parameter values
-    """
+) -> Tuple[
+    jnp.ndarray,
+    jnp.ndarray,
+    Optional[jnp.ndarray],
+    Optional[jnp.ndarray],
+    Optional[jnp.ndarray],
+    Dict,
+]:
     if seed is not None:
         np.random.seed(seed)
 
     if not 0 <= autocorrelation < 1:
         raise ValueError("Autocorrelation must be between 0 and 1 (exclusive).")
-
-    # Generate basic structure
-    unit = np.arange(1, nobs + 1)
-    period = np.arange(1, nperiods + 1)
-    data = pd.DataFrame([(u, t) for u in unit for t in period], columns=["unit", "period"])
 
     # Generate low-rank matrix L
     U = np.random.normal(0, 1, (nobs, rank))
@@ -150,16 +154,17 @@ def generate_data(
         np.random.normal(0, fixed_effects_scale, nperiods) if time_fe else np.zeros(nperiods)
     )
 
+    # generate random offsets to y_mean
+    X_mean = Y_mean - np.random.normal(2, 1)
+    Z_mean = Y_mean + np.random.normal(2, 1)
+    V_mean = Y_mean - np.random.normal(4, 1)
+
     # Generate covariates and their coefficients
-    X = np.random.normal(0, covariates_scale, (nobs, 2)) if X_cov else np.zeros((nobs, 0))
+    X = np.random.normal(X_mean, covariates_scale, (nobs, 2)) if X_cov else None
     X_coef = np.random.normal(0, covariates_scale, 2) if X_cov else np.array([])
-    Z = np.random.normal(0, covariates_scale, (nperiods, 2)) if Z_cov else np.zeros((nperiods, 0))
+    Z = np.random.normal(Z_mean, covariates_scale, (nperiods, 2)) if Z_cov else None
     Z_coef = np.random.normal(0, covariates_scale, 2) if Z_cov else np.array([])
-    V = (
-        np.random.normal(0, covariates_scale, (nobs, nperiods, 2))
-        if V_cov
-        else np.zeros((nobs, nperiods, 0))
-    )
+    V = np.random.normal(V_mean, covariates_scale, (nobs, nperiods, 2)) if V_cov else None
     V_coef = np.random.normal(0, covariates_scale, 2) if V_cov else np.array([])
 
     # Generate autocorrelated errors
@@ -174,12 +179,12 @@ def generate_data(
     # Generate outcome
     Y = (
         L
-        + y_mean
+        + Y_mean
         + np.outer(unit_fe_values, np.ones(nperiods))
         + np.outer(np.ones(nobs), time_fe_values)
-        + np.repeat(X @ X_coef, nperiods).reshape(nobs, nperiods)
-        + np.tile((Z @ Z_coef).reshape(1, -1), (nobs, 1))
-        + np.sum(V * V_coef, axis=2)
+        + (np.repeat(X @ X_coef, nperiods).reshape(nobs, nperiods) if X_cov else 0)
+        + (np.tile((Z @ Z_coef).reshape(1, -1), (nobs, 1)) if Z_cov else 0)
+        + (np.sum(V * V_coef, axis=2) if V_cov else 0)
         + errors
     )
 
@@ -208,11 +213,15 @@ def generate_data(
     else:
         raise ValueError("Invalid assignment mechanism specified.")
 
-    Y_0 = Y.flatten()  # untreated potential outcome
+    Y_0 = Y.copy()  # untreated potential outcome
     Y += treat * treatment_effect
 
-    data["y"] = Y.flatten()
-    data["treat"] = treat.flatten()
+    # Convert Y, W, and covariates to JAX arrays
+    Y = jnp.array(Y)
+    W = jnp.array(treat)
+    X = jnp.array(X) if X is not None else None
+    Z = jnp.array(Z) if Z is not None else None
+    V = jnp.array(V) if V is not None else None
 
     true_params = {
         "L": L,
@@ -228,7 +237,7 @@ def generate_data(
         "noise_scale": noise_scale,
         "assignment_mechanism": assignment_mechanism,
         "autocorrelation": autocorrelation,
-        "Y(0)": Y_0,
+        "Y(0)": jnp.array(Y_0),
     }
 
-    return data, true_params
+    return Y, W, X, Z, V, true_params
