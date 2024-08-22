@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Tuple
 
 import jax
 import jax.numpy as jnp
@@ -59,22 +59,6 @@ def mask_unobserved(A: Array, mask: Array) -> Array:
     return jnp.where(mask, jnp.zeros_like(A), A)
 
 
-def shrink_lambda(A: Array, lambda_: Scalar) -> Array:
-    """
-    Applies the soft-thresholding operator to the singular values of a matrix A.
-
-    Args:
-        A: The input matrix.
-        lambda_: The shrinkage parameter.
-
-    Returns:
-        Array: The matrix with soft-thresholded singular values.
-    """
-    u, s, vt = jnp.linalg.svd(A, full_matrices=False)
-    s_shrunk = jnp.maximum(s - lambda_, 0)
-    return u @ jnp.diag(s_shrunk) @ vt
-
-
 def frobenius_norm(A: Array) -> Scalar:
     """
     Computes the Frobenius norm of a matrix A.
@@ -130,34 +114,20 @@ def element_wise_l1_norm(A: Array) -> Scalar:
     return jnp.sum(jnp.abs(A))
 
 
-def propose_lambda(proposed_lambda: Optional[Scalar] = None, n_lambdas: int = 6) -> Array:
+def shrink_lambda(A: Array, lambda_: Scalar) -> Array:
     """
-    Creates a log-spaced list of proposed lambda values around a given value.
+    Applies the soft-thresholding operator to the singular values of a matrix A.
 
     Args:
-        proposed_lambda: The proposed lambda value. If None, the default sequence is used.
-        n_lambdas: The number of lambda values to generate.
+        A: The input matrix.
+        lambda_: The shrinkage parameter.
 
     Returns:
-        Array: The sequence of proposed lambda values.
+        Array: The matrix with soft-thresholded singular values.
     """
-
-    def generate_sequence(log_min: Scalar, log_max: Scalar) -> Array:
-        return jnp.logspace(log_min, log_max, n_lambdas)
-
-    def default_sequence(_):
-        return generate_sequence(-3, 0)
-
-    def custom_sequence(lambda_val):
-        log_lambda = jnp.log10(jnp.maximum(lambda_val, 1e-10))
-        return generate_sequence(log_lambda - 2, log_lambda + 2)
-
-    return jax.lax.cond(
-        proposed_lambda is None,
-        default_sequence,
-        custom_sequence,
-        operand=jnp.array(proposed_lambda if proposed_lambda is not None else 0.0),
-    )
+    u, s, vt = jnp.linalg.svd(A, full_matrices=False)
+    s_shrunk = jnp.maximum(s - lambda_, 0)
+    return u @ jnp.diag(s_shrunk) @ vt
 
 
 def initialize_params(
