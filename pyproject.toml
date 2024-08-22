@@ -7,7 +7,7 @@ include = [
 
 [tool.poetry]
 name = "lightweight-mcnnm"
-version = "1.0.1"
+version = "1.0.2"
 description = "Leightweight Implementation of Athey et al. (2021)'s MC-NNM estimator"
 packages = [{include = "mcnnm", from = "src"}]
 include = [
@@ -67,11 +67,7 @@ testpaths = ["tests"]
 pythonpath = [
   "src"
 ]
-addopts = "--doctest-modules --cov=src --cov-report=xml --cov-report=term -m 'not comprehensive'"
-markers = [
-    "timeout: specify timeout for tests",
-    "comprehensive: mark tests as part of the comprehensive test suite"
-]
+addopts = "--doctest-modules --cov=src --cov-report=xml --cov-report=term"
 
 [tool.coverage.run]
 source = ["src/mcnnmn"]
