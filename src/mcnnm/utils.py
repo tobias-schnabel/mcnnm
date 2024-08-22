@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, List, Literal, Dict, Any
+from typing import Optional, Tuple, List, Literal, Dict
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
@@ -13,35 +13,54 @@ def convert_inputs(
     Z: Optional[pd.DataFrame] = None,
     V: Optional[List[pd.DataFrame]] = None,
     Omega: Optional[pd.DataFrame] = None,
-) -> Tuple[Array, Array, Array | None, Array | None, List[Any] | None, Array | None]:
+) -> Tuple[
+    jnp.ndarray,
+    jnp.ndarray,
+    Optional[jnp.ndarray],
+    Optional[jnp.ndarray],
+    Optional[jnp.ndarray],
+    Optional[jnp.ndarray],
+]:
     """
     Convert input DataFrames to JAX arrays for the MC-NNM model.
-
-    Args:
-        Y (pd.DataFrame): The observed outcome matrix of shape (N, T).
-        W (pd.DataFrame): The binary treatment matrix of shape (N, T).
-        X (Optional[pd.DataFrame]): The unit-specific covariates matrix of shape (N, P). Default is None.
-        Z (Optional[pd.DataFrame]): The time-specific covariates matrix of shape (T, Q). Default is None.
-        V (Optional[List[pd.DataFrame]]): The unit-time specific covariates tensor of shape (N, T, J). Default is None.
-        Omega (Optional[pd.DataFrame]): The autocorrelation matrix of shape (T, T). Default is None.
-
-    Returns:
-        Tuple[Array, Array, Array, Array, Array, Array]: A tuple containing JAX arrays for Y, W, X, Z, V, and Omega.
     """
     Y = jnp.array(Y.values)
     W = jnp.array(W.values)
+    N, T = Y.shape
+
+    X_arr: Optional[jnp.ndarray] = None
+    Z_arr: Optional[jnp.ndarray] = None
+    V_arr: Optional[jnp.ndarray] = None
+    Omega_arr: Optional[jnp.ndarray] = None
 
     if X is not None:
-        X = jnp.array(X.values)
-    if Z is not None:
-        Z = jnp.array(Z.values)
-    if V is not None:
-        V_list = [jnp.array(df.values) for df in V]
-        V = jnp.stack(V_list, axis=2)
-    if Omega is not None:
-        Omega = jnp.array(Omega.values)
+        X_arr = jnp.array(X.values)
+        if X_arr.shape[0] != N:
+            raise ValueError(
+                f"The first dimension of X ({X_arr.shape[0]}) must match the first dimension of Y ({N})."
+            )
 
-    return Y, W, X, Z, V, Omega
+    if Z is not None:
+        Z_arr = jnp.array(Z.values)
+        if Z_arr.shape[0] != T:
+            raise ValueError(
+                f"The first dimension of Z ({Z_arr.shape[0]}) must match the second dimension of Y ({T})."
+            )
+
+    if V is not None:
+        if len(V) == 0:
+            raise ValueError("V cannot be an empty list.")
+        V_list = [jnp.array(df.values) for df in V]
+        V_arr = jnp.stack(V_list, axis=2)
+        if V_arr.shape[:2] != (N, T):
+            raise ValueError(f"The shape of V must match the shape of Y ({N}, {T}).")
+
+    if Omega is not None:
+        Omega_arr = jnp.array(Omega.values)
+        if Omega_arr.shape != (T, T):
+            raise ValueError(f"The shape of Omega ({Omega_arr.shape}) must be ({T}, {T}).")
+
+    return Y, W, X_arr, Z_arr, V_arr, Omega_arr
 
 
 def check_inputs(
@@ -192,7 +211,7 @@ def generate_data(
     if assignment_mechanism == "staggered":
         treat = np.zeros((nobs, nperiods), dtype=int)
         adoption_times = np.random.geometric(p=treatment_probability, size=nobs)
-        for i in range(nobs):
+        for i in range(nobs):  # pragma: no  cover
             if adoption_times[i] <= nperiods:
                 treat[i, adoption_times[i] - 1 :] = 1
     elif assignment_mechanism == "block":
