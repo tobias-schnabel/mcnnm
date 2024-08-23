@@ -1,10 +1,13 @@
 from typing import Tuple
 
+import jax
 import jax.numpy as jnp
 from jax.numpy.linalg import norm
 from jax import jit
 
 from .types import Array, Scalar
+
+jax.config.update("jax_enable_x64", True)
 
 
 @jit
