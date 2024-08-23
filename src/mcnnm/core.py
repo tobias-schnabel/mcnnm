@@ -287,9 +287,9 @@ def compute_objective_value(
     gamma: Array,
     delta: Array,
     beta: Array,
-    sum_sing_vals: float,
-    lambda_L: float,
-    lambda_H: float,
+    sum_sing_vals: Scalar,
+    lambda_L: Scalar,
+    lambda_H: Scalar,
     use_unit_fe: bool,
     use_time_fe: bool,
     inv_omega: Optional[Array] = None,
@@ -358,9 +358,9 @@ def compute_objective_value(
         delta (Array): The time fixed effects vector :math:`\Delta^*` of shape (T,).
         beta (Array): The unit-time-specific covariate coefficients vector
             :math:`\beta^*` of shape (J,).
-        sum_sing_vals (float): The sum of singular values of L.
-        lambda_L (float): The regularization parameter for the nuclear norm of L.
-        lambda_H (float): The regularization parameter for the element-wise L1 norm
+        sum_sing_vals (Scalar): The sum of singular values of L.
+        lambda_L (Scalar): The regularization parameter for the nuclear norm of L.
+        lambda_H (Scalar): The regularization parameter for the element-wise L1 norm
             of H.
         use_unit_fe (bool): Whether to include unit fixed effects in the decomposition.
         use_time_fe (bool): Whether to include time fixed effects in the decomposition.
@@ -674,55 +674,175 @@ def update_L(
     return L_upd, S
 
 
-# def fit(
-#     Y: Array,
-#     X_tilde: Array,
-#     Z_tilde: Array,
-#     V: Array,
-#     H_tilde: Array,
-#     T_mat: Array,
-#     in_prod: Array,
-#     in_prod_T: Array,
-#     W: Array,
-#     L: Array,
-#     unit_fe: Array,
-#     time_fe: Array,
-#     beta: Array,
-#     lambda_L: Scalar,
-#     lambda_H: Scalar,
-#     use_unit_fe: bool,
-#     use_time_fe: bool,
-#     niter: int = 1000,
-#     rel_tol: float = 1e-5,
-#     verbose: bool = False,
-# ) -> Tuple[Array, Array, Array, Array, Array]:
-#     """
-#     Update the low-rank matrix L in the coordinate descent algorithm.
-#
-#     Args:
-#         Y (Array): The observed outcome matrix of shape (N, T).
-#         X_tilde (Array): The augmented unit-specific covariates matrix of shape (N, P+N).
-#         Z_tilde (Array): The augmented time-specific covariates matrix of shape (T, Q+T).
-#         V (Array): The unit-time-specific covariates tensor of shape (N, T, J).
-#         H_tilde (Array): The covariate coefficients matrix of shape (P+N, Q+T).
-#         T_mat (Array): The precomputed matrix T of shape (N * T, (P+N) * (Q+T)).
-#         in_prod (Array): The inner product vector of shape (N * T,). Initialised as zeros when passed.
-#         in_prod_T (Array): The inner product vector of T of shape ((P+N) * (Q+T),).
-#         W (Array): The mask matrix indicating observed entries of shape (N, T).
-#         L (Array): The low-rank matrix of shape (N, T).
-#         unit_fe (Array): The unit fixed effects vector of shape (N,).
-#         time_fe (Array): The time fixed effects vector of shape (T,).
-#         beta (Array): The unit-time-specific covariate coefficients vector of shape (J,).
-#         lambda_L (Scalar): The regularization parameter for the nuclear norm of L.
-#         lambda_H (Scalar): The regularization parameter for the element-wise L1 norm of H.
-#         use_unit_fe (bool): Whether to include unit fixed effects in the decomposition.
-#         use_time_fe (bool): Whether to include time fixed effects in the decomposition.
-#         niter (int, optional): The maximum number of iterations for the coordinate descent algorithm. Default is 1000.
-#         rel_tol (float, optional): The relative tolerance for convergence. Default is 1e-5.
-#         verbose (bool, optional): Whether to print the objective value at each iteration. Default is False.
-#     Returns:
-#         Tuple[Array, Array]: A tuple containing the updated low-rank matrix L, updated covariate coefficient matrix H,
-#         updated unit fixed effects vector, updated time fixed effects vector, updated unit-time-specific covariate
-#         vector, updated in_prod vector.
-#     """
-#     # TODO: Implement the model fitting process
+def fit(
+    Y: Array,
+    X_tilde: Array,
+    Z_tilde: Array,
+    V: Array,
+    H_tilde: Array,
+    T_mat: Array,
+    in_prod: Array,
+    in_prod_T: Array,
+    W: Array,
+    L: Array,
+    unit_fe: Array,
+    time_fe: Array,
+    beta: Array,
+    lambda_L: Scalar,
+    lambda_H: Scalar,
+    use_unit_fe: bool,
+    use_time_fe: bool,
+    niter: int = 1000,
+    rel_tol: float = 1e-5,
+    verbose: bool = False,
+) -> Tuple[Array, Array, Array, Array, Array, Array]:
+    """
+    Perform cyclic coordinate descent updates to estimate the matrices L, H, and the fixed effects vectors u and v.
+
+    Args:
+        Y (Array): The observed outcome matrix of shape (N, T).
+        X_tilde (Array): The augmented unit-specific covariates matrix of shape (N, P+N).
+        Z_tilde (Array): The augmented time-specific covariates matrix of shape (T, Q+T).
+        V (Array): The unit-time-specific covariates tensor of shape (N, T, J).
+        H_tilde (Array): The initial covariate coefficients matrix of shape (P+N, Q+T).
+        T_mat (Array): The precomputed matrix T of shape (N * T, (P+N) * (Q+T)).
+        in_prod (Array): The inner product vector of shape (N * T,).
+        in_prod_T (Array): The inner product vector of T of shape ((P+N) * (Q+T),).
+        W (Array): The mask matrix indicating observed entries of shape (N, T).
+        L (Array): The initial low-rank matrix of shape (N, T).
+        unit_fe (Array): The initial unit fixed effects vector of shape (N,).
+        time_fe (Array): The initial time fixed effects vector of shape (T,).
+        beta (Array): The initial unit-time-specific covariate coefficients vector of shape (J,).
+        lambda_L (Scalar): The regularization parameter for the nuclear norm of L.
+        lambda_H (Scalar): The regularization parameter for the element-wise L1 norm of H.
+        use_unit_fe (bool): Whether to include unit fixed effects in the decomposition.
+        use_time_fe (bool): Whether to include time fixed effects in the decomposition.
+        niter (int, optional): The maximum number of iterations for the coordinate descent algorithm. Default is 1000.
+        rel_tol (float, optional): The relative tolerance for convergence. Default is 1e-5.
+        verbose (bool, optional): Whether to print the objective value at each iteration. Default is False.
+
+    Returns:
+    Tuple[Array, Array, Array, Array, Array, Array]:
+        A tuple containing:
+        - The updated covariate coefficient matrix H
+        - The updated low-rank matrix L
+        - The updated unit fixed effects vector
+        - The updated time fixed effects vector
+        - The updated unit-time-specific covariate vector
+        - The updated in_prod vector
+    """
+    obj_val = jnp.inf
+    new_obj_val = 0.0
+
+    _, S, _ = jnp.linalg.svd(L, full_matrices=False)
+    sum_sigma = jnp.sum(S)
+
+    obj_val = compute_objective_value(
+        Y,
+        X_tilde,
+        Z_tilde,
+        V,
+        H_tilde,
+        W,
+        L,
+        unit_fe,
+        time_fe,
+        beta,
+        sum_sigma,
+        lambda_L,
+        lambda_H,
+        use_unit_fe,
+        use_time_fe,
+        verbose=verbose,
+    )
+
+    H = H_tilde
+    term_iter = 0
+
+    for iter_ in range(niter):
+        # Update unit fixed effects
+        unit_fe = update_unit_fe(Y, X_tilde, Z_tilde, H, W, L, time_fe, use_unit_fe)
+
+        # Update time fixed effects
+        time_fe = update_time_fe(Y, X_tilde, Z_tilde, H, W, L, unit_fe, use_time_fe)
+
+        # Update unit-time-specific covariate coefficients
+        beta = update_beta(Y, X_tilde, Z_tilde, V, H, W, L, unit_fe, time_fe)
+
+        # Update H
+        H, in_prod = update_H(
+            Y,
+            X_tilde,
+            Z_tilde,
+            V,
+            H,
+            T_mat,
+            in_prod,
+            in_prod_T,
+            W,
+            L,
+            unit_fe,
+            time_fe,
+            beta,
+            lambda_H,
+            use_unit_fe,
+            use_time_fe,
+        )
+
+        # Update L
+        L, S = update_L(
+            Y,
+            X_tilde,
+            Z_tilde,
+            V,
+            H,
+            W,
+            L,
+            unit_fe,
+            time_fe,
+            beta,
+            lambda_L,
+            use_unit_fe,
+            use_time_fe,
+        )
+        sum_sigma = jnp.sum(S)
+
+        # Check if accuracy is achieved
+        new_obj_val = compute_objective_value(
+            Y,
+            X_tilde,
+            Z_tilde,
+            V,
+            H,
+            W,
+            L,
+            unit_fe,
+            time_fe,
+            beta,
+            sum_sigma,
+            lambda_L,
+            lambda_H,
+            use_unit_fe,
+            use_time_fe,
+            verbose=verbose,
+        )
+        rel_error = (obj_val - new_obj_val) / obj_val
+
+        if new_obj_val < 1e-8:
+            break
+
+        if rel_error < rel_tol and rel_error >= 0:
+            break
+
+        term_iter = iter_
+        obj_val = new_obj_val
+
+    if verbose:
+        jdb.print(
+            f"Terminated at iteration: {term_iter}, for lambda_L: {lambda_L}, lambda_H: {lambda_H}",
+            term_iter=term_iter,
+            lambda_L=lambda_L,
+            lambda_H=lambda_H,
+        )
+
+    return H, L, unit_fe, time_fe, beta, in_prod
