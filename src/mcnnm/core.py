@@ -541,18 +541,57 @@ def update_H(
     return H_tilde_updated, updated_in_prod
 
 
-# def update_L(
-#     M: Array, mask: Array, L: Array, u: Array, v: Array, lambda_L: Scalar
-# ) -> Tuple[Array, Array]:
-#     """
-#     Update the low-rank matrix L using the observed matrix M, mask, current estimates of L, u, v, and regularization
-#     parameter.
-#     Return the updated L and its singular values.
-#     """
-#     # TODO: Implement the update step for L
-#     pass
-#
-#
+@jit
+def update_L(
+    Y: Array,
+    X_tilde: Array,
+    Z_tilde: Array,
+    V: Array,
+    H_tilde: Array,
+    W: Array,
+    L: Array,
+    unit_fe: Array,
+    time_fe: Array,
+    beta: Array,
+    lambda_L: Scalar,
+    use_unit_fe: bool,
+    use_time_fe: bool,
+) -> Tuple[Array, Array]:
+    """
+    Update the low-rank matrix L in the coordinate descent algorithm.
+
+    Args:
+        Y (Array): The observed outcome matrix of shape (N, T).
+        X_tilde (Array): The augmented unit-specific covariates matrix of shape (N, P+N).
+        Z_tilde (Array): The augmented time-specific covariates matrix of shape (T, Q+T).
+        V (Array): The unit-time-specific covariates tensor of shape (N, T, J).
+        H_tilde (Array): The covariate coefficients matrix of shape (P+N, Q+T).
+        W (Array): The mask matrix indicating observed entries of shape (N, T).
+        L (Array): The low-rank matrix of shape (N, T).
+        unit_fe (Array): The unit fixed effects vector of shape (N,).
+        time_fe (Array): The time fixed effects vector of shape (T,).
+        beta (Array): The unit-time-specific covariate coefficients vector of shape (J,).
+        lambda_L (Scalar): The regularization parameter for the nuclear norm of L.
+        use_unit_fe (bool): Whether to include unit fixed effects in the decomposition.
+        use_time_fe (bool): Whether to include time fixed effects in the decomposition.
+
+    Returns:
+        Tuple[Array, Array]: A tuple containing the updated low-rank matrix L and the singular values.
+    """
+    num_train = jnp.sum(W)
+    P_mat = compute_decomposition(
+        L, X_tilde, Z_tilde, V, H_tilde, unit_fe, time_fe, beta, use_unit_fe, use_time_fe
+    )
+    P_omega = Y - P_mat
+    masked_P_omega = mask_observed(P_omega, W)
+    proj = masked_P_omega + L
+
+    U, S, Vt = jnp.linalg.svd(proj, full_matrices=False)
+    V = Vt.T
+
+    L_upd = svt(U, V, S, lambda_L * num_train / 2)
+
+    return L_upd, S
 
 
 #

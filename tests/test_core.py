@@ -11,6 +11,7 @@ from mcnnm.core import (
     initialize_fixed_effects_and_H,
     svt,
     update_H,
+    update_L,
 )
 import jax
 from jax import random
@@ -932,3 +933,91 @@ def test_update_H_without_fixed_effects():
 
     assert H_tilde_updated.shape == H_tilde.shape
     assert updated_in_prod.shape == in_prod.shape
+    assert not jnp.allclose(H_tilde_updated, H_tilde)
+    assert not jnp.any(jnp.isnan(H_tilde_updated))
+    assert not jnp.any(jnp.isnan(updated_in_prod))
+    assert not jnp.allclose(H_tilde_updated, jnp.zeros_like(H_tilde_updated))
+
+
+def test_update_L_no_regularization():
+    # Test case with no regularization (lambda_L = 0)
+    key = random.PRNGKey(0)
+    N, T, P, Q, J = 5, 4, 3, 2, 2
+    Y = random.normal(key, (N, T))
+    X_tilde = random.normal(key, (N, P + N))
+    Z_tilde = random.normal(key, (T, Q + T))
+    V = random.normal(key, (N, T, J))
+    H_tilde = random.normal(key, (P + N, Q + T))
+    W = random.bernoulli(key, 0.8, (N, T))
+    L = random.normal(key, (N, T))
+    unit_fe = random.normal(key, (N,))
+    time_fe = random.normal(key, (T,))
+    beta = random.normal(key, (J,))
+    lambda_L = 0.0
+
+    L_upd, S = update_L(
+        Y, X_tilde, Z_tilde, V, H_tilde, W, L, unit_fe, time_fe, beta, lambda_L, True, True
+    )
+
+    assert L_upd.shape == L.shape
+    assert S.shape == (min(N, T),)
+    assert not jnp.allclose(L_upd, L)
+    assert not jnp.any(jnp.isnan(L_upd))
+    assert not jnp.any(jnp.isnan(S))
+    assert not jnp.allclose(L_upd, jnp.zeros_like(L))
+
+
+def test_update_L_with_regularization():
+    # Test case with regularization (lambda_L > 0)
+    key = random.PRNGKey(0)
+    N, T, P, Q, J = 5, 4, 3, 2, 2
+    Y = random.normal(key, (N, T))
+    X_tilde = random.normal(key, (N, P + N))
+    Z_tilde = random.normal(key, (T, Q + T))
+    V = random.normal(key, (N, T, J))
+    H_tilde = random.normal(key, (P + N, Q + T))
+    W = random.bernoulli(key, 0.8, (N, T))
+    L = random.normal(key, (N, T))
+    unit_fe = random.normal(key, (N,))
+    time_fe = random.normal(key, (T,))
+    beta = random.normal(key, (J,))
+    lambda_L = 0.1
+
+    L_upd, S = update_L(
+        Y, X_tilde, Z_tilde, V, H_tilde, W, L, unit_fe, time_fe, beta, lambda_L, True, True
+    )
+
+    assert L_upd.shape == L.shape
+    assert S.shape == (min(N, T),)
+    assert not jnp.allclose(L_upd, L)
+    assert not jnp.any(jnp.isnan(L_upd))
+    assert not jnp.any(jnp.isnan(S))
+    assert not jnp.allclose(L_upd, jnp.zeros_like(L))
+
+
+def test_update_L_without_fixed_effects():
+    # Test case without unit and time fixed effects
+    key = random.PRNGKey(0)
+    N, T, P, Q, J = 5, 4, 3, 2, 2
+    Y = random.normal(key, (N, T))
+    X_tilde = random.normal(key, (N, P + N))
+    Z_tilde = random.normal(key, (T, Q + T))
+    V = random.normal(key, (N, T, J))
+    H_tilde = random.normal(key, (P + N, Q + T))
+    W = random.bernoulli(key, 0.8, (N, T))
+    L = random.normal(key, (N, T))
+    unit_fe = jnp.zeros((N,))
+    time_fe = jnp.zeros((T,))
+    beta = random.normal(key, (J,))
+    lambda_L = 0.1
+
+    L_upd, S = update_L(
+        Y, X_tilde, Z_tilde, V, H_tilde, W, L, unit_fe, time_fe, beta, lambda_L, False, False
+    )
+
+    assert L_upd.shape == L.shape
+    assert S.shape == (min(N, T),)
+    assert not jnp.allclose(L_upd, L)
+    assert not jnp.any(jnp.isnan(L_upd))
+    assert not jnp.any(jnp.isnan(S))
+    assert not jnp.allclose(L_upd, jnp.zeros_like(L))
