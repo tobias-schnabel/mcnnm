@@ -329,6 +329,34 @@ def initialize_fixed_effects_and_H(
     niter: int = 1000,
     rel_tol: float = 1e-5,
 ) -> Tuple[Array, Array, Scalar, Scalar, Array, Array]:
+    """
+    Initialize fixed effects and the matrix H for the MC-NNM model.
+
+    This function initializes the fixed effects (unit and time) and the matrix H
+    using an iterative coordinate descent algorithm. It also computes the maximum
+    regularization parameters for the low-rank matrix L and the covariate coefficients
+    matrix H.
+
+    Args:
+        Y (Array): The observed outcome matrix of shape (N, T).
+        X (Array): The unit-specific covariates matrix of shape (N, P).
+        Z (Array): The time-specific covariates matrix of shape (T, Q).
+        V (Array): The unit-time-specific covariates tensor of shape (N, T, J).
+        W (Array): The mask matrix indicating observed entries of shape (N, T).
+        use_unit_fe (bool): Whether to include unit fixed effects in the decomposition.
+        use_time_fe (bool): Whether to include time fixed effects in the decomposition.
+        niter (int, optional): The maximum number of iterations for the coordinate descent algorithm. Default is 1000.
+        rel_tol (float, optional): The relative tolerance for convergence. Default is 1e-5.
+
+    Returns:
+        Tuple[Array, Array, Scalar, Scalar, Array, Array]: A tuple containing:
+            - unit_fe (Array): The unit fixed effects vector of shape (N,).
+            - time_fe (Array): The time fixed effects vector of shape (T,).
+            - lambda_L_max (Scalar): The maximum regularization parameter for the nuclear norm of L.
+            - lambda_H_max (Scalar): The maximum regularization parameter for the element-wise L1 norm of H.
+            - T_mat (Array): The matrix T used for computing the regularization parameter lambda_H_max.
+            - in_prod_T (Array): The inner product of T_mat used for computing lambda_H_max.
+    """
     N, T = Y.shape
     num_train = jnp.sum(W)
     L, X_tilde, Z_tilde, V, unit_fe, time_fe = initialize_matrices(
@@ -405,27 +433,7 @@ def initialize_fixed_effects_and_H(
 #     pass
 #
 #
-# def update_H(
-#     M: Array,
-#     X: Array,
-#     Z: Array,
-#     H: Array,
-#     mask: Array,
-#     L: Array,
-#     u: Array,
-#     v: Array,
-#     lambda_H: Scalar,
-#     to_add_ID: bool,
-# ) -> Tuple[Array, Array]:
-#     """
-#     Update the covariate coefficient matrix H using the observed matrix M, covariates X and Z, current estimates of
-#     H, L, u, v, and regularization parameter.
-#     Handle the case where an identity matrix should be added to the covariates (to_add_ID).
-#     Return the updated H and the inner product of the augmented covariate matrix.
-#     """
-#     # TODO: Implement the update step for H
-#     pass
-#
+
 
 #
 #
