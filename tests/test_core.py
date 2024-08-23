@@ -83,18 +83,25 @@ def mask_unobserved_numpy(A: np.ndarray, mask: np.ndarray) -> np.ndarray:
 
 
 def update_unit_fe_numpy(
-    Y: Array, X: Array, Z: Array, H: Array, W: Array, L: Array, time_fe: Array, use_unit_fe: bool
+    Y: Array,
+    X_tilde: Array,
+    Z_tilde: Array,
+    H_tilde: Array,
+    W: Array,
+    L: Array,
+    time_fe: Array,
+    use_unit_fe: bool,
 ) -> np.ndarray:
     # Convert all inputs to numpy arrays
     Y = np.array(Y)
-    X = np.array(X)
-    Z = np.array(Z)
-    H = np.array(H)
+    X_tilde = np.array(X_tilde)
+    Z_tilde = np.array(Z_tilde)
+    H_tilde = np.array(H_tilde)
     W = np.array(W)
     L = np.array(L)
     time_fe = np.array(time_fe)
 
-    T_ = np.einsum("np,pq,tq->nt", X, H, Z)
+    T_ = np.einsum("np,pq,tq->nt", X_tilde, H_tilde, Z_tilde)
     b_ = T_ + L + time_fe - Y
     b_mask_ = b_ * W
     l = np.sum(W, axis=1)
@@ -103,23 +110,64 @@ def update_unit_fe_numpy(
 
 
 def update_time_fe_numpy(
-    Y: Array, X: Array, Z: Array, H: Array, W: Array, L: Array, unit_fe: Array, use_time_fe: bool
+    Y: Array,
+    X_tilde: Array,
+    Z_tilde: Array,
+    H_tilde: Array,
+    W: Array,
+    L: Array,
+    unit_fe: Array,
+    use_time_fe: bool,
 ) -> np.ndarray:
     # Convert all inputs to numpy arrays
     Y = np.array(Y)
-    X = np.array(X)
-    Z = np.array(Z)
-    H = np.array(H)
+    X_tilde = np.array(X_tilde)
+    Z_tilde = np.array(Z_tilde)
+    H_tilde = np.array(H_tilde)
     W = np.array(W)
     L = np.array(L)
     unit_fe = np.array(unit_fe)
 
-    T_ = np.einsum("np,pq,tq->nt", X, H, Z)
+    T_ = np.einsum("np,pq,tq->nt", X_tilde, H_tilde, Z_tilde)
     b_ = T_ + L + np.expand_dims(unit_fe, axis=1) - Y
     b_mask_ = b_ * W
     l = np.sum(W, axis=0)
     res = np.where(l > 0, -np.sum(b_mask_, axis=0) / l, 0.0)
     return np.where(use_time_fe, res, np.zeros_like(res))
+
+
+def compute_beta_numpy(
+    Y: Array,
+    X_tilde: Array,
+    Z_tilde: Array,
+    V: Array,
+    H_tilde: Array,
+    W: Array,
+    L: Array,
+    unit_fe: Array,
+    time_fe: Array,
+) -> np.ndarray:
+    # Convert all inputs to numpy arrays
+    Y = np.array(Y)
+    X_tilde = np.array(X_tilde)
+    Z_tilde = np.array(Z_tilde)
+    V = np.array(V)
+    H_tilde = np.array(H_tilde)
+    W = np.array(W)
+    L = np.array(L)
+    unit_fe = np.array(unit_fe)
+    time_fe = np.array(time_fe)
+
+    T_ = np.einsum("np,pq,tq->nt", X_tilde, H_tilde, Z_tilde)
+    b_ = T_ + L + np.expand_dims(unit_fe, axis=1) + time_fe - Y
+    b_mask_ = b_ * W
+
+    V_mask_ = V * np.expand_dims(W, axis=-1)
+    V_sum_ = np.sum(V_mask_, axis=(0, 1))
+
+    V_b_prod_ = np.einsum("ntj,nt->j", V_mask_, b_mask_)
+
+    return np.where(V_sum_ > 0, -V_b_prod_ / V_sum_, 0.0)
 
 
 def compute_decomposition_numpy(
@@ -315,6 +363,11 @@ def test_initialize_coefficients_shape():
     assert gamma.shape == (Y.shape[0],)
     assert delta.shape == (Y.shape[1],)
     assert beta.shape == (max(V.shape[2], 1),)
+    assert jnp.allclose(L, jnp.zeros_like(L))
+    assert jnp.allclose(H_tilde, jnp.zeros_like(H_tilde))
+    assert jnp.allclose(gamma, jnp.zeros_like(gamma))
+    assert jnp.allclose(delta, jnp.zeros_like(delta))
+    assert jnp.allclose(beta, jnp.zeros_like(beta))
 
 
 def test_initialize_coefficients_empty():
@@ -322,12 +375,17 @@ def test_initialize_coefficients_empty():
     X = jnp.zeros((0, 0))
     Z = jnp.zeros((0, 0))
     V = jnp.zeros((0, 0, 0))
-    L, H, gamma, delta, beta = initialize_coefficients(Y, X, Z, V)
+    L, H_tilde, gamma, delta, beta = initialize_coefficients(Y, X, Z, V)
     assert L.shape == Y.shape
-    assert H.shape == (X.shape[1] + Y.shape[0], Z.shape[1] + Y.shape[1])
+    assert H_tilde.shape == (X.shape[1] + Y.shape[0], Z.shape[1] + Y.shape[1])
     assert gamma.shape == (Y.shape[0],)
     assert delta.shape == (Y.shape[1],)
     assert beta.shape == (max(V.shape[2], 1),)
+    assert jnp.allclose(L, jnp.zeros_like(L))
+    assert jnp.allclose(H_tilde, jnp.zeros_like(H_tilde))
+    assert jnp.allclose(gamma, jnp.zeros_like(gamma))
+    assert jnp.allclose(delta, jnp.zeros_like(delta))
+    assert jnp.allclose(beta, jnp.zeros_like(beta))
 
 
 def test_initialize_coefficients_single_element():
@@ -348,6 +406,11 @@ def test_initialize_coefficients_single_element():
     assert gamma.shape == (Y.shape[0],)
     assert delta.shape == (Y.shape[1],)
     assert beta.shape == (max(V.shape[2], 1),)
+    assert jnp.allclose(L, jnp.zeros_like(L))
+    assert jnp.allclose(H_tilde, jnp.zeros_like(H_tilde))
+    assert jnp.allclose(gamma, jnp.zeros_like(gamma))
+    assert jnp.allclose(delta, jnp.zeros_like(delta))
+    assert jnp.allclose(beta, jnp.zeros_like(beta))
 
 
 def test_compute_svd_happy_path():
@@ -393,6 +456,7 @@ def test_update_unit_fe_happy_path():
     expected_output = update_unit_fe_numpy(Y, X, Z, H, W, L, time_fe, True)
     output = update_unit_fe(Y, X, Z, H, W, L, time_fe, True)
     assert jnp.allclose(output, expected_output)
+    assert not jnp.allclose(output, jnp.zeros_like(output))
 
 
 def test_update_unit_fe_partial_mask():
@@ -406,6 +470,7 @@ def test_update_unit_fe_partial_mask():
     expected_output = update_unit_fe_numpy(Y, X, Z, H, W, L, time_fe, True)
     output = update_unit_fe(Y, X, Z, H, W, L, time_fe, True)
     assert jnp.allclose(output, expected_output)
+    assert not jnp.allclose(output, jnp.zeros_like(output))
 
 
 def test_update_unit_fe_single_element():
@@ -419,6 +484,7 @@ def test_update_unit_fe_single_element():
     expected_output = update_unit_fe_numpy(Y, X, Z, H, W, L, time_fe, True)
     output = update_unit_fe(Y, X, Z, H, W, L, time_fe, True)
     assert jnp.allclose(output, expected_output)
+    assert not jnp.allclose(output, jnp.zeros_like(output))
 
 
 def test_update_unit_fe_no_unit_fe():
@@ -500,6 +566,7 @@ def test_update_time_fe_happy_path():
     expected_output = update_time_fe_numpy(Y, X, Z, H, W, L, unit_fe, True)
     output = update_time_fe(Y, X, Z, H, W, L, unit_fe, True)
     assert jnp.allclose(output, expected_output)
+    assert not jnp.allclose(output, jnp.zeros_like(output))
 
 
 def test_update_time_fe_partial_mask():
@@ -513,6 +580,7 @@ def test_update_time_fe_partial_mask():
     expected_output = update_time_fe_numpy(Y, X, Z, H, W, L, unit_fe, True)
     output = update_time_fe(Y, X, Z, H, W, L, unit_fe, True)
     assert jnp.allclose(output, expected_output)
+    assert not jnp.allclose(output, jnp.zeros_like(output))
 
 
 def test_update_time_fe_single_element():
@@ -526,6 +594,7 @@ def test_update_time_fe_single_element():
     expected_output = update_time_fe_numpy(Y, X, Z, H, W, L, unit_fe, True)
     output = update_time_fe(Y, X, Z, H, W, L, unit_fe, True)
     assert jnp.allclose(output, expected_output)
+    assert not jnp.allclose(output, jnp.zeros_like(output))
 
 
 def test_update_time_fe_no_time_fe():
@@ -564,6 +633,7 @@ def test_compute_decomposition():
     )
     output = compute_decomposition(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
     assert jnp.allclose(output, expected_output)
+    assert not jnp.allclose(output, jnp.zeros_like(output))
 
     # Test with only unit fixed effects
     use_unit_fe = True
@@ -573,6 +643,7 @@ def test_compute_decomposition():
     )
     output = compute_decomposition(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
     assert jnp.allclose(output, expected_output)
+    assert not jnp.allclose(output, jnp.zeros_like(output))
 
     # Test with only time fixed effects
     use_unit_fe = False
@@ -582,6 +653,7 @@ def test_compute_decomposition():
     )
     output = compute_decomposition(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
     assert jnp.allclose(output, expected_output)
+    assert not jnp.allclose(output, jnp.zeros_like(output))
 
     # Test without fixed effects
     use_unit_fe = False
@@ -591,6 +663,7 @@ def test_compute_decomposition():
     )
     output = compute_decomposition(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
     assert jnp.allclose(output, expected_output)
+    assert not jnp.allclose(output, jnp.zeros_like(output))
 
 
 def test_compute_objective_value():
@@ -653,6 +726,7 @@ def test_compute_objective_value():
         inv_omega,
     )
     assert jnp.allclose(output, expected_output, rtol=1e-5, atol=1e-5)
+    assert not jnp.allclose(output, jnp.zeros_like(output))
 
     # Test case 2: With unit fixed effects only, and inv_omega not provided
     expected_output = compute_objective_value_numpy(
@@ -662,6 +736,7 @@ def test_compute_objective_value():
         Y, X, Z, V, H, W, L, gamma, delta, beta, sum_sing_vals, lambda_L, lambda_H, True, False
     )
     assert jnp.allclose(output, expected_output, rtol=1e-5, atol=1e-5)
+    assert not jnp.allclose(output, jnp.zeros_like(output))
 
     # Test case 3: With time fixed effects only, and inv_omega provided
     inv_omega = random.normal(key, (T, T))
@@ -703,6 +778,7 @@ def test_compute_objective_value():
         inv_omega,
     )
     assert jnp.allclose(output, expected_output, rtol=1e-5, atol=1e-5)
+    assert not jnp.allclose(output, jnp.zeros_like(output))
 
     # Test case 4: Without unit and time fixed effects, and inv_omega not provided
     expected_output = compute_objective_value_numpy(
@@ -712,6 +788,7 @@ def test_compute_objective_value():
         Y, X, Z, V, H, W, L, gamma, delta, beta, sum_sing_vals, lambda_L, lambda_H, False, False
     )
     assert jnp.allclose(output, expected_output, rtol=1e-5, atol=1e-5)
+    assert not jnp.allclose(output, jnp.zeros_like(output))
 
     # Test case 5: Same as test case one, but with print statements
     inv_omega = random.normal(key, (T, T))
