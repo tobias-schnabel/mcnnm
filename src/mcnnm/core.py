@@ -1,42 +1,47 @@
 from typing import Tuple, Optional
+from .core_utils import mask_observed
+from .types import Array, Scalar
 
 import jax.numpy as jnp
 from jax import jit, lax
 import jax.debug as jdb
+import jax
 
-from .core_utils import mask_observed
-from .types import Array, Scalar
+jax.config.update("jax_enable_x64", True)
 
 
 def initialize_coefficients(
-    Y: Array, X: Array, Z: Array, V: Array
+    Y: Array, X_tilde: Array, Z_tilde: Array, V: Array
 ) -> Tuple[Array, Array, Array, Array, Array]:
     """
-    Initialize covariate and fixed effects coefficients  for the MC-NNM model.
+    Initialize covariate and fixed effects coefficients for the MC-NNM model.
 
     Args:
         Y (Array): The observed outcome matrix of shape (N, T).
-        X (Array): The unit-specific covariates matrix of shape (N, P).
-        Z (Array): The time-specific covariates matrix of shape (T, Q).
+        X_tilde (Array): The augmented unit-specific covariates matrix of shape (N, P+N).
+        Z_tilde (Array): The augmented time-specific covariates matrix of shape (T, Q+T).
         V (Array): The unit-time specific covariates tensor of shape (N, T, J).
 
     Returns:
         Tuple[Array, Array, Array, Array, Array]: A tuple containing initial values for L,
-        H, gamma, delta, and beta.
+        H_tilde, gamma, delta, and beta.
     """
     N, T = Y.shape
     L = jnp.zeros_like(Y)
     gamma = jnp.zeros(N)  # unit FE coefficients
     delta = jnp.zeros(T)  # time FE coefficients
 
-    H = jnp.zeros((X.shape[1] + N, Z.shape[1] + T))  # X and Z-covariate coefficients
+    H_tilde = jnp.zeros(
+        (X_tilde.shape[1], Z_tilde.shape[1])
+    )  # X_tilde and Z_tilde-covariate coefficients
 
     beta_shape = max(V.shape[2], 1)
     beta = jnp.zeros((beta_shape,))  # unit-time covariate coefficients
 
-    return L, H, gamma, delta, beta
+    return L, H_tilde, gamma, delta, beta
 
 
+@jit
 def initialize_matrices(
     Y: Array,
     X: Optional[Array],
@@ -60,11 +65,15 @@ def initialize_matrices(
     if V is None:
         V = jnp.zeros((N, T, 1))
 
+    # Add identity matrices to X and Z to obtain X_tilde and Z_tilde
+    X_tilde = jnp.concatenate((X, jnp.eye(N)), axis=1)
+    Z_tilde = jnp.concatenate((Z, jnp.eye(T)), axis=1)
+
     # Initialize unit and time fixed effects
     unit_fe = jnp.where(use_unit_fe, jnp.ones(N), jnp.zeros(N))
     time_fe = jnp.where(use_time_fe, jnp.ones(T), jnp.zeros(T))
 
-    return L, X, Z, V, unit_fe, time_fe
+    return L, X_tilde, Z_tilde, V, unit_fe, time_fe
 
 
 @jit
@@ -159,24 +168,13 @@ def compute_decomposition(
     time_fe_term = jnp.outer(jnp.ones(N), delta)
     decomposition += jnp.where(use_time_fe, time_fe_term, jnp.zeros_like(time_fe_term))
 
-    decomposition += (
-        X @ H[:P, :Q] @ Z.T + X @ H[:P, Q:] + H[P:, :Q] @ Z.T + jnp.einsum("ntj,j->nt", V, beta)
-    )
-
-    # XH_term = jnp.dot(X, H[:P, :Q]) TODO: cleanup
-    # XH_Z_term = jnp.where(Q > 0, jnp.dot(XH_term, Z.T), jnp.zeros((N, T)))
-    # decomposition += XH_Z_term
-    #
-    # XH_extra_term = jnp.dot(X, H[:P, Q:])
-    # decomposition += XH_extra_term
-    #
-    # H_Z_term = jnp.where(
-    #     P + N <= H.shape[0] and Q > 0, jnp.dot(H[P : P + N, :Q], Z.T), jnp.zeros((N, T))
-    # )
-    # decomposition += H_Z_term
-    #
-    # V_beta_term = jnp.einsum("ntj,j->nt", V, beta)
-    # decomposition += V_beta_term
+    if Q > 0:
+        decomposition += X @ H[:P, :Q] @ Z.T
+    if H.shape[1] > Q:
+        decomposition += X @ H[:P, Q:]
+    if P + N <= H.shape[0] and Q > 0:
+        decomposition += H[P : P + N, :Q] @ Z.T
+    decomposition += jnp.einsum("ntj,j->nt", V, beta)
 
     return decomposition
 
@@ -301,6 +299,82 @@ def compute_objective_value(
     return obj_val
 
 
+# @jit
+# def initialize_fixed_effects_and_H(
+#     Y: Array,
+#     X: Array,
+#     Z: Array,
+#     V: Array,
+#     W: Array,
+#     use_unit_fe: bool,
+#     use_time_fe: bool,
+#     niter: int = 1000,
+#     rel_tol: float = 1e-5,
+# ) -> Tuple[Array, Array, Scalar, Scalar, Array, Array]:
+#     N, T = Y.shape
+#     L, X_tilde, Z_tilde, V, unit_fe, time_fe = initialize_matrices(
+#         Y, X, Z, V, use_unit_fe, use_time_fe
+#     )
+#     _, H, _, _, beta = initialize_coefficients(Y, X_tilde, Z_tilde, V)
+#
+#     H_rows, H_cols = X_tilde.shape[1], Z_tilde.shape[1]
+#
+#     obj_val = jnp.inf
+#     new_obj_val = jnp.zeros(())
+#
+#     for iter_ in range(niter):
+#         unit_fe = update_unit_fe(Y, X_tilde, Z_tilde, H, W, L, time_fe, use_unit_fe)
+#         time_fe = update_time_fe(Y, X_tilde, Z_tilde, H, W, L, unit_fe, use_time_fe)
+#
+#         new_obj_val = compute_objective_value(
+#             Y,
+#             X_tilde,
+#             Z_tilde,
+#             V,
+#             H,
+#             W,
+#             L,
+#             unit_fe,
+#             time_fe,
+#             beta,
+#             0.0,
+#             0.0,
+#             0.0,
+#             use_unit_fe,
+#             use_time_fe,
+#         )
+#
+#         rel_error = jnp.abs(new_obj_val - obj_val) / obj_val
+#         obj_val = jnp.where(rel_error < rel_tol, obj_val, new_obj_val)
+#
+#     E = compute_decomposition(
+#         L, X_tilde, Z_tilde, V, H, unit_fe, time_fe, beta, use_unit_fe, use_time_fe
+#     )
+#     P_omega = mask_observed(Y - E, W)
+#     _, _, s = jnp.linalg.svd(P_omega, full_matrices=False)
+#     lambda_L_max = 2.0 * jnp.max(s) / jnp.sum(W)
+#
+#     num_train = jnp.sum(W)
+#     T_mat = jnp.zeros((Y.size, H_rows * H_cols))
+#     in_prod_T = jnp.zeros(H_rows * H_cols)
+#
+#     for j in range(H_cols):
+#         for i in range(H_rows):
+#             out_prod = mask_observed(jnp.outer(X_tilde[:, i], Z_tilde[:, j]), W)
+#             index = j * H_rows + i
+#             T_mat = T_mat.at[:, index].set(out_prod.ravel())
+#             in_prod_T = in_prod_T.at[index].set(jnp.sum(T_mat[:, index] ** 2))
+#
+#     T_mat /= jnp.sqrt(num_train)
+#     in_prod_T /= num_train
+#
+#     P_omega_resh = P_omega.ravel()
+#     all_Vs = jnp.dot(T_mat.T, P_omega_resh) / jnp.sqrt(num_train)
+#     lambda_H_max = 2 * jnp.max(jnp.abs(all_Vs))
+#
+#     return unit_fe, time_fe, lambda_L_max, lambda_H_max, T_mat, in_prod_T
+
+
 @jit
 def initialize_fixed_effects_and_H(
     Y: Array,
@@ -313,49 +387,16 @@ def initialize_fixed_effects_and_H(
     niter: int = 1000,
     rel_tol: float = 1e-5,
 ) -> Tuple[Array, Array, Scalar, Scalar, Array, Array]:
-    """
-    Find the optimal unit_fe and time_fe assuming that L and H are zero. This is helpful for warm-starting
-    the values of lambda_L and lambda_H. This function also outputs the smallest values of
-    lambda_L and lambda_H which cause L and H to be zero.
-
-    Args:
-        Y (Array): The observed outcome matrix of shape (N, T).
-        X (Array): The unit-specific covariates matrix of shape (N, P).
-        Z (Array): The time-specific covariates matrix of shape (T, Q).
-        V (Array): The unit-time-specific covariates tensor of shape (N, T, J).
-        W (Array): The mask matrix indicating observed entries of shape (N, T).
-        use_unit_fe (bool): Whether to include unit fixed effects in the model.
-        use_time_fe (bool): Whether to include time fixed effects in the model.
-        niter (int): The maximum number of iterations for the coordinate descent algorithm.
-        rel_tol (float): The relative tolerance for convergence.
-
-    Returns:
-        Tuple[Array, Array, Scalar, Scalar, Array, Array]: A tuple containing:
-            - unit_fe: The estimated unit fixed effects vector of shape (N,).
-            - time_fe: The estimated time fixed effects vector of shape (T,).
-            - lambda_L_max: The smallest value of lambda_L that causes L to be zero.
-            - lambda_H_max: The smallest value of lambda_H that causes H to be zero.
-            - T_mat: The T matrix used for computing lambda_H_max.
-            - in_prod_T: The inner product of T_mat with itself.
-    """
-    L, X_tilde, Z_tilde, V, unit_fe, time_fe = initialize_matrices(  # TODO: check that correct
+    N, T = Y.shape
+    L, X_tilde, Z_tilde, V, unit_fe, time_fe = initialize_matrices(
         Y, X, Z, V, use_unit_fe, use_time_fe
     )
     _, H, _, _, beta = initialize_coefficients(Y, X_tilde, Z_tilde, V)
 
     H_rows, H_cols = X_tilde.shape[1], Z_tilde.shape[1]
 
-    obj_val = jnp.inf
-    new_obj_val = 0.0
-
-    def cond_fun(carry):
-        iter_, obj_val, new_obj_val, *_ = carry
-        rel_error = jnp.abs(new_obj_val - obj_val) / obj_val
-        return jnp.logical_and(iter_ < niter, rel_error >= rel_tol)
-
     def body_fun(carry):
-        iter_, obj_val, _, unit_fe, time_fe, L, H = carry
-
+        obj_val, unit_fe, time_fe = carry
         unit_fe = update_unit_fe(Y, X_tilde, Z_tilde, H, W, L, time_fe, use_unit_fe)
         time_fe = update_time_fe(Y, X_tilde, Z_tilde, H, W, L, unit_fe, use_time_fe)
 
@@ -377,35 +418,31 @@ def initialize_fixed_effects_and_H(
             use_time_fe,
         )
 
-        return iter_ + 1, new_obj_val, new_obj_val, unit_fe, time_fe, L, H
+        rel_error = jnp.abs(new_obj_val - obj_val) / (jnp.abs(obj_val) + 1e-10)
+        obj_val = jnp.where(rel_error < rel_tol, obj_val, new_obj_val)
+        return obj_val, unit_fe, time_fe
 
-    init_carry = (0, obj_val, new_obj_val, unit_fe, time_fe, L, H)
-    _, _, _, unit_fe, time_fe, L, H = lax.while_loop(cond_fun, body_fun, init_carry)
+    init_val = (jnp.inf, unit_fe, time_fe)
+    _, unit_fe, time_fe = lax.fori_loop(0, niter, lambda i, x: body_fun(x), init_val)
 
     E = compute_decomposition(
         L, X_tilde, Z_tilde, V, H, unit_fe, time_fe, beta, use_unit_fe, use_time_fe
     )
     P_omega = mask_observed(Y - E, W)
-    _, _, s = compute_svd(P_omega)
+    s = jnp.linalg.svd(P_omega, compute_uv=False)
     lambda_L_max = 2.0 * jnp.max(s) / jnp.sum(W)
 
     num_train = jnp.sum(W)
     T_mat = jnp.zeros((Y.size, H_rows * H_cols))
-    in_prod_T = jnp.zeros(H_rows * H_cols)
 
-    def compute_T_mat(j, val):
-        T_mat, in_prod_T = val
-        for i in range(H_rows):
-            out_prod = mask_observed(jnp.outer(X_tilde[:, i], Z_tilde[:, j]), W)
-            index = j * H_rows + i
-            T_mat = T_mat.at[:, index].set(out_prod.ravel())
-            in_prod_T = in_prod_T.at[index].set(jnp.sum(T_mat[:, index] ** 2))
-        return T_mat, in_prod_T
+    def compute_T_mat(j, T_mat):
+        out_prod = mask_observed(jnp.outer(X_tilde[:, j // H_rows], Z_tilde[:, j % H_cols]), W)
+        return T_mat.at[:, j].set(out_prod.ravel())
 
-    T_mat, in_prod_T = lax.fori_loop(0, H_cols, compute_T_mat, (T_mat, in_prod_T))
-
+    T_mat = lax.fori_loop(0, H_rows * H_cols, compute_T_mat, T_mat)
     T_mat /= jnp.sqrt(num_train)
-    in_prod_T /= num_train
+
+    in_prod_T = jnp.sum(T_mat**2, axis=0)
 
     P_omega_resh = P_omega.ravel()
     all_Vs = jnp.dot(T_mat.T, P_omega_resh) / jnp.sqrt(num_train)
