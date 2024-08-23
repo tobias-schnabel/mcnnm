@@ -1,7 +1,7 @@
 import pytest
 import jax.numpy as jnp
 from mcnnm.core_utils import mask_observed, mask_unobserved, frobenius_norm, nuclear_norm
-from mcnnm.core_utils import element_wise_l1_norm, shrink_lambda, initialize_coefficients
+from mcnnm.core_utils import element_wise_l1_norm, shrink_lambda, normalize, normalize_back
 import jax
 from jax import random
 
@@ -86,40 +86,84 @@ def test_element_wise_l1_norm_non_2d():
         element_wise_l1_norm(A)
 
 
-def test_initialize_coefficients_shape():
-    Y = jnp.zeros((10, 5))
-    X = jnp.zeros((10, 3))
-    Z = jnp.zeros((5, 2))
-    V = jnp.zeros((10, 5, 4))
-    L, H, gamma, delta, beta = initialize_coefficients(Y, X, Z, V)
-    assert L.shape == Y.shape
-    assert H.shape == (X.shape[1] + Y.shape[0], Z.shape[1] + Y.shape[1])
-    assert gamma.shape == (Y.shape[0],)
-    assert delta.shape == (Y.shape[1],)
-    assert beta.shape == (max(V.shape[2], 1),)
+def test_normalize_happy_path():
+    mat = jnp.array([[1, 2], [3, 4]])
+    mat_norm, col_norms = normalize(mat)
+    assert mat_norm.shape == mat.shape
+    assert col_norms.shape == (mat.shape[1],)
+    assert jnp.allclose(jnp.linalg.norm(mat_norm, axis=0), 1)
 
 
-def test_initialize_coefficients_empty():
-    Y = jnp.zeros((0, 0))
-    X = jnp.zeros((0, 0))
-    Z = jnp.zeros((0, 0))
-    V = jnp.zeros((0, 0, 0))
-    L, H, gamma, delta, beta = initialize_coefficients(Y, X, Z, V)
-    assert L.shape == Y.shape
-    assert H.shape == (X.shape[1] + Y.shape[0], Z.shape[1] + Y.shape[1])
-    assert gamma.shape == (Y.shape[0],)
-    assert delta.shape == (Y.shape[1],)
-    assert beta.shape == (max(V.shape[2], 1),)
+def test_normalize_single_column():
+    mat = jnp.array([[1], [3]])
+    mat_norm, col_norms = normalize(mat)
+    assert mat_norm.shape == mat.shape
+    assert col_norms.shape == (mat.shape[1],)
+    assert jnp.allclose(jnp.linalg.norm(mat_norm, axis=0), 1)
 
 
-def test_initialize_coefficients_single_element():
-    Y = jnp.zeros((1, 1))
-    X = jnp.zeros((1, 1))
-    Z = jnp.zeros((1, 1))
-    V = jnp.zeros((1, 1, 1))
-    L, H, gamma, delta, beta = initialize_coefficients(Y, X, Z, V)
-    assert L.shape == Y.shape
-    assert H.shape == (X.shape[1] + Y.shape[0], Z.shape[1] + Y.shape[1])
-    assert gamma.shape == (Y.shape[0],)
-    assert delta.shape == (Y.shape[1],)
-    assert beta.shape == (max(V.shape[2], 1),)
+def test_normalize_empty_matrix():
+    mat = jnp.zeros((0, 0))
+    mat_norm, col_norms = normalize(mat)
+    assert mat_norm.shape == mat.shape
+    assert col_norms.shape == (0,)
+
+
+def test_normalize_zero_column():
+    mat = jnp.array([[0, 0], [0, 0]])
+    mat_norm, col_norms = normalize(mat)
+    assert mat_norm.shape == mat.shape
+    assert jnp.allclose(col_norms, jnp.array([0, 0]))
+    assert jnp.all(mat_norm == 0)
+
+
+def test_normalize_non_finite_values():
+    mat = jnp.array([[1, jnp.inf], [3, jnp.nan]])
+    mat_norm, col_norms = normalize(mat)
+    assert mat_norm.shape == mat.shape
+    assert col_norms.shape == (mat.shape[1],)
+    assert jnp.isnan(mat_norm).any() or jnp.isinf(mat_norm).any()
+
+
+def test_normalize_back_happy_path():
+    H = jnp.array([[1, 2], [3, 4]])
+    row_scales = jnp.array([1, 2])
+    col_scales = jnp.array([1, 2])
+    H_rescaled = normalize_back(H, row_scales, col_scales)
+    expected = jnp.array([[1, 1], [1.5, 1]])
+    assert jnp.allclose(H_rescaled, expected)
+
+
+def test_normalize_back_no_row_scales():
+    H = jnp.array([[1, 2], [3, 4]])
+    row_scales = jnp.array([])
+    col_scales = jnp.array([1, 2])
+    H_rescaled = normalize_back(H, row_scales, col_scales)
+    expected = jnp.array([[1, 1], [3, 2]])
+    assert jnp.allclose(H_rescaled, expected)
+
+
+def test_normalize_back_no_col_scales():
+    H = jnp.array([[1, 2], [3, 4]])
+    row_scales = jnp.array([1, 2])
+    col_scales = jnp.array([])
+    H_rescaled = normalize_back(H, row_scales, col_scales)
+    expected = jnp.array([[1, 2], [1.5, 2]])
+    assert jnp.allclose(H_rescaled, expected)
+
+
+def test_normalize_back_empty_matrix():
+    H = jnp.zeros((0, 0))
+    row_scales = jnp.array([])
+    col_scales = jnp.array([])
+    H_rescaled = normalize_back(H, row_scales, col_scales)
+    expected = jnp.zeros((0, 0))
+    assert jnp.allclose(H_rescaled, expected)
+
+
+def test_normalize_back_non_finite_values():
+    H = jnp.array([[1, jnp.inf], [3, jnp.nan]])
+    row_scales = jnp.array([1, 2])
+    col_scales = jnp.array([1, 2])
+    H_rescaled = normalize_back(H, row_scales, col_scales)
+    assert jnp.isnan(H_rescaled).any() or jnp.isinf(H_rescaled).any()

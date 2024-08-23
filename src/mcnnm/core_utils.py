@@ -129,30 +129,32 @@ def shrink_lambda(A: Array, lambda_: Scalar) -> Array:
     return u @ jnp.diag(s_shrunk) @ vt
 
 
-def initialize_coefficients(
-    Y: Array, X: Array, Z: Array, V: Array
-) -> Tuple[Array, Array, Array, Array, Array]:
+def normalize(mat: Array) -> Tuple[Array, Array]:
     """
-    Initialize covariate and fixed effects coefficients  for the MC-NNM model.
-
-    Args:
-        Y (Array): The observed outcome matrix of shape (N, T).
-        X (Array): The unit-specific covariates matrix of shape (N, P).
-        Z (Array): The time-specific covariates matrix of shape (T, Q).
-        V (Array): The unit-time specific covariates tensor of shape (N, T, J).
-
-    Returns:
-        Tuple[Array, Array, Array, Array, Array]: A tuple containing initial values for L,
-        H, gamma, delta, and beta.
+    Normalize the columns of the input matrix.
+    Return the normalized matrix and the column norms.
     """
-    N, T = Y.shape
-    L = jnp.zeros_like(Y)
-    gamma = jnp.zeros(N)  # unit FE coefficients
-    delta = jnp.zeros(T)  # time FE coefficients
+    if mat.size == 0:
+        col_norms = jnp.zeros(mat.shape[1])
+        mat_norm = jnp.zeros_like(mat)
+    else:
+        epsilon = 1e-10
+        col_norms = jnp.linalg.norm(mat, axis=0) + epsilon
+        mat_norm = mat / col_norms
 
-    H = jnp.zeros((X.shape[1] + N, Z.shape[1] + T))  # X and Z-covariate coefficients
+    return mat_norm, col_norms
 
-    beta_shape = max(V.shape[2], 1)
-    beta = jnp.zeros((beta_shape,))  # unit-time covariate coefficients
 
-    return L, H, gamma, delta, beta
+def normalize_back(H: Array, row_scales: Array, col_scales: Array) -> Array:
+    """
+    Rescale the rows and columns of the matrix H using the provided scales.
+    """
+    H_new = H.copy()
+
+    if row_scales.size > 0:
+        H_new = H_new / row_scales[:, None]
+
+    if col_scales.size > 0:
+        H_new = H_new / col_scales[None, :]
+
+    return H_new
