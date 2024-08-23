@@ -10,6 +10,7 @@ import jax
 jax.config.update("jax_enable_x64", True)
 
 
+@jit
 def initialize_coefficients(
     Y: Array, X_tilde: Array, Z_tilde: Array, V: Array
 ) -> Tuple[Array, Array, Array, Array, Array]:
