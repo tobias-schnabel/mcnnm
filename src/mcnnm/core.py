@@ -87,9 +87,9 @@ def update_unit_fe(
 
     Args:
         Y (Array): The observed outcome matrix of shape (N, T).
-        X (Array): The unit-specific covariates matrix of shape (N, P).
-        Z (Array): The time-specific covariates matrix of shape (T, Q).
-        H (Array): The covariate coefficients matrix of shape (P, Q).
+        X (Array): The unit-specific covariates matrix of shape (N, P). TODO: padded matrices
+        Z (Array): The time-specific covariates matrix of shape (T, Q). TODO: padded matrices
+        H (Array): The covariate coefficients matrix of shape (P, Q). TODO: padded matrices
         W (Array): The mask matrix indicating observed entries of shape (N, T).
         L (Array): The low-rank matrix of shape (N, T).
         time_fe (Array): The time fixed effects vector of shape (T,).
@@ -115,9 +115,9 @@ def update_time_fe(
 
     Args:
         Y (Array): The observed outcome matrix of shape (N, T).
-        X (Array): The unit-specific covariates matrix of shape (N, P).
-        Z (Array): The time-specific covariates matrix of shape (T, Q).
-        H (Array): The covariate coefficients matrix of shape (P, Q).
+        X (Array): The unit-specific covariates matrix of shape (N, P). TODO: padded matrices
+        Z (Array): The time-specific covariates matrix of shape (T, Q). TODO: padded matrices
+        H (Array): The covariate coefficients matrix of shape (P, Q). TODO: padded matrices
         W (Array): The mask matrix indicating observed entries of shape (N, T).
         L (Array): The low-rank matrix of shape (N, T).
         unit_fe (Array): The unit fixed effects vector of shape (N,).
@@ -159,20 +159,24 @@ def compute_decomposition(
     time_fe_term = jnp.outer(jnp.ones(N), delta)
     decomposition += jnp.where(use_time_fe, time_fe_term, jnp.zeros_like(time_fe_term))
 
-    XH_term = jnp.dot(X, H[:P, :Q])
-    XH_Z_term = jnp.where(Q > 0, jnp.dot(XH_term, Z.T), jnp.zeros((N, T)))
-    decomposition += XH_Z_term
-
-    XH_extra_term = jnp.dot(X, H[:P, Q:])
-    decomposition += XH_extra_term
-
-    H_Z_term = jnp.where(
-        P + N <= H.shape[0] and Q > 0, jnp.dot(H[P : P + N, :Q], Z.T), jnp.zeros((N, T))
+    decomposition += (
+        X @ H[:P, :Q] @ Z.T + X @ H[:P, Q:] + H[P:, :Q] @ Z.T + jnp.einsum("ntj,j->nt", V, beta)
     )
-    decomposition += H_Z_term
 
-    V_beta_term = jnp.einsum("ntj,j->nt", V, beta)
-    decomposition += V_beta_term
+    # XH_term = jnp.dot(X, H[:P, :Q]) TODO: cleanup
+    # XH_Z_term = jnp.where(Q > 0, jnp.dot(XH_term, Z.T), jnp.zeros((N, T)))
+    # decomposition += XH_Z_term
+    #
+    # XH_extra_term = jnp.dot(X, H[:P, Q:])
+    # decomposition += XH_extra_term
+    #
+    # H_Z_term = jnp.where(
+    #     P + N <= H.shape[0] and Q > 0, jnp.dot(H[P : P + N, :Q], Z.T), jnp.zeros((N, T))
+    # )
+    # decomposition += H_Z_term
+    #
+    # V_beta_term = jnp.einsum("ntj,j->nt", V, beta)
+    # decomposition += V_beta_term
 
     return decomposition
 
@@ -334,7 +338,7 @@ def initialize_fixed_effects_and_H(
             - T_mat: The T matrix used for computing lambda_H_max.
             - in_prod_T: The inner product of T_mat with itself.
     """
-    L, X_tilde, Z_tilde, V, unit_fe, time_fe = initialize_matrices(
+    L, X_tilde, Z_tilde, V, unit_fe, time_fe = initialize_matrices(  # TODO: check that correct
         Y, X, Z, V, use_unit_fe, use_time_fe
     )
     _, H, _, _, beta = initialize_coefficients(Y, X_tilde, Z_tilde, V)
