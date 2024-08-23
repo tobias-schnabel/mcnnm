@@ -3,7 +3,7 @@ from typing import Tuple, Optional
 import jax.numpy as jnp
 from jax import jit
 
-from .types import Array
+from .types import Array, Scalar
 
 
 def initialize_coefficients(
@@ -181,3 +181,119 @@ def compute_decomposition(
     )
 
     return decomposition
+
+
+def compute_objective_value(
+    Y: Array,
+    X: Array,
+    Z: Array,
+    V: Array,
+    H: Array,
+    W: Array,
+    L: Array,
+    gamma: Array,
+    delta: Array,
+    beta: Array,
+    sum_sing_vals: float,
+    lambda_L: float,
+    lambda_H: float,
+    use_unit_fe: bool,
+    use_time_fe: bool,
+    inv_omega: Optional[Array] = None,
+) -> Scalar:
+    r"""
+    Compute the objective value for the MC-NNM model with covariates, fixed effects,
+    and time series correlation.
+
+    The objective function is defined as:
+
+    .. math::
+
+        \frac{1}{|\Omega|} \sum_{(i,t) \in \Omega} \sum_{(i,s) \in \Omega}
+        (Y_{it} - \hat{Y}_{it}) [\Omega^{-1}]_{ts} (Y_{is} - \hat{Y}_{is})
+        + \lambda_L \|L^*\|_* + \lambda_H \|H^*\|_1
+
+    where:
+    - :math:`Y_{it}` is the observed outcome for unit :math:`i` at time :math:`t`
+    - :math:`\hat{Y}_{it}` is the estimated outcome for unit :math:`i` at time
+      :math:`t`, given by:
+
+      .. math::
+
+          \hat{Y}_{it} = L^*_{it} + \sum_{p=1}^P X_{ip} H^*_{pq} Z_{tq}
+          + \sum_{q=1}^Q H^*_{(P+i)q} Z_{tq} + \sum_{p=1}^P X_{ip} H^*_{p(Q+t)}
+          + \Gamma^*_i + \Delta^*_t + \sum_{j=1}^J V_{itj} \beta^*_j
+
+    - :math:`\Omega` is the set of observed entries in the outcome matrix
+    - :math:`\Omega^{-1}` is the inverse of the omega matrix, capturing the time
+      series correlation
+    - :math:`L^*` is the low-rank matrix of shape (N, T)
+    - :math:`X` is the unit-specific covariates matrix of shape (N, P)
+    - :math:`Z` is the time-specific covariates matrix of shape (T, Q)
+    - :math:`V` is the unit-time-specific covariates tensor of shape (N, T, J)
+    - :math:`H^*` is the covariate coefficients matrix of shape (P + N, Q + T)
+    - :math:`\Gamma^*` is the unit fixed effects vector of shape (N,)
+    - :math:`\Delta^*` is the time fixed effects vector of shape (T,)
+    - :math:`\beta^*` is the unit-time-specific covariate coefficients vector
+      of shape (J,)
+    - :math:`\lambda_L` is the regularization parameter for the nuclear norm of
+      :math:`L^*`
+    - :math:`\lambda_H` is the regularization parameter for the element-wise L1 norm
+      of :math:`H^*`
+
+    The objective function consists of three terms:
+    1. The weighted mean squared error term, which measures the discrepancy between
+       the observed outcomes and the estimated outcomes, weighted by the inverse of
+       the omega matrix to account for time series correlation.
+    2. The nuclear norm regularization term for the low-rank matrix :math:`L^*`,
+       which encourages low-rankness.
+    3. The element-wise L1 norm regularization term for the covariate coefficients
+       matrix :math:`H^*`, which encourages sparsity.
+
+    Args:
+        Y (Array): The observed outcome matrix of shape (N, T).
+        X (Array): The unit-specific covariates matrix :math:`X` of shape (N, P).
+        Z (Array): The time-specific covariates matrix :math:`Z` of shape (T, Q).
+        V (Array): The unit-time-specific covariates tensor :math:`V` of shape
+            (N, T, J).
+        H (Array): The covariate coefficients matrix :math:`H^*` of shape
+            (P + N, Q + T).
+        W (Array): The mask matrix indicating observed entries of shape (N, T).
+        L (Array): The low-rank matrix :math:`L^*` of shape (N, T).
+        gamma (Array): The unit fixed effects vector :math:`\Gamma^*` of shape (N,).
+        delta (Array): The time fixed effects vector :math:`\Delta^*` of shape (T,).
+        beta (Array): The unit-time-specific covariate coefficients vector
+            :math:`\beta^*` of shape (J,).
+        sum_sing_vals (float): The sum of singular values of L.
+        lambda_L (float): The regularization parameter for the nuclear norm of L.
+        lambda_H (float): The regularization parameter for the element-wise L1 norm
+            of H.
+        use_unit_fe (bool): Whether to include unit fixed effects in the decomposition.
+        use_time_fe (bool): Whether to include time fixed effects in the decomposition.
+        inv_omega (Optional[Array]): The inverse of the omega matrix of shape (T, T).
+            If None, the identity matrix is used.
+
+    Returns:
+        Scalar: The computed objective value.
+    """
+
+    train_size = jnp.sum(W)
+    norm_H = jnp.sum(jnp.abs(H))
+
+    est_mat = compute_decomposition(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
+    err_mat = est_mat - Y
+
+    if inv_omega is None:
+        inv_omega = jnp.eye(Y.shape[1])
+
+    weighted_err_mat = jnp.einsum(
+        "ij,ntj,nsj->nts", inv_omega, err_mat[:, None, :], err_mat[:, :, None]
+    )
+    masked_weighted_err_mat = weighted_err_mat * W[:, None, :]
+    obj_val = (
+        (1 / train_size) * jnp.sum(masked_weighted_err_mat)
+        + lambda_L * sum_sing_vals
+        + lambda_H * norm_H
+    )
+
+    return obj_val

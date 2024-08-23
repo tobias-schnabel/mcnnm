@@ -6,11 +6,13 @@ from mcnnm.core import (
     update_unit_fe,
     update_time_fe,
     initialize_matrices,
+    compute_objective_value,
+    compute_decomposition,
 )
-from mcnnm.core import compute_decomposition
 import jax
 from jax import random
 from mcnnm.types import Array
+from typing import Optional
 
 key = jax.random.PRNGKey(2024)
 
@@ -111,6 +113,67 @@ def compute_decomposition_numpy(
     )
 
     return decomposition
+
+
+def compute_objective_value_numpy(
+    Y: Array,
+    X: Array,
+    Z: Array,
+    V: Array,
+    H: Array,
+    W: Array,
+    L: Array,
+    gamma: Array,
+    delta: Array,
+    beta: Array,
+    sum_sing_vals: float,
+    lambda_L: float,
+    lambda_H: float,
+    use_unit_fe: bool,
+    use_time_fe: bool,
+    inv_omega: Optional[Array] = None,
+) -> float:
+    # Convert all inputs to numpy arrays
+    Y = np.array(Y)
+    X = np.array(X)
+    Z = np.array(Z)
+    V = np.array(V)
+    H = np.array(H)
+    W = np.array(W)
+    L = np.array(L)
+    gamma = np.array(gamma)
+    delta = np.array(delta)
+    beta = np.array(beta)
+
+    N, T = Y.shape
+    P = X.shape[1]
+    Q = Z.shape[1]
+
+    if inv_omega is None:
+        inv_omega = np.eye(T)
+
+    est_mat = (
+        L
+        + (np.outer(gamma, np.ones(T)) if use_unit_fe else 0)
+        + (np.outer(np.ones(N), delta) if use_time_fe else 0)
+        + X @ H[:P, :Q] @ Z.T
+        + X @ H[:P, Q:]
+        + H[P:, :Q] @ Z.T
+        + np.einsum("ntj,j->nt", V, beta)
+    )
+
+    err_mat = est_mat - Y
+    weighted_err_mat = np.einsum(
+        "ij,ntj,nsj->nts", inv_omega, err_mat[:, None, :], err_mat[:, :, None]
+    )
+    masked_weighted_err_mat = weighted_err_mat * W[:, None, :]
+    obj_val = (
+        np.sum(masked_weighted_err_mat) / np.sum(W)
+        + lambda_L * sum_sing_vals
+        + lambda_H * np.sum(np.abs(H))
+    )
+
+    return obj_val
 
 
 def test_initialize_coefficients_shape():
@@ -391,3 +454,124 @@ def test_compute_decomposition():
     )
     output = compute_decomposition(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
     assert jnp.allclose(output, expected_output)
+
+
+def test_compute_objective_value():
+    # Set random seed for reproducibility
+    key = random.PRNGKey(0)
+
+    # Generate random input data
+    N, T, P, Q, J = 10, 20, 5, 3, 4
+    Y = random.normal(key, (N, T))
+    X = random.normal(key, (N, P))
+    Z = random.normal(key, (T, Q))
+    V = random.normal(key, (N, T, J))
+    H = random.normal(key, (P + N, Q + T))
+    W = random.bernoulli(key, 0.8, (N, T))
+    L = random.normal(key, (N, T))
+    gamma = random.normal(key, (N,))
+    delta = random.normal(key, (T,))
+    beta = random.normal(key, (J,))
+    sum_sing_vals = 10.0
+    lambda_L = 0.1
+    lambda_H = 0.05
+
+    # Test case 1: With unit and time fixed effects, and inv_omega provided
+    inv_omega = random.normal(key, (T, T))
+    inv_omega = inv_omega @ inv_omega.T  # Make inv_omega symmetric positive definite
+    expected_output = compute_objective_value_numpy(
+        Y,
+        X,
+        Z,
+        V,
+        H,
+        W,
+        L,
+        gamma,
+        delta,
+        beta,
+        sum_sing_vals,
+        lambda_L,
+        lambda_H,
+        True,
+        True,
+        inv_omega,
+    )
+    output = compute_objective_value(
+        Y,
+        X,
+        Z,
+        V,
+        H,
+        W,
+        L,
+        gamma,
+        delta,
+        beta,
+        sum_sing_vals,
+        lambda_L,
+        lambda_H,
+        True,
+        True,
+        inv_omega,
+    )
+    assert jnp.allclose(output, expected_output, rtol=1e-5, atol=1e-5)
+
+    # Test case 2: With unit fixed effects only, and inv_omega not provided
+    expected_output = compute_objective_value_numpy(
+        Y, X, Z, V, H, W, L, gamma, delta, beta, sum_sing_vals, lambda_L, lambda_H, True, False
+    )
+    output = compute_objective_value(
+        Y, X, Z, V, H, W, L, gamma, delta, beta, sum_sing_vals, lambda_L, lambda_H, True, False
+    )
+    assert jnp.allclose(output, expected_output, rtol=1e-5, atol=1e-5)
+
+    # Test case 3: With time fixed effects only, and inv_omega provided
+    inv_omega = random.normal(key, (T, T))
+    inv_omega = inv_omega @ inv_omega.T  # Make inv_omega symmetric positive definite
+    expected_output = compute_objective_value_numpy(
+        Y,
+        X,
+        Z,
+        V,
+        H,
+        W,
+        L,
+        gamma,
+        delta,
+        beta,
+        sum_sing_vals,
+        lambda_L,
+        lambda_H,
+        False,
+        True,
+        inv_omega,
+    )
+    output = compute_objective_value(
+        Y,
+        X,
+        Z,
+        V,
+        H,
+        W,
+        L,
+        gamma,
+        delta,
+        beta,
+        sum_sing_vals,
+        lambda_L,
+        lambda_H,
+        False,
+        True,
+        inv_omega,
+    )
+    assert jnp.allclose(output, expected_output, rtol=1e-5, atol=1e-5)
+
+    # Test case 4: Without unit and time fixed effects, and inv_omega not provided
+    expected_output = compute_objective_value_numpy(
+        Y, X, Z, V, H, W, L, gamma, delta, beta, sum_sing_vals, lambda_L, lambda_H, False, False
+    )
+    output = compute_objective_value(
+        Y, X, Z, V, H, W, L, gamma, delta, beta, sum_sing_vals, lambda_L, lambda_H, False, False
+    )
+    assert jnp.allclose(output, expected_output, rtol=1e-5, atol=1e-5)
