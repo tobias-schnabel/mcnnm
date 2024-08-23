@@ -9,6 +9,7 @@ from mcnnm.core import (
     compute_objective_value,
     compute_decomposition,
     initialize_fixed_effects_and_H,
+    svt,
 )
 import jax
 from jax import random
@@ -787,3 +788,58 @@ def test_initialize_fixed_effects_and_H():
     output = initialize_fixed_effects_and_H(Y, X, Z, V, W, False, False)
     for expected, actual in zip(expected_output, output):
         assert jnp.allclose(actual, expected, rtol=1.5, atol=1.5)
+
+
+def test_svt_no_thresholding():
+    # Test case where the threshold is zero (no thresholding)
+    key = random.PRNGKey(0)
+    U = random.normal(key, (5, 5))
+    V = random.normal(key, (5, 5))
+    sing_vals = jnp.array([3.0, 2.0, 1.0, 0.5, 0.1])
+    threshold = 0.0
+
+    expected_output = U @ jnp.diag(sing_vals) @ V.T
+    output = svt(U, V, sing_vals, threshold)
+
+    assert jnp.allclose(output, expected_output)
+
+
+def test_svt_partial_thresholding():
+    # Test case where some singular values are thresholded
+    key = random.PRNGKey(0)
+    U = random.normal(key, (5, 5))
+    V = random.normal(key, (5, 5))
+    sing_vals = jnp.array([3.0, 2.0, 1.0, 0.5, 0.1])
+    threshold = 0.8
+
+    expected_sing_vals = jnp.array([2.2, 1.2, 0.2, 0.0, 0.0])
+    expected_output = U @ jnp.diag(expected_sing_vals) @ V.T
+    output = svt(U, V, sing_vals, threshold)
+
+    assert jnp.allclose(output, expected_output)
+
+
+def test_svt_complete_thresholding():
+    # Test case where all singular values are thresholded
+    key = random.PRNGKey(0)
+    U = random.normal(key, (5, 5))
+    V = random.normal(key, (5, 5))
+    sing_vals = jnp.array([3.0, 2.0, 1.0, 0.5, 0.1])
+    threshold = 5.0
+
+    expected_output = jnp.zeros((5, 5))
+    output = svt(U, V, sing_vals, threshold)
+
+    assert jnp.allclose(output, expected_output)
+
+
+def test_svt_zero_matrix():
+    U = jnp.zeros((5, 5))
+    V = jnp.zeros((5, 5))
+    sing_vals = jnp.zeros(5)
+    threshold = 1.0
+
+    expected_output = jnp.zeros((5, 5))
+    output = svt(U, V, sing_vals, threshold)
+
+    assert jnp.allclose(output, expected_output)

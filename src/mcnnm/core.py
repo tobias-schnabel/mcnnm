@@ -88,6 +88,24 @@ def compute_svd(M: Array) -> Tuple[Array, Array, Array]:
 
 
 @jit
+def svt(U: Array, V: Array, sing_vals: Array, threshold: Scalar) -> Array:
+    """
+    Perform singular value thresholding (SVT) on the given singular value decomposition.
+
+    Args:
+        U (Array): The left singular vectors matrix.
+        V (Array): The right singular vectors matrix.
+        sing_vals (Array): The singular values array.
+        threshold (Scalar): The thresholding value.
+
+    Returns:
+        Array: The thresholded low-rank matrix.
+    """
+    thresholded_sing_vals = jnp.maximum(sing_vals - threshold, 0)
+    return U @ jnp.diag(thresholded_sing_vals) @ V.T
+
+
+@jit
 def update_unit_fe(
     Y: Array, X: Array, Z: Array, H: Array, W: Array, L: Array, time_fe: Array, use_unit_fe: bool
 ) -> Array:
@@ -299,82 +317,6 @@ def compute_objective_value(
     return obj_val
 
 
-# @jit
-# def initialize_fixed_effects_and_H(
-#     Y: Array,
-#     X: Array,
-#     Z: Array,
-#     V: Array,
-#     W: Array,
-#     use_unit_fe: bool,
-#     use_time_fe: bool,
-#     niter: int = 1000,
-#     rel_tol: float = 1e-5,
-# ) -> Tuple[Array, Array, Scalar, Scalar, Array, Array]:
-#     N, T = Y.shape
-#     L, X_tilde, Z_tilde, V, unit_fe, time_fe = initialize_matrices(
-#         Y, X, Z, V, use_unit_fe, use_time_fe
-#     )
-#     _, H, _, _, beta = initialize_coefficients(Y, X_tilde, Z_tilde, V)
-#
-#     H_rows, H_cols = X_tilde.shape[1], Z_tilde.shape[1]
-#
-#     obj_val = jnp.inf
-#     new_obj_val = jnp.zeros(())
-#
-#     for iter_ in range(niter):
-#         unit_fe = update_unit_fe(Y, X_tilde, Z_tilde, H, W, L, time_fe, use_unit_fe)
-#         time_fe = update_time_fe(Y, X_tilde, Z_tilde, H, W, L, unit_fe, use_time_fe)
-#
-#         new_obj_val = compute_objective_value(
-#             Y,
-#             X_tilde,
-#             Z_tilde,
-#             V,
-#             H,
-#             W,
-#             L,
-#             unit_fe,
-#             time_fe,
-#             beta,
-#             0.0,
-#             0.0,
-#             0.0,
-#             use_unit_fe,
-#             use_time_fe,
-#         )
-#
-#         rel_error = jnp.abs(new_obj_val - obj_val) / obj_val
-#         obj_val = jnp.where(rel_error < rel_tol, obj_val, new_obj_val)
-#
-#     E = compute_decomposition(
-#         L, X_tilde, Z_tilde, V, H, unit_fe, time_fe, beta, use_unit_fe, use_time_fe
-#     )
-#     P_omega = mask_observed(Y - E, W)
-#     _, _, s = jnp.linalg.svd(P_omega, full_matrices=False)
-#     lambda_L_max = 2.0 * jnp.max(s) / jnp.sum(W)
-#
-#     num_train = jnp.sum(W)
-#     T_mat = jnp.zeros((Y.size, H_rows * H_cols))
-#     in_prod_T = jnp.zeros(H_rows * H_cols)
-#
-#     for j in range(H_cols):
-#         for i in range(H_rows):
-#             out_prod = mask_observed(jnp.outer(X_tilde[:, i], Z_tilde[:, j]), W)
-#             index = j * H_rows + i
-#             T_mat = T_mat.at[:, index].set(out_prod.ravel())
-#             in_prod_T = in_prod_T.at[index].set(jnp.sum(T_mat[:, index] ** 2))
-#
-#     T_mat /= jnp.sqrt(num_train)
-#     in_prod_T /= num_train
-#
-#     P_omega_resh = P_omega.ravel()
-#     all_Vs = jnp.dot(T_mat.T, P_omega_resh) / jnp.sqrt(num_train)
-#     lambda_H_max = 2 * jnp.max(jnp.abs(all_Vs))
-#
-#     return unit_fe, time_fe, lambda_L_max, lambda_H_max, T_mat, in_prod_T
-
-
 @jit
 def initialize_fixed_effects_and_H(
     Y: Array,
@@ -388,6 +330,7 @@ def initialize_fixed_effects_and_H(
     rel_tol: float = 1e-5,
 ) -> Tuple[Array, Array, Scalar, Scalar, Array, Array]:
     N, T = Y.shape
+    num_train = jnp.sum(W)
     L, X_tilde, Z_tilde, V, unit_fe, time_fe = initialize_matrices(
         Y, X, Z, V, use_unit_fe, use_time_fe
     )
@@ -430,9 +373,8 @@ def initialize_fixed_effects_and_H(
     )
     P_omega = mask_observed(Y - E, W)
     s = jnp.linalg.svd(P_omega, compute_uv=False)
-    lambda_L_max = 2.0 * jnp.max(s) / jnp.sum(W)
+    lambda_L_max = 2.0 * jnp.max(s) / num_train
 
-    num_train = jnp.sum(W)
     T_mat = jnp.zeros((Y.size, H_rows * H_cols))
 
     def compute_T_mat(j, T_mat):
@@ -451,8 +393,6 @@ def initialize_fixed_effects_and_H(
     return unit_fe, time_fe, lambda_L_max, lambda_H_max, T_mat, in_prod_T
 
 
-#
-#
 # def update_L(
 #     M: Array, mask: Array, L: Array, u: Array, v: Array, lambda_L: Scalar
 # ) -> Tuple[Array, Array]:
