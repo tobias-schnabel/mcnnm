@@ -10,6 +10,7 @@ from mcnnm.core import (
     compute_decomposition,
     initialize_fixed_effects_and_H,
     svt,
+    update_H,
 )
 import jax
 from jax import random
@@ -843,3 +844,91 @@ def test_svt_zero_matrix():
     output = svt(U, V, sing_vals, threshold)
 
     assert jnp.allclose(output, expected_output)
+
+
+def test_update_H_with_regularization():
+    # Test case with regularization (lambda_H > 0)
+    key = random.PRNGKey(0)
+    N, T, P, Q, J = 5, 4, 3, 2, 2
+    Y = random.normal(key, (N, T))
+    X_tilde = random.normal(key, (N, P + N))
+    Z_tilde = random.normal(key, (T, Q + T))
+    V = random.normal(key, (N, T, J))
+    H_tilde = random.normal(key, (P + N, Q + T))
+    T_mat = random.normal(key, (N * T, (P + N) * (Q + T)))
+    in_prod = random.normal(key, (N * T,))
+    in_prod_T = random.normal(key, ((P + N) * (Q + T),))
+    W = random.bernoulli(key, 0.8, (N, T))
+    L = random.normal(key, (N, T))
+    unit_fe = random.normal(key, (N,))
+    time_fe = random.normal(key, (T,))
+    beta = random.normal(key, (J,))
+    lambda_H = 0.1
+
+    H_tilde_updated, updated_in_prod = update_H(
+        Y,
+        X_tilde,
+        Z_tilde,
+        V,
+        H_tilde,
+        T_mat,
+        in_prod,
+        in_prod_T,
+        W,
+        L,
+        unit_fe,
+        time_fe,
+        beta,
+        lambda_H,
+        True,
+        True,
+    )
+
+    assert H_tilde_updated.shape == H_tilde.shape
+    assert updated_in_prod.shape == in_prod.shape
+    assert not jnp.allclose(H_tilde_updated, H_tilde)
+    assert not jnp.any(jnp.isnan(H_tilde_updated))
+    assert not jnp.any(jnp.isnan(updated_in_prod))
+    assert not jnp.allclose(H_tilde_updated, jnp.zeros_like(H_tilde_updated))
+
+
+def test_update_H_without_fixed_effects():
+    # Test case without unit and time fixed effects
+    key = random.PRNGKey(0)
+    N, T, P, Q, J = 5, 4, 3, 2, 2
+    Y = random.normal(key, (N, T))
+    X_tilde = random.normal(key, (N, P + N))
+    Z_tilde = random.normal(key, (T, Q + T))
+    V = random.normal(key, (N, T, J))
+    H_tilde = random.normal(key, (P + N, Q + T))
+    T_mat = random.normal(key, (N * T, (P + N) * (Q + T)))
+    in_prod = random.normal(key, (N * T,))
+    in_prod_T = random.normal(key, ((P + N) * (Q + T),))
+    W = random.bernoulli(key, 0.8, (N, T))
+    L = random.normal(key, (N, T))
+    unit_fe = jnp.zeros((N,))
+    time_fe = jnp.zeros((T,))
+    beta = random.normal(key, (J,))
+    lambda_H = 0.1
+
+    H_tilde_updated, updated_in_prod = update_H(
+        Y,
+        X_tilde,
+        Z_tilde,
+        V,
+        H_tilde,
+        T_mat,
+        in_prod,
+        in_prod_T,
+        W,
+        L,
+        unit_fe,
+        time_fe,
+        beta,
+        lambda_H,
+        False,
+        False,
+    )
+
+    assert H_tilde_updated.shape == H_tilde.shape
+    assert updated_in_prod.shape == in_prod.shape

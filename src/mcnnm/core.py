@@ -422,6 +422,125 @@ def initialize_fixed_effects_and_H(
     return unit_fe, time_fe, lambda_L_max, lambda_H_max, T_mat, in_prod_T
 
 
+@jit
+def update_H(
+    Y: Array,
+    X_tilde: Array,
+    Z_tilde: Array,
+    V: Array,
+    H_tilde: Array,
+    T_mat: Array,
+    in_prod: Array,
+    in_prod_T: Array,
+    W: Array,
+    L: Array,
+    unit_fe: Array,
+    time_fe: Array,
+    beta: Array,
+    lambda_H: Scalar,
+    use_unit_fe: bool,
+    use_time_fe: bool,
+) -> Tuple[Array, Array]:
+    """
+    Update the covariate coefficients matrix H_tilde in the coordinate descent algorithm.
+
+    Args:
+        Y (Array): The observed outcome matrix of shape (N, T).
+        X_tilde (Array): The augmented unit-specific covariates matrix of shape (N, P+N).
+        Z_tilde (Array): The augmented time-specific covariates matrix of shape (T, Q+T).
+        V (Array): The unit-time-specific covariates tensor of shape (N, T, J).
+        H_tilde (Array): The covariate coefficients matrix of shape (P+N, Q+T).
+        T_mat (Array): The precomputed matrix T of shape (N * T, (P+N) * (Q+T)).
+        in_prod (Array): The inner product vector of shape (N * T,).
+        in_prod_T (Array): The inner product vector of T of shape ((P+N) * (Q+T),).
+        W (Array): The mask matrix indicating observed entries of shape (N, T).
+        L (Array): The low-rank matrix of shape (N, T).
+        unit_fe (Array): The unit fixed effects vector of shape (N,).
+        time_fe (Array): The time fixed effects vector of shape (T,).
+        beta (Array): The unit-time-specific covariate coefficients vector of shape (J,).
+        lambda_H (Scalar): The regularization parameter for the element-wise L1 norm of H_tilde.
+        use_unit_fe (bool): Whether to include unit fixed effects in the decomposition.
+        use_time_fe (bool): Whether to include time fixed effects in the decomposition.
+
+    Returns:
+        Tuple[Array, Array]: A tuple containing the updated covariate coefficients matrix H_tilde and the updated inner
+        product vector in_prod.
+    """
+    H_tilde_rows, H_tilde_cols = X_tilde.shape[1], Z_tilde.shape[1]
+    num_train = jnp.sum(W)
+
+    M_hat = compute_decomposition(
+        L, X_tilde, Z_tilde, V, H_tilde, unit_fe, time_fe, beta, use_unit_fe, use_time_fe
+    )
+    residual = (Y - M_hat) * W / jnp.sqrt(num_train)
+    residual_flat = residual.ravel()
+
+    H_tilde_flat = H_tilde.ravel()
+    updated_in_prod = in_prod.copy()
+
+    X_cols, Z_cols = X_tilde.shape[1] - Y.shape[0], Z_tilde.shape[1] - Y.shape[1]
+
+    def update_H_elem(carry, idx):
+        updated_in_prod, H_tilde_flat = carry
+        col, row = jnp.divmod(idx, H_tilde_rows)
+        elem_idx = col * H_tilde_rows + row
+        in_prod_T_elem = in_prod_T[elem_idx]
+        H_tilde_new = jnp.where(
+            in_prod_T_elem != 0,
+            0.5
+            * (
+                jnp.maximum(
+                    (
+                        2
+                        * jnp.dot(
+                            residual_flat
+                            - updated_in_prod
+                            + T_mat[:, elem_idx] * H_tilde_flat[elem_idx],
+                            T_mat[:, elem_idx],
+                        )
+                        - lambda_H
+                    )
+                    / in_prod_T_elem,
+                    0,
+                )
+                - jnp.maximum(
+                    (
+                        -2
+                        * jnp.dot(
+                            residual_flat
+                            - updated_in_prod
+                            + T_mat[:, elem_idx] * H_tilde_flat[elem_idx],
+                            T_mat[:, elem_idx],
+                        )
+                        - lambda_H
+                    )
+                    / in_prod_T_elem,
+                    0,
+                )
+            ),
+            H_tilde_flat[elem_idx],
+        )
+        updated_in_prod += (H_tilde_new - H_tilde_flat[elem_idx]) * T_mat[:, elem_idx]
+        H_tilde_flat = H_tilde_flat.at[elem_idx].set(H_tilde_new)
+        return (updated_in_prod, H_tilde_flat), None
+
+    if Z_cols > 0:
+        (updated_in_prod, H_tilde_flat), _ = jax.lax.scan(
+            update_H_elem, (updated_in_prod, H_tilde_flat), jnp.arange(Z_cols * H_tilde_rows)
+        )
+
+    if X_cols > 0:
+        (updated_in_prod, H_tilde_flat), _ = jax.lax.scan(
+            update_H_elem,
+            (updated_in_prod, H_tilde_flat),
+            jnp.arange(Z_cols * H_tilde_rows, H_tilde_cols * H_tilde_rows),
+        )
+
+    H_tilde_updated = H_tilde_flat.reshape(H_tilde_rows, H_tilde_cols)
+
+    return H_tilde_updated, updated_in_prod
+
+
 # def update_L(
 #     M: Array, mask: Array, L: Array, u: Array, v: Array, lambda_L: Scalar
 # ) -> Tuple[Array, Array]:
