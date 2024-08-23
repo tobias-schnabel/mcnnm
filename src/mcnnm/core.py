@@ -163,21 +163,85 @@ def update_time_fe(
 
 
 @jit
-def compute_decomposition(
-    L: Array,
+def update_beta(
+    Y: Array,
     X: Array,
     Z: Array,
     V: Array,
     H: Array,
+    W: Array,
+    L: Array,
+    unit_fe: Array,
+    time_fe: Array,
+) -> Array:
+    """
+    Update the unit-time-specific covariate coefficients (beta) in the coordinate descent algorithm.
+
+    Args:
+        Y (Array): The observed outcome matrix of shape (N, T).
+        X (Array): The unit-specific covariates matrix of shape (N, P).
+        Z (Array): The time-specific covariates matrix of shape (T, Q).
+        V (Array): The unit-time-specific covariates tensor of shape (N, T, J).
+        H (Array): The covariate coefficients matrix of shape (P, Q).
+        W (Array): The mask matrix indicating observed entries of shape (N, T).
+        L (Array): The low-rank matrix of shape (N, T).
+        unit_fe (Array): The unit fixed effects vector of shape (N,).
+        time_fe (Array): The time fixed effects vector of shape (T,).
+
+    Returns:
+        Array: The updated unit-time-specific covariate coefficients vector of shape (J,).
+    """
+    T_ = jnp.einsum("np,pq,tq->nt", X, H, Z)
+    b_ = T_ + L + jnp.expand_dims(unit_fe, axis=1) + time_fe - Y
+    b_mask_ = b_ * W
+
+    V_mask_ = V * jnp.expand_dims(W, axis=-1)
+    V_sum_ = jnp.sum(V_mask_, axis=(0, 1))
+
+    V_b_prod_ = jnp.einsum("ntj,nt->j", V_mask_, b_mask_)
+
+    return jnp.where(V_sum_ > 0, -V_b_prod_ / V_sum_, 0.0)
+
+
+@jit
+def compute_decomposition(
+    L: Array,
+    X_tilde: Array,
+    Z_tilde: Array,
+    V: Array,
+    H_tilde: Array,
     gamma: Array,
     delta: Array,
     beta: Array,
     use_unit_fe: bool,
     use_time_fe: bool,
 ) -> Array:
+    """
+    Compute the decomposition of the observed outcome matrix Y.
+
+    This function computes the decomposition of the observed outcome matrix Y
+    into its low-rank component L, covariate effects, and fixed effects (unit and time).
+    The decomposition is given by:
+        Y ≈ L + X @ H[:P, :Q] @ Z.T + V @ beta + gamma @ 1_T + 1_N @ delta
+
+    Args:
+        L (Array): The low-rank matrix of shape (N, T).
+        X_tilde (Array): The unit-specific covariates matrix of shape (N, P).
+        Z_tilde (Array): The time-specific covariates matrix of shape (T, Q).
+        V (Array): The unit-time-specific covariates tensor of shape (N, T, J).
+        H_tilde (Array): The covariate coefficients matrix of shape (P + N, Q + T).
+        gamma (Array): The unit fixed effects vector of shape (N,).
+        delta (Array): The time fixed effects vector of shape (T,).
+        beta (Array): The unit-time-specific covariate coefficients vector of shape (J,).
+        use_unit_fe (bool): Whether to include unit fixed effects in the decomposition.
+        use_time_fe (bool): Whether to include time fixed effects in the decomposition.
+
+    Returns:
+        Array: The decomposed matrix of shape (N, T).
+    """
     N, T = L.shape
-    P = X.shape[1]
-    Q = Z.shape[1]
+    P = X_tilde.shape[1]
+    Q = Z_tilde.shape[1]
 
     decomposition = L
 
@@ -188,11 +252,11 @@ def compute_decomposition(
     decomposition += jnp.where(use_time_fe, time_fe_term, jnp.zeros_like(time_fe_term))
 
     if Q > 0:
-        decomposition += X @ H[:P, :Q] @ Z.T
-    if H.shape[1] > Q:
-        decomposition += X @ H[:P, Q:]
-    if P + N <= H.shape[0] and Q > 0:
-        decomposition += H[P : P + N, :Q] @ Z.T
+        decomposition += X_tilde @ H_tilde[:P, :Q] @ Z_tilde.T
+    if H_tilde.shape[1] > Q:
+        decomposition += X_tilde @ H_tilde[:P, Q:]
+    if P + N <= H_tilde.shape[0] and Q > 0:
+        decomposition += H_tilde[P : P + N, :Q] @ Z_tilde.T
     decomposition += jnp.einsum("ntj,j->nt", V, beta)
 
     return decomposition
@@ -594,49 +658,3 @@ def update_L(
     L_upd = svt(U, V, S, lambda_L * num_train / 2)
 
     return L_upd, S
-
-
-def fit(
-    Y: Array,
-    X_tilde: Array,
-    Z_tilde: Array,
-    V: Array,
-    H_tilde: Array,
-    T_mat: Array,
-    in_prod: Array,
-    in_prod_T: Array,
-    W: Array,
-    L: Array,
-    unit_fe: Array,
-    time_fe: Array,
-    beta: Array,
-    lambda_L: Scalar,
-    use_unit_fe: bool,
-    use_time_fe: bool,
-) -> Tuple[Array, Array, Array, Array, Array]:
-    """
-    Update the low-rank matrix L in the coordinate descent algorithm.
-
-    Args:
-        Y (Array): The observed outcome matrix of shape (N, T).
-        X_tilde (Array): The augmented unit-specific covariates matrix of shape (N, P+N).
-        Z_tilde (Array): The augmented time-specific covariates matrix of shape (T, Q+T).
-        V (Array): The unit-time-specific covariates tensor of shape (N, T, J).
-        H_tilde (Array): The covariate coefficients matrix of shape (P+N, Q+T).
-        T_mat (Array): The precomputed matrix T of shape (N * T, (P+N) * (Q+T)).
-        in_prod (Array): The inner product vector of shape (N * T,). Initialised as zeros when passed.
-        in_prod_T (Array): The inner product vector of T of shape ((P+N) * (Q+T),).
-        W (Array): The mask matrix indicating observed entries of shape (N, T).
-        L (Array): The low-rank matrix of shape (N, T).
-        unit_fe (Array): The unit fixed effects vector of shape (N,).
-        time_fe (Array): The time fixed effects vector of shape (T,).
-        beta (Array): The unit-time-specific covariate coefficients vector of shape (J,).
-        lambda_L (Scalar): The regularization parameter for the nuclear norm of L.
-        use_unit_fe (bool): Whether to include unit fixed effects in the decomposition.
-        use_time_fe (bool): Whether to include time fixed effects in the decomposition.
-
-    Returns:
-        Tuple[Array, Array]: A tuple containing the updated low-rank matrix L and the singular values.
-    """
-    # TODO: Implement the model fitting process
-    return L, H_tilde, unit_fe, time_fe, beta
