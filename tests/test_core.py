@@ -220,7 +220,7 @@ def initialize_fixed_effects_and_H_numpy(
     use_time_fe: bool,
     niter: int = 1000,
     rel_tol: float = 1e-5,
-) -> Tuple[np.ndarray, np.ndarray, float, float, np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, float, float, np.ndarray, np.ndarray, np.ndarray]:
     # Convert all inputs to numpy arrays
     Y = np.array(Y)
     X = np.array(X)
@@ -229,6 +229,7 @@ def initialize_fixed_effects_and_H_numpy(
     W = np.array(W)
 
     N, T = Y.shape
+    in_prod = np.zeros_like(W)
     L, X_tilde, Z_tilde, V, unit_fe, time_fe = initialize_matrices_numpy(
         Y, X, Z, V, use_unit_fe, use_time_fe
     )
@@ -293,7 +294,7 @@ def initialize_fixed_effects_and_H_numpy(
     all_Vs = np.dot(T_mat.T, P_omega_resh) / np.sqrt(num_train)
     lambda_H_max = 2 * np.max(np.abs(all_Vs))
 
-    return unit_fe, time_fe, lambda_L_max, lambda_H_max, T_mat, in_prod_T
+    return unit_fe, time_fe, lambda_L_max, lambda_H_max, T_mat, in_prod_T, in_prod
 
 
 def test_initialize_coefficients_shape():

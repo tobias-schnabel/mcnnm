@@ -329,7 +329,7 @@ def initialize_fixed_effects_and_H(
     use_time_fe: bool,
     niter: int = 1000,
     rel_tol: float = 1e-5,
-) -> Tuple[Array, Array, Scalar, Scalar, Array, Array]:
+) -> Tuple[Array, Array, Scalar, Scalar, Array, Array, Array]:
     """
     Initialize fixed effects and the matrix H for the MC-NNM model.
 
@@ -357,9 +357,11 @@ def initialize_fixed_effects_and_H(
             - lambda_H_max (Scalar): The maximum regularization parameter for the element-wise L1 norm of H.
             - T_mat (Array): The matrix T used for computing the regularization parameter lambda_H_max.
             - in_prod_T (Array): The inner product of T_mat used for computing lambda_H_max.
+            - in_prod (Array): The inner product vector used for updating H. Initialized as zeros.
     """
     N, T = Y.shape
     num_train = jnp.sum(W)
+    in_prod = jnp.zeros_like(W)
     L, X_tilde, Z_tilde, V, unit_fe, time_fe = initialize_matrices(
         Y, X, Z, V, use_unit_fe, use_time_fe
     )
@@ -419,7 +421,7 @@ def initialize_fixed_effects_and_H(
     all_Vs = jnp.dot(T_mat.T, P_omega_resh) / jnp.sqrt(num_train)
     lambda_H_max = 2 * jnp.max(jnp.abs(all_Vs))
 
-    return unit_fe, time_fe, lambda_L_max, lambda_H_max, T_mat, in_prod_T
+    return unit_fe, time_fe, lambda_L_max, lambda_H_max, T_mat, in_prod_T, in_prod
 
 
 @jit
@@ -594,32 +596,47 @@ def update_L(
     return L_upd, S
 
 
-#
-#
-# def fit(
-#     Y: Array,
-#     W: Array,
-#     X: Array,
-#     Z: Array,
-#     V: Array,
-#     Omega: Array,
-#     lambda_L: Scalar,
-#     lambda_H: Scalar,
-#     initial_params: Tuple[Array, Array, Array, Array, Array],
-#     max_iter: int,
-#     tol: Scalar,
-#     use_unit_fe: bool,
-#     use_time_fe: bool,
-#     to_add_ID: bool,
-# ) -> Tuple[Array, Array, Array, Array, Array]:
-#     """
-#     Fit the MC-NNM model using coordinate descent updates until convergence or maximum iterations.
-#     Handle cases where covariates are not present by passing zero arrays.
-#     Apply normalization to X and Z covariates using the normalize function.
-#     Rescale the estimated H matrix using normalize_back_rows and normalize_back_cols functions.
-#     Use the compute_obj_val and compute_obj_val_H functions to track the objective function value during the
-#     optimization process.
-#     Return the final estimates of L, H, u, v, and beta.
-#     """
-#     # TODO: Implement the model fitting process
-#     pass
+def fit(
+    Y: Array,
+    X_tilde: Array,
+    Z_tilde: Array,
+    V: Array,
+    H_tilde: Array,
+    T_mat: Array,
+    in_prod: Array,
+    in_prod_T: Array,
+    W: Array,
+    L: Array,
+    unit_fe: Array,
+    time_fe: Array,
+    beta: Array,
+    lambda_L: Scalar,
+    use_unit_fe: bool,
+    use_time_fe: bool,
+) -> Tuple[Array, Array, Array, Array, Array]:
+    """
+    Update the low-rank matrix L in the coordinate descent algorithm.
+
+    Args:
+        Y (Array): The observed outcome matrix of shape (N, T).
+        X_tilde (Array): The augmented unit-specific covariates matrix of shape (N, P+N).
+        Z_tilde (Array): The augmented time-specific covariates matrix of shape (T, Q+T).
+        V (Array): The unit-time-specific covariates tensor of shape (N, T, J).
+        H_tilde (Array): The covariate coefficients matrix of shape (P+N, Q+T).
+        T_mat (Array): The precomputed matrix T of shape (N * T, (P+N) * (Q+T)).
+        in_prod (Array): The inner product vector of shape (N * T,). Initialised as zeros when passed.
+        in_prod_T (Array): The inner product vector of T of shape ((P+N) * (Q+T),).
+        W (Array): The mask matrix indicating observed entries of shape (N, T).
+        L (Array): The low-rank matrix of shape (N, T).
+        unit_fe (Array): The unit fixed effects vector of shape (N,).
+        time_fe (Array): The time fixed effects vector of shape (T,).
+        beta (Array): The unit-time-specific covariate coefficients vector of shape (J,).
+        lambda_L (Scalar): The regularization parameter for the nuclear norm of L.
+        use_unit_fe (bool): Whether to include unit fixed effects in the decomposition.
+        use_time_fe (bool): Whether to include time fixed effects in the decomposition.
+
+    Returns:
+        Tuple[Array, Array]: A tuple containing the updated low-rank matrix L and the singular values.
+    """
+    # TODO: Implement the model fitting process
+    return L, H_tilde, unit_fe, time_fe, beta
