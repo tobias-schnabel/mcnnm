@@ -108,16 +108,23 @@ def svt(U: Array, V: Array, sing_vals: Array, threshold: Scalar) -> Array:
 
 @jit
 def update_unit_fe(
-    Y: Array, X: Array, Z: Array, H: Array, W: Array, L: Array, time_fe: Array, use_unit_fe: bool
+    Y: Array,
+    X_tilde: Array,
+    Z_tilde: Array,
+    H_tilde: Array,
+    W: Array,
+    L: Array,
+    time_fe: Array,
+    use_unit_fe: bool,
 ) -> Array:
     """
     Update the unit fixed effects (unit_fe) in the coordinate descent algorithm when covariates are available.
 
     Args:
         Y (Array): The observed outcome matrix of shape (N, T).
-        X (Array): The unit-specific covariates matrix of shape (N, P). TODO: padded matrices
-        Z (Array): The time-specific covariates matrix of shape (T, Q). TODO: padded matrices
-        H (Array): The covariate coefficients matrix of shape (P, Q). TODO: padded matrices
+        X_tilde (Array): The augmented unit-specific covariates matrix of shape (N, P+N).
+        Z_tilde (Array): The augmented time-specific covariates matrix of shape (T, Q+T).
+        H_tilde (Array): The augmented covariate coefficients matrix of shape (P+N, Q+T).
         W (Array): The mask matrix indicating observed entries of shape (N, T).
         L (Array): The low-rank matrix of shape (N, T).
         time_fe (Array): The time fixed effects vector of shape (T,).
@@ -126,7 +133,7 @@ def update_unit_fe(
     Returns:
         Array: The updated unit fixed effects vector of shape (N,) if use_unit_fe is True, else a zero vector.
     """
-    T_ = jnp.einsum("np,pq,tq->nt", X, H, Z)
+    T_ = jnp.einsum("np,pq,tq->nt", X_tilde, H_tilde, Z_tilde)
     b_ = T_ + L + time_fe - Y
     b_mask_ = b_ * W
     l = jnp.sum(W, axis=1)
@@ -136,16 +143,23 @@ def update_unit_fe(
 
 @jit
 def update_time_fe(
-    Y: Array, X: Array, Z: Array, H: Array, W: Array, L: Array, unit_fe: Array, use_time_fe: bool
+    Y: Array,
+    X_tilde: Array,
+    Z_tilde: Array,
+    H_tilde: Array,
+    W: Array,
+    L: Array,
+    unit_fe: Array,
+    use_time_fe: bool,
 ) -> Array:
     """
     Update the time fixed effects (time_fe) in the coordinate descent algorithm when covariates are available.
 
     Args:
         Y (Array): The observed outcome matrix of shape (N, T).
-        X (Array): The unit-specific covariates matrix of shape (N, P). TODO: padded matrices
-        Z (Array): The time-specific covariates matrix of shape (T, Q). TODO: padded matrices
-        H (Array): The covariate coefficients matrix of shape (P, Q). TODO: padded matrices
+        X_tilde (Array): The augmented unit-specific covariates matrix of shape (N, P+N).
+        Z_tilde (Array): The augmented time-specific covariates matrix of shape (T, Q+T).
+        H_tilde (Array): The augmented covariate coefficients matrix of shape (P+N, Q+T).
         W (Array): The mask matrix indicating observed entries of shape (N, T).
         L (Array): The low-rank matrix of shape (N, T).
         unit_fe (Array): The unit fixed effects vector of shape (N,).
@@ -154,7 +168,7 @@ def update_time_fe(
     Returns:
         Array: The updated time fixed effects vector of shape (T,) if use_time_fe is True, else a zero vector.
     """
-    T_ = jnp.einsum("np,pq,tq->nt", X, H, Z)
+    T_ = jnp.einsum("np,pq,tq->nt", X_tilde, H_tilde, Z_tilde)
     b_ = T_ + L + jnp.expand_dims(unit_fe, axis=1) - Y
     b_mask_ = b_ * W
     l = jnp.sum(W, axis=0)
@@ -165,10 +179,10 @@ def update_time_fe(
 @jit
 def update_beta(
     Y: Array,
-    X: Array,
-    Z: Array,
+    X_tilde: Array,
+    Z_tilde: Array,
     V: Array,
-    H: Array,
+    H_tilde: Array,
     W: Array,
     L: Array,
     unit_fe: Array,
@@ -179,10 +193,10 @@ def update_beta(
 
     Args:
         Y (Array): The observed outcome matrix of shape (N, T).
-        X (Array): The unit-specific covariates matrix of shape (N, P).
-        Z (Array): The time-specific covariates matrix of shape (T, Q).
+        X_tilde (Array): The augmented unit-specific covariates matrix of shape (N, P+N).
+        Z_tilde (Array): The augmented time-specific covariates matrix of shape (T, Q+T).
         V (Array): The unit-time-specific covariates tensor of shape (N, T, J).
-        H (Array): The covariate coefficients matrix of shape (P, Q).
+        H_tilde (Array): The augmented covariate coefficients matrix of shape (P+N, Q+T).
         W (Array): The mask matrix indicating observed entries of shape (N, T).
         L (Array): The low-rank matrix of shape (N, T).
         unit_fe (Array): The unit fixed effects vector of shape (N,).
@@ -191,7 +205,7 @@ def update_beta(
     Returns:
         Array: The updated unit-time-specific covariate coefficients vector of shape (J,).
     """
-    T_ = jnp.einsum("np,pq,tq->nt", X, H, Z)
+    T_ = jnp.einsum("np,pq,tq->nt", X_tilde, H_tilde, Z_tilde)
     b_ = T_ + L + jnp.expand_dims(unit_fe, axis=1) + time_fe - Y
     b_mask_ = b_ * W
 
@@ -658,3 +672,57 @@ def update_L(
     L_upd = svt(U, V, S, lambda_L * num_train / 2)
 
     return L_upd, S
+
+
+# def fit(
+#     Y: Array,
+#     X_tilde: Array,
+#     Z_tilde: Array,
+#     V: Array,
+#     H_tilde: Array,
+#     T_mat: Array,
+#     in_prod: Array,
+#     in_prod_T: Array,
+#     W: Array,
+#     L: Array,
+#     unit_fe: Array,
+#     time_fe: Array,
+#     beta: Array,
+#     lambda_L: Scalar,
+#     lambda_H: Scalar,
+#     use_unit_fe: bool,
+#     use_time_fe: bool,
+#     niter: int = 1000,
+#     rel_tol: float = 1e-5,
+#     verbose: bool = False,
+# ) -> Tuple[Array, Array, Array, Array, Array]:
+#     """
+#     Update the low-rank matrix L in the coordinate descent algorithm.
+#
+#     Args:
+#         Y (Array): The observed outcome matrix of shape (N, T).
+#         X_tilde (Array): The augmented unit-specific covariates matrix of shape (N, P+N).
+#         Z_tilde (Array): The augmented time-specific covariates matrix of shape (T, Q+T).
+#         V (Array): The unit-time-specific covariates tensor of shape (N, T, J).
+#         H_tilde (Array): The covariate coefficients matrix of shape (P+N, Q+T).
+#         T_mat (Array): The precomputed matrix T of shape (N * T, (P+N) * (Q+T)).
+#         in_prod (Array): The inner product vector of shape (N * T,). Initialised as zeros when passed.
+#         in_prod_T (Array): The inner product vector of T of shape ((P+N) * (Q+T),).
+#         W (Array): The mask matrix indicating observed entries of shape (N, T).
+#         L (Array): The low-rank matrix of shape (N, T).
+#         unit_fe (Array): The unit fixed effects vector of shape (N,).
+#         time_fe (Array): The time fixed effects vector of shape (T,).
+#         beta (Array): The unit-time-specific covariate coefficients vector of shape (J,).
+#         lambda_L (Scalar): The regularization parameter for the nuclear norm of L.
+#         lambda_H (Scalar): The regularization parameter for the element-wise L1 norm of H.
+#         use_unit_fe (bool): Whether to include unit fixed effects in the decomposition.
+#         use_time_fe (bool): Whether to include time fixed effects in the decomposition.
+#         niter (int, optional): The maximum number of iterations for the coordinate descent algorithm. Default is 1000.
+#         rel_tol (float, optional): The relative tolerance for convergence. Default is 1e-5.
+#         verbose (bool, optional): Whether to print the objective value at each iteration. Default is False.
+#     Returns:
+#         Tuple[Array, Array]: A tuple containing the updated low-rank matrix L, updated covariate coefficient matrix H,
+#         updated unit fixed effects vector, updated time fixed effects vector, updated unit-time-specific covariate
+#         vector, updated in_prod vector.
+#     """
+#     # TODO: Implement the model fitting process

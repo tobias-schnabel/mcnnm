@@ -12,6 +12,7 @@ from mcnnm.core import (
     svt,
     update_H,
     update_L,
+    update_beta,
 )
 import jax
 from jax import random
@@ -500,61 +501,6 @@ def test_update_unit_fe_no_unit_fe():
     assert jnp.allclose(output, jnp.zeros_like(expected_output))
 
 
-def test_initialize_matrices_happy_path():
-    Y = jnp.array([[1, 2], [3, 4]])
-    X = jnp.array([[1, 1], [1, 1]])
-    Z = jnp.array([[1, 1], [1, 1]])
-    V = jnp.array([[[1], [1]], [[1], [1]]])
-    L, X_out, Z_out, V_out, unit_fe, time_fe = initialize_matrices(Y, X, Z, V, True, True)
-    assert L.shape == Y.shape
-    assert X_out.shape == (Y.shape[0], X.shape[1] + Y.shape[0])
-    assert Z_out.shape == (Y.shape[1], Z.shape[1] + Y.shape[1])
-    assert V_out.shape == V.shape
-    assert unit_fe.shape == (Y.shape[0],)
-    assert time_fe.shape == (Y.shape[1],)
-
-
-def test_initialize_matrices_no_covariates():
-    Y = jnp.array([[1, 2], [3, 4]])
-    L, X_out, Z_out, V_out, unit_fe, time_fe = initialize_matrices(Y, None, None, None, True, True)
-    assert L.shape == Y.shape
-    assert X_out.shape == (Y.shape[0], Y.shape[0] + 1)
-    assert Z_out.shape == (Y.shape[1], Y.shape[1] + 1)
-    assert V_out.shape == (Y.shape[0], Y.shape[1], 1)
-    assert unit_fe.shape == (Y.shape[0],)
-    assert time_fe.shape == (Y.shape[1],)
-
-
-def test_initialize_matrices_no_unit_fe():
-    Y = jnp.array([[1, 2], [3, 4]])
-    X = jnp.array([[1, 1], [1, 1]])
-    Z = jnp.array([[1, 1], [1, 1]])
-    V = jnp.array([[[1], [1]], [[1], [1]]])
-    L, X_out, Z_out, V_out, unit_fe, time_fe = initialize_matrices(Y, X, Z, V, False, True)
-    assert L.shape == Y.shape
-    assert X_out.shape == (Y.shape[0], X.shape[1] + Y.shape[0])
-    assert Z_out.shape == (Y.shape[1], Z.shape[1] + Y.shape[1])
-    assert V_out.shape == V.shape
-    assert unit_fe.shape == (Y.shape[0],)
-    assert jnp.allclose(unit_fe, jnp.zeros_like(unit_fe))
-    assert time_fe.shape == (Y.shape[1],)
-
-
-def test_initialize_matrices_no_time_fe():
-    Y = jnp.array([[1, 2], [3, 4]])
-    X = jnp.array([[1, 1], [1, 1]])
-    Z = jnp.array([[1, 1], [1, 1]])
-    V = jnp.array([[[1], [1]], [[1], [1]]])
-    L, X_out, Z_out, V_out, unit_fe, time_fe = initialize_matrices(Y, X, Z, V, True, False)
-    assert L.shape == Y.shape
-    assert X_out.shape == (Y.shape[0], X.shape[1] + Y.shape[0])
-    assert Z_out.shape == (Y.shape[1], Z.shape[1] + Y.shape[1])
-    assert V_out.shape == V.shape
-    assert unit_fe.shape == (Y.shape[0],)
-    assert time_fe.shape == (Y.shape[1],)
-    assert jnp.allclose(time_fe, jnp.zeros_like(time_fe))
-
-
 def test_update_time_fe_happy_path():
     Y = jnp.array([[1, 2], [3, 4]])
     X = jnp.array([[1, 1], [1, 1]])
@@ -608,6 +554,124 @@ def test_update_time_fe_no_time_fe():
     expected_output = update_time_fe_numpy(Y, X, Z, H, W, L, unit_fe, True)
     output = update_time_fe(Y, X, Z, H, W, L, unit_fe, False)
     assert jnp.allclose(output, jnp.zeros_like(expected_output))
+
+
+def test_update_beta_happy_path():
+    Y = jnp.array([[1, 2], [3, 4]])
+    X_tilde = jnp.array([[1, 1, 1, 0], [1, 1, 0, 1]])
+    Z_tilde = jnp.array([[1, 1, 1, 0], [1, 1, 0, 1]])
+    V = jnp.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])
+    H_tilde = jnp.array([[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]])
+    W = jnp.array([[1, 1], [1, 1]])
+    L = jnp.array([[1, 1], [1, 1]])
+    unit_fe = jnp.array([1, 1])
+    time_fe = jnp.array([1, 1])
+    expected_output = compute_beta_numpy(Y, X_tilde, Z_tilde, V, H_tilde, W, L, unit_fe, time_fe)
+    output = update_beta(Y, X_tilde, Z_tilde, V, H_tilde, W, L, unit_fe, time_fe)
+    assert jnp.allclose(output, expected_output)
+    assert not jnp.allclose(output, jnp.zeros_like(output))
+
+
+def test_update_beta_partial_mask():
+    Y = jnp.array([[1, 2], [3, 4]])
+    X_tilde = jnp.array([[1, 1, 1, 0], [1, 1, 0, 1]])
+    Z_tilde = jnp.array([[1, 1, 1, 0], [1, 1, 0, 1]])
+    V = jnp.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])
+    H_tilde = jnp.array([[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]])
+    W = jnp.array([[1, 0], [0, 1]])
+    L = jnp.array([[1, 1], [1, 1]])
+    unit_fe = jnp.array([1, 1])
+    time_fe = jnp.array([1, 1])
+    expected_output = compute_beta_numpy(Y, X_tilde, Z_tilde, V, H_tilde, W, L, unit_fe, time_fe)
+    output = update_beta(Y, X_tilde, Z_tilde, V, H_tilde, W, L, unit_fe, time_fe)
+    assert jnp.allclose(output, expected_output)
+    assert not jnp.allclose(output, jnp.zeros_like(output))
+
+
+def test_update_beta_single_element():
+    Y = jnp.array([[1]])
+    X_tilde = jnp.array([[1, 1]])
+    Z_tilde = jnp.array([[1, 1]])
+    V = jnp.array([[[1, 2]]])
+    H_tilde = jnp.array([[1, 1], [1, 1]])
+    W = jnp.array([[1]])
+    L = jnp.array([[1]])
+    unit_fe = jnp.array([1])
+    time_fe = jnp.array([1])
+    expected_output = compute_beta_numpy(Y, X_tilde, Z_tilde, V, H_tilde, W, L, unit_fe, time_fe)
+    output = update_beta(Y, X_tilde, Z_tilde, V, H_tilde, W, L, unit_fe, time_fe)
+    assert jnp.allclose(output, expected_output)
+
+
+def test_update_beta_zero_V():
+    Y = jnp.array([[1, 2], [3, 4]])
+    X_tilde = jnp.array([[1, 1, 1, 0], [1, 1, 0, 1]])
+    Z_tilde = jnp.array([[1, 1, 1, 0], [1, 1, 0, 1]])
+    V = jnp.zeros((2, 2, 2))
+    H_tilde = jnp.array([[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]])
+    W = jnp.array([[1, 1], [1, 1]])
+    L = jnp.array([[1, 1], [1, 1]])
+    unit_fe = jnp.array([1, 1])
+    time_fe = jnp.array([1, 1])
+    expected_output = compute_beta_numpy(Y, X_tilde, Z_tilde, V, H_tilde, W, L, unit_fe, time_fe)
+    output = update_beta(Y, X_tilde, Z_tilde, V, H_tilde, W, L, unit_fe, time_fe)
+    assert jnp.allclose(output, expected_output)
+    assert jnp.allclose(output, jnp.zeros_like(output))
+
+
+def test_initialize_matrices_happy_path():
+    Y = jnp.array([[1, 2], [3, 4]])
+    X = jnp.array([[1, 1], [1, 1]])
+    Z = jnp.array([[1, 1], [1, 1]])
+    V = jnp.array([[[1], [1]], [[1], [1]]])
+    L, X_out, Z_out, V_out, unit_fe, time_fe = initialize_matrices(Y, X, Z, V, True, True)
+    assert L.shape == Y.shape
+    assert X_out.shape == (Y.shape[0], X.shape[1] + Y.shape[0])
+    assert Z_out.shape == (Y.shape[1], Z.shape[1] + Y.shape[1])
+    assert V_out.shape == V.shape
+    assert unit_fe.shape == (Y.shape[0],)
+    assert time_fe.shape == (Y.shape[1],)
+
+
+def test_initialize_matrices_no_covariates():
+    Y = jnp.array([[1, 2], [3, 4]])
+    L, X_out, Z_out, V_out, unit_fe, time_fe = initialize_matrices(Y, None, None, None, True, True)
+    assert L.shape == Y.shape
+    assert X_out.shape == (Y.shape[0], Y.shape[0] + 1)
+    assert Z_out.shape == (Y.shape[1], Y.shape[1] + 1)
+    assert V_out.shape == (Y.shape[0], Y.shape[1], 1)
+    assert unit_fe.shape == (Y.shape[0],)
+    assert time_fe.shape == (Y.shape[1],)
+
+
+def test_initialize_matrices_no_unit_fe():
+    Y = jnp.array([[1, 2], [3, 4]])
+    X = jnp.array([[1, 1], [1, 1]])
+    Z = jnp.array([[1, 1], [1, 1]])
+    V = jnp.array([[[1], [1]], [[1], [1]]])
+    L, X_out, Z_out, V_out, unit_fe, time_fe = initialize_matrices(Y, X, Z, V, False, True)
+    assert L.shape == Y.shape
+    assert X_out.shape == (Y.shape[0], X.shape[1] + Y.shape[0])
+    assert Z_out.shape == (Y.shape[1], Z.shape[1] + Y.shape[1])
+    assert V_out.shape == V.shape
+    assert unit_fe.shape == (Y.shape[0],)
+    assert jnp.allclose(unit_fe, jnp.zeros_like(unit_fe))
+    assert time_fe.shape == (Y.shape[1],)
+
+
+def test_initialize_matrices_no_time_fe():
+    Y = jnp.array([[1, 2], [3, 4]])
+    X = jnp.array([[1, 1], [1, 1]])
+    Z = jnp.array([[1, 1], [1, 1]])
+    V = jnp.array([[[1], [1]], [[1], [1]]])
+    L, X_out, Z_out, V_out, unit_fe, time_fe = initialize_matrices(Y, X, Z, V, True, False)
+    assert L.shape == Y.shape
+    assert X_out.shape == (Y.shape[0], X.shape[1] + Y.shape[0])
+    assert Z_out.shape == (Y.shape[1], Z.shape[1] + Y.shape[1])
+    assert V_out.shape == V.shape
+    assert unit_fe.shape == (Y.shape[0],)
+    assert time_fe.shape == (Y.shape[1],)
+    assert jnp.allclose(time_fe, jnp.zeros_like(time_fe))
 
 
 def test_compute_decomposition():
