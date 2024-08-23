@@ -2,10 +2,12 @@ from typing import Tuple
 
 import jax.numpy as jnp
 from jax.numpy.linalg import norm
+from jax import jit
 
 from .types import Array, Scalar
 
 
+@jit
 def mask_observed(A: Array, mask: Array) -> Array:
     r"""
     Projects the matrix A onto the observed entries specified by the binary mask.
@@ -32,6 +34,7 @@ def mask_observed(A: Array, mask: Array) -> Array:
     return A * mask
 
 
+@jit
 def mask_unobserved(A: Array, mask: Array) -> Array:
     r"""
     Projects the matrix A onto the unobserved entries specified by the binary mask.
@@ -58,6 +61,7 @@ def mask_unobserved(A: Array, mask: Array) -> Array:
     return jnp.where(mask, jnp.zeros_like(A), A)
 
 
+@jit
 def frobenius_norm(A: Array) -> Scalar:
     """
     Computes the Frobenius norm of a matrix A.
@@ -76,6 +80,7 @@ def frobenius_norm(A: Array) -> Scalar:
     return norm(A, ord="fro")
 
 
+@jit
 def nuclear_norm(A: Array) -> Scalar:
     """
     Computes the nuclear norm (sum of singular values) of a matrix A.
@@ -95,6 +100,7 @@ def nuclear_norm(A: Array) -> Scalar:
     return jnp.sum(s)
 
 
+@jit
 def element_wise_l1_norm(A: Array) -> Scalar:
     """
     Computes the element-wise L1 norm of a matrix A.
@@ -113,6 +119,7 @@ def element_wise_l1_norm(A: Array) -> Scalar:
     return jnp.sum(jnp.abs(A))
 
 
+@jit
 def shrink_lambda(A: Array, lambda_: Scalar) -> Array:
     """
     Applies the soft-thresholding operator to the singular values of a matrix A.
@@ -129,6 +136,7 @@ def shrink_lambda(A: Array, lambda_: Scalar) -> Array:
     return u @ jnp.diag(s_shrunk) @ vt
 
 
+@jit
 def normalize(mat: Array) -> Tuple[Array, Array]:
     """
     Normalize the columns of the input matrix.
@@ -145,6 +153,7 @@ def normalize(mat: Array) -> Tuple[Array, Array]:
     return mat_norm, col_norms
 
 
+@jit
 def normalize_back(H: Array, row_scales: Array, col_scales: Array) -> Array:
     """
     Rescale the rows and columns of the matrix H using the provided scales.
