@@ -1,8 +1,10 @@
 from typing import Tuple, Optional
 
 import jax.numpy as jnp
-from jax import jit
+from jax import jit, lax
+import jax.debug as jdb
 
+from .core_utils import mask_observed
 from .types import Array, Scalar
 
 
@@ -59,8 +61,8 @@ def initialize_matrices(
         V = jnp.zeros((N, T, 1))
 
     # Initialize unit and time fixed effects
-    unit_fe = jnp.ones(N) if use_unit_fe else jnp.zeros(N)
-    time_fe = jnp.ones(T) if use_time_fe else jnp.zeros(T)
+    unit_fe = jnp.where(use_unit_fe, jnp.ones(N), jnp.zeros(N))
+    time_fe = jnp.where(use_time_fe, jnp.ones(T), jnp.zeros(T))
 
     return L, X, Z, V, unit_fe, time_fe
 
@@ -145,25 +147,6 @@ def compute_decomposition(
     use_unit_fe: bool,
     use_time_fe: bool,
 ) -> Array:
-    r"""
-    Compute the matrix decomposition :math:`L^* + X H^* Z^T + H^*_Z Z^T + X H^*_X + \Gamma^* 1_T^T + 1_N (\Delta^*)^T +
-    [V_{it} \beta^*]_{it} + \varepsilon`.
-
-    Args:
-        L (Array): The low-rank matrix :math:`L^*` of shape (N, T).
-        X (Array): The unit-specific covariates matrix :math:`X` of shape (N, P).
-        Z (Array): The time-specific covariates matrix :math:`Z` of shape (T, Q).
-        V (Array): The unit-time-specific covariates tensor :math:`V` of shape (N, T, J).
-        H (Array): The covariate coefficients matrix :math:`H^*` of shape (P + N, Q + T).
-        gamma (Array): The unit fixed effects vector :math:`\Gamma^*` of shape (N,).
-        delta (Array): The time fixed effects vector :math:`\Delta^*` of shape (T,).
-        beta (Array): The unit-time-specific covariate coefficients vector :math:`\beta^*` of shape (J,).
-        use_unit_fe (bool): Whether to include unit fixed effects in the decomposition.
-        use_time_fe (bool): Whether to include time fixed effects in the decomposition.
-
-    Returns:
-        Array: The computed matrix decomposition of shape (N, T).
-    """
     N, T = L.shape
     P = X.shape[1]
     Q = Z.shape[1]
@@ -176,9 +159,20 @@ def compute_decomposition(
     time_fe_term = jnp.outer(jnp.ones(N), delta)
     decomposition += jnp.where(use_time_fe, time_fe_term, jnp.zeros_like(time_fe_term))
 
-    decomposition += (
-        X @ H[:P, :Q] @ Z.T + X @ H[:P, Q:] + H[P:, :Q] @ Z.T + jnp.einsum("ntj,j->nt", V, beta)
+    XH_term = jnp.dot(X, H[:P, :Q])
+    XH_Z_term = jnp.where(Q > 0, jnp.dot(XH_term, Z.T), jnp.zeros((N, T)))
+    decomposition += XH_Z_term
+
+    XH_extra_term = jnp.dot(X, H[:P, Q:])
+    decomposition += XH_extra_term
+
+    H_Z_term = jnp.where(
+        P + N <= H.shape[0] and Q > 0, jnp.dot(H[P : P + N, :Q], Z.T), jnp.zeros((N, T))
     )
+    decomposition += H_Z_term
+
+    V_beta_term = jnp.einsum("ntj,j->nt", V, beta)
+    decomposition += V_beta_term
 
     return decomposition
 
@@ -200,6 +194,7 @@ def compute_objective_value(
     use_unit_fe: bool,
     use_time_fe: bool,
     inv_omega: Optional[Array] = None,
+    verbose: bool = False,
 ) -> Scalar:
     r"""
     Compute the objective value for the MC-NNM model with covariates, fixed effects,
@@ -296,4 +291,187 @@ def compute_objective_value(
         + lambda_H * norm_H
     )
 
+    lax.cond(
+        verbose, lambda _: jdb.print("Objective value: {ov}", ov=obj_val), lambda _: None, None
+    )
     return obj_val
+
+
+@jit
+def initialize_fixed_effects_and_H(
+    Y: Array,
+    X: Array,
+    Z: Array,
+    V: Array,
+    W: Array,
+    use_unit_fe: bool,
+    use_time_fe: bool,
+    niter: int = 1000,
+    rel_tol: float = 1e-5,
+) -> Tuple[Array, Array, Scalar, Scalar, Array, Array]:
+    """
+    Find the optimal unit_fe and time_fe assuming that L and H are zero. This is helpful for warm-starting
+    the values of lambda_L and lambda_H. This function also outputs the smallest values of
+    lambda_L and lambda_H which cause L and H to be zero.
+
+    Args:
+        Y (Array): The observed outcome matrix of shape (N, T).
+        X (Array): The unit-specific covariates matrix of shape (N, P).
+        Z (Array): The time-specific covariates matrix of shape (T, Q).
+        V (Array): The unit-time-specific covariates tensor of shape (N, T, J).
+        W (Array): The mask matrix indicating observed entries of shape (N, T).
+        use_unit_fe (bool): Whether to include unit fixed effects in the model.
+        use_time_fe (bool): Whether to include time fixed effects in the model.
+        niter (int): The maximum number of iterations for the coordinate descent algorithm.
+        rel_tol (float): The relative tolerance for convergence.
+
+    Returns:
+        Tuple[Array, Array, Scalar, Scalar, Array, Array]: A tuple containing:
+            - unit_fe: The estimated unit fixed effects vector of shape (N,).
+            - time_fe: The estimated time fixed effects vector of shape (T,).
+            - lambda_L_max: The smallest value of lambda_L that causes L to be zero.
+            - lambda_H_max: The smallest value of lambda_H that causes H to be zero.
+            - T_mat: The T matrix used for computing lambda_H_max.
+            - in_prod_T: The inner product of T_mat with itself.
+    """
+    L, X_tilde, Z_tilde, V, unit_fe, time_fe = initialize_matrices(
+        Y, X, Z, V, use_unit_fe, use_time_fe
+    )
+    _, H, _, _, beta = initialize_coefficients(Y, X_tilde, Z_tilde, V)
+
+    H_rows, H_cols = X_tilde.shape[1], Z_tilde.shape[1]
+
+    obj_val = jnp.inf
+    new_obj_val = 0.0
+
+    def cond_fun(carry):
+        iter_, obj_val, new_obj_val, *_ = carry
+        rel_error = jnp.abs(new_obj_val - obj_val) / obj_val
+        return jnp.logical_and(iter_ < niter, rel_error >= rel_tol)
+
+    def body_fun(carry):
+        iter_, obj_val, _, unit_fe, time_fe, L, H = carry
+
+        unit_fe = update_unit_fe(Y, X_tilde, Z_tilde, H, W, L, time_fe, use_unit_fe)
+        time_fe = update_time_fe(Y, X_tilde, Z_tilde, H, W, L, unit_fe, use_time_fe)
+
+        new_obj_val = compute_objective_value(
+            Y,
+            X_tilde,
+            Z_tilde,
+            V,
+            H,
+            W,
+            L,
+            unit_fe,
+            time_fe,
+            beta,
+            0.0,
+            0.0,
+            0.0,
+            use_unit_fe,
+            use_time_fe,
+        )
+
+        return iter_ + 1, new_obj_val, new_obj_val, unit_fe, time_fe, L, H
+
+    init_carry = (0, obj_val, new_obj_val, unit_fe, time_fe, L, H)
+    _, _, _, unit_fe, time_fe, L, H = lax.while_loop(cond_fun, body_fun, init_carry)
+
+    E = compute_decomposition(
+        L, X_tilde, Z_tilde, V, H, unit_fe, time_fe, beta, use_unit_fe, use_time_fe
+    )
+    P_omega = mask_observed(Y - E, W)
+    _, _, s = compute_svd(P_omega)
+    lambda_L_max = 2.0 * jnp.max(s) / jnp.sum(W)
+
+    num_train = jnp.sum(W)
+    T_mat = jnp.zeros((Y.size, H_rows * H_cols))
+    in_prod_T = jnp.zeros(H_rows * H_cols)
+
+    def compute_T_mat(j, val):
+        T_mat, in_prod_T = val
+        for i in range(H_rows):
+            out_prod = mask_observed(jnp.outer(X_tilde[:, i], Z_tilde[:, j]), W)
+            index = j * H_rows + i
+            T_mat = T_mat.at[:, index].set(out_prod.ravel())
+            in_prod_T = in_prod_T.at[index].set(jnp.sum(T_mat[:, index] ** 2))
+        return T_mat, in_prod_T
+
+    T_mat, in_prod_T = lax.fori_loop(0, H_cols, compute_T_mat, (T_mat, in_prod_T))
+
+    T_mat /= jnp.sqrt(num_train)
+    in_prod_T /= num_train
+
+    P_omega_resh = P_omega.ravel()
+    all_Vs = jnp.dot(T_mat.T, P_omega_resh) / jnp.sqrt(num_train)
+    lambda_H_max = 2 * jnp.max(jnp.abs(all_Vs))
+
+    return unit_fe, time_fe, lambda_L_max, lambda_H_max, T_mat, in_prod_T
+
+
+#
+#
+# def update_L(
+#     M: Array, mask: Array, L: Array, u: Array, v: Array, lambda_L: Scalar
+# ) -> Tuple[Array, Array]:
+#     """
+#     Update the low-rank matrix L using the observed matrix M, mask, current estimates of L, u, v, and regularization
+#     parameter.
+#     Return the updated L and its singular values.
+#     """
+#     # TODO: Implement the update step for L
+#     pass
+#
+#
+# def update_H(
+#     M: Array,
+#     X: Array,
+#     Z: Array,
+#     H: Array,
+#     mask: Array,
+#     L: Array,
+#     u: Array,
+#     v: Array,
+#     lambda_H: Scalar,
+#     to_add_ID: bool,
+# ) -> Tuple[Array, Array]:
+#     """
+#     Update the covariate coefficient matrix H using the observed matrix M, covariates X and Z, current estimates of
+#     H, L, u, v, and regularization parameter.
+#     Handle the case where an identity matrix should be added to the covariates (to_add_ID).
+#     Return the updated H and the inner product of the augmented covariate matrix.
+#     """
+#     # TODO: Implement the update step for H
+#     pass
+#
+
+#
+#
+# def fit(
+#     Y: Array,
+#     W: Array,
+#     X: Array,
+#     Z: Array,
+#     V: Array,
+#     Omega: Array,
+#     lambda_L: Scalar,
+#     lambda_H: Scalar,
+#     initial_params: Tuple[Array, Array, Array, Array, Array],
+#     max_iter: int,
+#     tol: Scalar,
+#     use_unit_fe: bool,
+#     use_time_fe: bool,
+#     to_add_ID: bool,
+# ) -> Tuple[Array, Array, Array, Array, Array]:
+#     """
+#     Fit the MC-NNM model using coordinate descent updates until convergence or maximum iterations.
+#     Handle cases where covariates are not present by passing zero arrays.
+#     Apply normalization to X and Z covariates using the normalize function.
+#     Rescale the estimated H matrix using normalize_back_rows and normalize_back_cols functions.
+#     Use the compute_obj_val and compute_obj_val_H functions to track the objective function value during the
+#     optimization process.
+#     Return the final estimates of L, H, u, v, and beta.
+#     """
+#     # TODO: Implement the model fitting process
+#     pass
