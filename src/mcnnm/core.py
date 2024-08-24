@@ -482,7 +482,6 @@ def initialize_fixed_effects_and_H(
             - lambda_L_max (Scalar): The maximum regularization parameter for the nuclear norm of L.
             - lambda_H_max (Scalar): The maximum regularization parameter for the element-wise L1 norm of H_tilde.
     """
-    N, T = Y.shape
     num_train = jnp.sum(W)
     in_prod = jnp.zeros_like(W)
 
