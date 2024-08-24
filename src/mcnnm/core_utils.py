@@ -11,6 +11,27 @@ jax.config.update("jax_enable_x64", True)
 
 
 @jit
+def is_positive_definite(mat: jnp.ndarray) -> bool:
+    """
+    Check if a matrix is positive definite.
+
+    Args:
+        mat (jnp.ndarray): The input matrix to check.
+
+    Returns:
+        bool: True if the matrix is positive definite, False otherwise.
+
+    This function checks if a matrix is positive definite by computing its eigenvalues
+    and checking if they are all positive.
+    """
+    # Compute the eigenvalues of the matrix
+    eigenvalues = jnp.linalg.eigvalsh(mat)
+
+    # Check if all eigenvalues are positive
+    return jax.lax.cond(jnp.min(eigenvalues) > 0, lambda _: True, lambda _: False, operand=None)
+
+
+@jit
 def mask_observed(A: Array, mask: Array) -> Array:
     r"""
     Projects the matrix A onto the observed entries specified by the binary mask.
@@ -164,9 +185,9 @@ def normalize_back(H: Array, row_scales: Array, col_scales: Array) -> Array:
     H_new = H.copy()
 
     if row_scales.size > 0:
-        H_new = H_new / row_scales[:, None]
+        H_new /= row_scales[:, None]
 
     if col_scales.size > 0:
-        H_new = H_new / col_scales[None, :]
+        H_new /= col_scales[None, :]
 
     return H_new
