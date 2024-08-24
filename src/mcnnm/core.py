@@ -384,16 +384,10 @@ def compute_objective_value(
     train_size = jnp.sum(W)
     norm_H = element_wise_l1_norm(H_tilde)
 
-    est_mat = compute_decomposition(
+    Y_hat = compute_decomposition(
         L, X_tilde, Z_tilde, V, H_tilde, gamma, delta, beta, use_unit_fe, use_time_fe
     )
-    err_mat = est_mat - Y
-    # masked_error_mat = mask_observed(err_mat, W)
-    # masked_error_mat = err_mat * W
-
-    # lax.cond(
-    #     jnp.any(err_mat < 0), lambda _: jdb.print("Negative error matrix values found"), lambda _: None, None
-    # )
+    error_matrix = Y_hat - Y
 
     if inv_omega is None:
         inv_omega = jnp.eye(Y.shape[1])
@@ -412,21 +406,12 @@ def compute_objective_value(
         None,
     )
 
-    # weighted_err_mat = jnp.einsum(
-    #     "ij,ntj,nsj->nts", inv_omega, err_mat[:, None, :], err_mat[:, :, None]
-    # )
-    # Replace it with a computation that ignores inv_omega
-    err_mask = err_mat * W
-    weighted_err_mat = (1 / train_size) * jnp.sum(err_mask**2)  # WORKS!!!
-    # weighted_err_mat = jnp.dot(jnp.dot(err_mat, inv_omega), err_mat.T)
-
-    # masked_weighted_err_mat = weighted_err_mat * W[:, None, :]
-    masked_weighted_err_mat = weighted_err_mat * W
-    weighted_error_term = (1 / train_size) * jnp.sum(masked_weighted_err_mat)
+    error_mask = mask_observed(error_matrix, W)  # mask the error matrix
+    weighted_error_term = (1 / train_size) * jnp.trace(error_mask @ inv_omega @ error_mask.T)
 
     lax.cond(
         weighted_error_term < 0,
-        lambda _: jdb.print("Negative weighted error term"),
+        lambda _: jdb.print("WARNING: Negative weighted error term"),
         lambda _: None,
         None,
     )
@@ -434,7 +419,7 @@ def compute_objective_value(
 
     lax.cond(
         L_regularization_term < 0,
-        lambda _: jdb.print("Negative L regularization term"),
+        lambda _: jdb.print("WARNING: Negative L regularization term"),
         lambda _: None,
         None,
     )
@@ -443,7 +428,7 @@ def compute_objective_value(
 
     lax.cond(
         H_regularization_term < 0,
-        lambda _: jdb.print("Negative H regularization term"),
+        lambda _: jdb.print("WARNING: Negative H regularization term"),
         lambda _: None,
         None,
     )
@@ -473,7 +458,7 @@ def initialize_fixed_effects_and_H(
     W: Array,
     use_unit_fe: bool,
     use_time_fe: bool,
-    niter: int = 10,
+    niter: int = 1000,
     rel_tol: float = 1e-5,
 ) -> tuple[Array, Array, Array, Array, Array, Array, Array, Scalar, Scalar]:
     """
@@ -518,9 +503,9 @@ def initialize_fixed_effects_and_H(
 
     def cond_fun(carry):
         obj_val, prev_obj_val, _, _, i = carry
-        rel_change = (obj_val - prev_obj_val) / (jnp.abs(prev_obj_val) + 1e-10)
+        rel_error = (obj_val - prev_obj_val) / (jnp.abs(prev_obj_val))
         return lax.cond(
-            (obj_val < 1e-8) | (rel_change < 0) | (rel_change < -rel_tol),
+            ((rel_error < rel_tol) & (rel_error > 0)),
             lambda _: False,
             lambda _: i < niter,
             None,
@@ -553,15 +538,6 @@ def initialize_fixed_effects_and_H(
 
     init_val = (jnp.inf, jnp.inf, gamma, delta, 0)
     obj_val, _, gamma, delta, _ = lax.while_loop(cond_fun, body_fun, init_val)
-
-    if obj_val < 1e-8:
-        T_mat = jnp.zeros((Y.size, H_rows * H_cols))
-        in_prod_T = jnp.zeros((H_rows * H_cols,))
-        in_prod = jnp.zeros_like(W)
-        lambda_L_max = 0.0
-        lambda_H_max = 0.0
-        jdb.print("initialization converged in 0 iterations, ov:{ov}", ov=obj_val)
-        return gamma, delta, beta, H_tilde, T_mat, in_prod_T, in_prod, lambda_L_max, lambda_H_max
 
     E = compute_decomposition(
         L, X_tilde, Z_tilde, V, H_tilde, gamma, delta, beta, use_unit_fe, use_time_fe
