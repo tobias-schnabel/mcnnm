@@ -1,14 +1,14 @@
 from typing import Tuple, Optional, cast
-from .core_utils import mask_observed, element_wise_l1_norm
-from .types import Array, Scalar
 
+import jax
+import jax.debug as jdb
 import jax.numpy as jnp
 from jax import jit, lax
-import jax.debug as jdb
-import jax
+
+from .core_utils import mask_observed, element_wise_l1_norm, is_positive_definite
+from .types import Array, Scalar
 
 jax.config.update("jax_enable_x64", True)
-jax.config.update("jax_disable_jit", True)
 
 
 @jit
@@ -313,7 +313,6 @@ def compute_objective_value(
     use_unit_fe: bool,
     use_time_fe: bool,
     inv_omega: Optional[Array] = None,
-    verbose: bool = False,
 ) -> Scalar:
     r"""
     Compute the objective value for the MC-NNM model with covariates, fixed effects,
@@ -380,7 +379,6 @@ def compute_objective_value(
     Returns:
         Scalar: The computed objective value.
     """
-
     train_size = jnp.sum(W)
     norm_H = element_wise_l1_norm(H_tilde)
 
@@ -391,13 +389,6 @@ def compute_objective_value(
 
     if inv_omega is None:
         inv_omega = jnp.eye(Y.shape[1])
-
-    def is_positive_definite(mat):
-        try:
-            jnp.linalg.cholesky(mat)
-            return True
-        except jnp.linalg.LinAlgError:
-            return False
 
     lax.cond(
         is_positive_definite(inv_omega),
@@ -437,14 +428,11 @@ def compute_objective_value(
 
     lax.cond(
         obj_val < 0,
-        lambda _: jdb.print("WARNING: NEGATIVE Objective value: {ov}", ov=obj_val),
+        lambda _: jdb.print("WARNING: NEGATIVE Objective function value: {ov}", ov=obj_val),
         lambda _: None,
         None,
     )
 
-    lax.cond(
-        verbose, lambda _: jdb.print("Objective value: {ov}", ov=obj_val), lambda _: None, None
-    )
     return obj_val
 
 
@@ -460,6 +448,7 @@ def initialize_fixed_effects_and_H(
     use_time_fe: bool,
     niter: int = 1000,
     rel_tol: float = 1e-5,
+    verbose: bool = False,
 ) -> tuple[Array, Array, Array, Array, Array, Array, Array, Scalar, Scalar]:
     """
     Initialize fixed effects and the matrix H_tilde for the MC-NNM model.
@@ -480,7 +469,7 @@ def initialize_fixed_effects_and_H(
         use_time_fe (bool): Whether to include time fixed effects in the decomposition.
         niter (int, optional): The maximum number of iterations for the coordinate descent algorithm. Default is 1000.
         rel_tol (float, optional): The relative tolerance for convergence. Default is 1e-5.
-
+        verbose (bool, optional): Whether to print the objective value after initialization. Default is False.
     Returns:
         Tuple[Array, Array, Scalar, Scalar, Array, Array]: A tuple containing:
             - gamma (Array): The unit fixed effects vector of shape (N,).
@@ -539,11 +528,11 @@ def initialize_fixed_effects_and_H(
     init_val = (jnp.inf, jnp.inf, gamma, delta, 0)
     obj_val, _, gamma, delta, _ = lax.while_loop(cond_fun, body_fun, init_val)
 
-    E = compute_decomposition(
+    Y_hat = compute_decomposition(
         L, X_tilde, Z_tilde, V, H_tilde, gamma, delta, beta, use_unit_fe, use_time_fe
     )
-    P_omega = mask_observed(Y - E, W)
-    s = jnp.linalg.svd(P_omega, compute_uv=False)
+    masked_error_matrix = mask_observed(Y - Y_hat, W)
+    s = jnp.linalg.svd(masked_error_matrix, compute_uv=False)
     lambda_L_max = 2.0 * jnp.max(s) / num_train
     lambda_L_max = cast(Scalar, lambda_L_max)
 
@@ -558,10 +547,20 @@ def initialize_fixed_effects_and_H(
 
     in_prod_T = jnp.sum(T_mat**2, axis=0)
 
-    P_omega_resh = P_omega.ravel()
+    P_omega_resh = masked_error_matrix.ravel()
     all_Vs = jnp.dot(T_mat.T, P_omega_resh) / jnp.sqrt(num_train)
     lambda_H_max = 2 * jnp.max(jnp.abs(all_Vs))
     lambda_H_max = cast(Scalar, lambda_H_max)
+
+    # Truncate the value to 5 decimal places for printing
+    truncated_ov = jnp.round(obj_val, decimals=5)
+
+    lax.cond(
+        verbose,
+        lambda _: jdb.print("Initialization complete, objective value: {ov}", ov=truncated_ov),
+        lambda _: None,
+        None,
+    )
 
     return gamma, delta, beta, H_tilde, T_mat, in_prod_T, in_prod, lambda_L_max, lambda_H_max
 
@@ -740,6 +739,7 @@ def update_L(
     return L_upd, S
 
 
+@jit
 def fit(
     Y: Array,
     X_tilde: Array,
@@ -761,9 +761,10 @@ def fit(
     niter: int = 1000,
     rel_tol: float = 1e-5,
     verbose: bool = False,
+    print_iters: bool = False,
 ) -> Tuple[Array, Array, Array, Array, Array, Array, Scalar]:
     """
-    Perform cyclic coordinate descent updates to estimate the matrices L, H, and the fixed effects vectors u and v.
+    Perform cyclic coordinate descent updates to estimate the matrices L, H_tilde, and the fixed effects vectors.
 
     Args:
         Y (Array): The observed outcome matrix of shape (N, T).
@@ -780,17 +781,18 @@ def fit(
         delta (Array): The initial time fixed effects vector of shape (T,).
         beta (Array): The initial unit-time-specific covariate coefficients vector of shape (J,).
         lambda_L (Scalar): The regularization parameter for the nuclear norm of L.
-        lambda_H (Scalar): The regularization parameter for the element-wise L1 norm of H.
+        lambda_H (Scalar): The regularization parameter for the element-wise L1 norm of H_tilde.
         use_unit_fe (bool): Whether to include unit fixed effects in the decomposition.
         use_time_fe (bool): Whether to include time fixed effects in the decomposition.
         niter (int, optional): The maximum number of iterations for the coordinate descent algorithm. Default is 1000.
         rel_tol (float, optional): The relative tolerance for convergence. Default is 1e-5.
         verbose (bool, optional): Whether to print the objective value at each iteration. Default is False.
+        print_iters (bool, optional): Whether to print in each iteration. Default is False.
 
     Returns:
     Tuple[Array, Array, Array, Array, Array, Array]:
         A tuple containing:
-        - The updated covariate coefficient matrix H
+        - The updated covariate coefficient matrix H_tilde
         - The updated low-rank matrix L
         - The updated unit fixed effects vector
         - The updated time fixed effects vector
@@ -799,10 +801,9 @@ def fit(
         - The final objective value
     """
     obj_val = jnp.inf
-    new_obj_val = 0.0
 
-    _, S, _ = jnp.linalg.svd(L, full_matrices=False)  # TODO: check
-    sum_sigma = jnp.sum(S)
+    _, singular_values, _ = jnp.linalg.svd(L, full_matrices=False)
+    sum_sigma = jnp.sum(singular_values)
 
     obj_val = compute_objective_value(
         Y,
@@ -820,28 +821,24 @@ def fit(
         lambda_H,
         use_unit_fe,
         use_time_fe,
-        verbose=verbose,
     )
-    # Early termination based on initial objective value
-    if obj_val < 1e-8:
-        jdb.print("Converged instantly")
-        return H_tilde, L, gamma, delta, beta, in_prod, obj_val
 
-    # H = H_tilde
-    term_iter = 0
+    def cond_fun(carry):
+        obj_val, prev_obj_val, *_ = carry
+        rel_error = (obj_val - prev_obj_val) / (jnp.abs(prev_obj_val))
+        return lax.cond(
+            ((rel_error < rel_tol) & (rel_error > 0)),
+            lambda _: False,
+            lambda _: carry[-1] < niter,
+            None,
+        )
 
-    for iter_ in range(niter):
-        # Update unit fixed effects
+    def body_fun(carry):
+        obj_val, prev_obj_val, gamma, delta, beta, L, H_tilde, in_prod, i = carry
         gamma = update_unit_fe(Y, X_tilde, Z_tilde, H_tilde, W, L, delta, use_unit_fe)
-
-        # Update time fixed effects
         delta = update_time_fe(Y, X_tilde, Z_tilde, H_tilde, W, L, gamma, use_time_fe)
-
-        # Update unit-time-specific covariate coefficients
         beta = update_beta(Y, X_tilde, Z_tilde, V, H_tilde, W, L, gamma, delta)
-
-        # Update H
-        H, in_prod = update_H(
+        H_tilde, in_prod = update_H(
             Y,
             X_tilde,
             Z_tilde,
@@ -860,13 +857,12 @@ def fit(
             use_time_fe,
         )
 
-        # Update L
-        L, S = update_L(
+        L, singular_values = update_L(
             Y,
             X_tilde,
             Z_tilde,
             V,
-            H,
+            H_tilde,
             W,
             L,
             gamma,
@@ -876,15 +872,15 @@ def fit(
             use_unit_fe,
             use_time_fe,
         )
-        sum_sigma = jnp.sum(S)
 
-        # Check if accuracy is achieved
+        sum_sigma = jnp.sum(singular_values)
+
         new_obj_val = compute_objective_value(
             Y,
             X_tilde,
             Z_tilde,
             V,
-            H,
+            H_tilde,
             W,
             L,
             gamma,
@@ -895,29 +891,40 @@ def fit(
             lambda_H,
             use_unit_fe,
             use_time_fe,
-            verbose=verbose,
         )
-        rel_error = (obj_val - new_obj_val) / obj_val
 
-        if new_obj_val < 1e-8:
-            break
+        lax.cond(
+            print_iters,
+            lambda _: jax.debug.print("Iteration {i}: {ov}", i=i, ov=new_obj_val),
+            lambda _: None,
+            operand=None,
+        )
+        return new_obj_val, obj_val, gamma, delta, beta, L, H_tilde, in_prod, i + 1
 
-        # Check for convergence based on relative change
-        if rel_error < 0 or rel_error < -rel_tol:
-            break
+    init_val = (obj_val, obj_val, gamma, delta, beta, L, H_tilde, in_prod, 0)
+    obj_val, _, gamma, delta, beta, L, H, in_prod, term_iter = lax.while_loop(
+        cond_fun, body_fun, init_val
+    )
 
-        term_iter = iter_
-        obj_val = new_obj_val
+    lax.cond(
+        term_iter == niter,
+        lambda _: jax.debug.print("WARNING: Did not converge"),
+        lambda _: None,
+        None,
+    )
 
-    if term_iter == niter - 1:
-        jdb.print("WARNING: Did not converge")
-
-    if verbose:
-        jdb.print(
-            "Terminated at iteration: {term_iter}, for lambda_L: {lambda_L}, lambda_H: {lambda_H}",
+    lax.cond(
+        verbose,
+        lambda _: jax.debug.print(
+            "Terminated at iteration {term_iter}: for lambda_L= {lam_L}, lambda_H= {lam_H}, "
+            "objective function value= {obj_val}",
             term_iter=term_iter,
-            lambda_L=lambda_L,
-            lambda_H=lambda_H,
-        )
+            lam_L=lambda_L,
+            lam_H=lambda_H,
+            obj_val=obj_val,
+        ),
+        lambda _: None,
+        operand=None,
+    )
 
-    return H, L, gamma, delta, beta, in_prod, new_obj_val
+    return H, L, gamma, delta, beta, in_prod, obj_val

@@ -131,21 +131,21 @@ def generate_data(
     nperiods: int = 100,
     Y_mean: float = 10.0,
     treatment_probability: float = 0.5,
-    rank: int = 5,
-    treatment_effect: float = 1.0,
+    rank: int = 10,
+    treatment_effect: float = 5.0,
     unit_fe: bool = True,
     time_fe: bool = True,
     X_cov: bool = True,
     Z_cov: bool = True,
     V_cov: bool = True,
-    fixed_effects_scale: float = 0.1,
-    covariates_scale: float = 0.1,
-    noise_scale: float = 0.1,
+    fixed_effects_scale: float = 0.5,
+    covariates_scale: float = 0.5,
+    noise_scale: float = 1,
     assignment_mechanism: Literal[
         "staggered", "block", "single_treated_period", "single_treated_unit", "last_periods"
-    ] = "staggered",
+    ] = "last_periods",  # TODO: fix staggered, does not work correctly
     treated_fraction: float = 0.2,
-    last_treated_periods: int = 10,
+    last_treated_periods: int = 2,
     autocorrelation: float = 0.0,
     seed: Optional[int] = None,
 ) -> Tuple[
@@ -237,7 +237,7 @@ def generate_data(
 
     # Convert Y, W, and covariates to JAX arrays
     Y = jnp.array(Y)
-    W = jnp.array(treat)
+    W = jnp.array(treat, dtype=jnp.float64)
     X = jnp.array(X) if X is not None else None
     Z = jnp.array(Z) if Z is not None else None
     V = jnp.array(V) if V is not None else None

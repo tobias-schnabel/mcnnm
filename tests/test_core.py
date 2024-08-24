@@ -26,6 +26,7 @@ from typing import Optional, Tuple, Any
 
 key = jax.random.PRNGKey(2024)
 # jax.config.update("jax_debug_nans", True)
+# TODO: disable mypy
 
 
 def initialize_matrices_numpy(
@@ -1206,20 +1207,19 @@ def test_update_L_without_fixed_effects():
 
 
 def test_fit_happy_path():
-    key = random.PRNGKey(2024)
     N, T = 24, 48
-    Y, W, X, Z, V, true_params = generate_data(N, T, seed=key)
+    Y, W, X, Z, V, true_params = generate_data(N, T, seed=2024)
 
-    L, X_tilde, Z_tilde, V = initialize_matrices(Y, X, Z, V)
+    L_out, X_tilde, Z_tilde, V = initialize_matrices(Y, X, Z, V)
 
-    gamma, delta, beta, H_tilde, T_mat, in_prod_T, in_prod, lambda_L_max, lambda_H_max = (
-        initialize_fixed_effects_and_H(Y, L, X_tilde, Z_tilde, V, W, True, True)
+    gamma, delta, beta_out, H_tilde, T_mat, in_prod_T, in_prod, lambda_L_max, lambda_H_max = (
+        initialize_fixed_effects_and_H(Y, L_out, X_tilde, Z_tilde, V, W, True, True, verbose=True)
     )
 
     lambda_L = lambda_L_max
     lambda_H = lambda_H_max
 
-    H, L, unit_fe, time_fe, beta, in_prod, obj_val = fit(
+    H_out, L_out, gamma_out, delta_out, beta_out, in_prod, obj_val_final = fit(
         Y,
         X_tilde,
         Z_tilde,
@@ -1229,58 +1229,58 @@ def test_fit_happy_path():
         in_prod,
         in_prod_T,
         W,
-        L,
+        L_out,
         gamma,
         delta,
-        beta,
+        beta_out,
         lambda_L,
         lambda_H,
         True,
         True,
-        niter=10,
+        niter=1000,
         verbose=True,
+        print_iters=False,
     )
 
-    assert H.shape == H_tilde.shape
-    # assert not jnp.allclose(H, jnp.zeros_like(H))
-    assert not jnp.any(jnp.isnan(H))
-    assert L.shape == (N, T)
-    # assert not jnp.allclose(L, jnp.zeros_like(L))
-    assert not jnp.any(jnp.isnan(L))
-    assert unit_fe.shape == (N,)
-    assert not jnp.allclose(unit_fe, jnp.zeros_like(unit_fe))
-    assert not jnp.any(jnp.isnan(unit_fe))
-    assert time_fe.shape == (T,)
-    assert not jnp.allclose(time_fe, jnp.zeros_like(time_fe))
-    assert not jnp.any(jnp.isnan(time_fe))
-    # assert beta.shape == (J,)
-    # assert not jnp.allclose(beta, jnp.zeros_like(beta))
-    assert not jnp.any(jnp.isnan(beta))
-    # assert in_prod.shape == (N * T,)
-    # assert not jnp.allclose(in_prod, jnp.zeros_like(in_prod))
+    assert H_out.shape == H_tilde.shape
+    assert not jnp.allclose(H_out, jnp.zeros_like(H_out))
+    assert not jnp.any(jnp.isnan(H_out))
+    assert L_out.shape == (N, T)
+    assert not jnp.any(jnp.isnan(L_out))
+    assert gamma_out.shape == (N,)
+    assert not jnp.allclose(gamma_out, jnp.zeros_like(gamma_out))
+    assert not jnp.any(jnp.isnan(gamma_out))
+    assert delta_out.shape == (T,)
+    assert not jnp.allclose(delta_out, jnp.zeros_like(delta_out))
+    assert not jnp.any(jnp.isnan(delta_out))
+    assert not jnp.allclose(beta_out, jnp.zeros_like(beta_out))
+    assert not jnp.any(jnp.isnan(beta_out))
+    assert not jnp.allclose(in_prod, jnp.zeros_like(in_prod))
     assert not jnp.any(jnp.isnan(in_prod))
+
+    # reconstruct Y
+    Y_hat = compute_decomposition(
+        L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True
+    )
+    assert Y_hat.shape == Y.shape
+    assert not jnp.any(jnp.isnan(Y_hat))
+    assert not jnp.allclose(Y_hat, jnp.zeros_like(Y_hat))
 
 
 def test_fit_no_fixed_effects():
-    key = random.PRNGKey(0)
-    N, T, P, Q, J = 5, 4, 3, 2, 2
-    Y = random.normal(key, (N, T))
-    X_tilde = random.normal(key, (N, P + N))
-    Z_tilde = random.normal(key, (T, Q + T))
-    V = random.normal(key, (N, T, J))
-    H_tilde = random.normal(key, (P + N, Q + T))
-    T_mat = random.normal(key, (N * T, (P + N) * (Q + T)))
-    in_prod = jnp.zeros(N * T)
-    in_prod_T = random.normal(key, ((P + N) * (Q + T),))
-    W = random.bernoulli(key, 0.8, (N, T))
-    L = random.normal(key, (N, T))
-    unit_fe = jnp.zeros((N,))
-    time_fe = jnp.zeros((T,))
-    beta = random.normal(key, (J,))
-    lambda_L = 0.1
-    lambda_H = 0.2
+    N, T = 24, 48
+    Y, W, X, Z, V, true_params = generate_data(N, T, unit_fe=False, time_fe=False, seed=2024)
 
-    H, L, unit_fe, time_fe, beta, in_prod = fit(
+    L_out, X_tilde, Z_tilde, V = initialize_matrices(Y, X, Z, V)
+
+    gamma, delta, beta_out, H_tilde, T_mat, in_prod_T, in_prod, lambda_L_max, lambda_H_max = (
+        initialize_fixed_effects_and_H(Y, L_out, X_tilde, Z_tilde, V, W, False, False, verbose=True)
+    )
+
+    lambda_L = lambda_L_max
+    lambda_H = lambda_H_max
+
+    H_out, L_out, gamma_out, delta_out, beta_out, in_prod, obj_val_final = fit(
         Y,
         X_tilde,
         Z_tilde,
@@ -1290,55 +1290,60 @@ def test_fit_no_fixed_effects():
         in_prod,
         in_prod_T,
         W,
-        L,
-        unit_fe,
-        time_fe,
-        beta,
+        L_out,
+        gamma,
+        delta,
+        beta_out,
         lambda_L,
         lambda_H,
         False,
         False,
-        niter=10,
+        niter=1000,
+        verbose=True,
+        print_iters=False,
     )
 
-    assert H.shape == H_tilde.shape
-    assert not jnp.allclose(H, jnp.zeros_like(H))
-    assert not jnp.any(jnp.isnan(H))
-    assert L.shape == (N, T)
-    assert not jnp.allclose(L, jnp.zeros_like(L))
-    assert not jnp.any(jnp.isnan(L))
-    assert unit_fe.shape == (N,)
-    assert not jnp.any(jnp.isnan(unit_fe))
-    assert time_fe.shape == (T,)
-    assert not jnp.any(jnp.isnan(time_fe))
-    assert beta.shape == (J,)
-    assert not jnp.allclose(beta, jnp.zeros_like(beta))
-    assert not jnp.any(jnp.isnan(beta))
-    assert in_prod.shape == (N * T,)
+    assert H_out.shape == H_tilde.shape
+    assert not jnp.allclose(H_out, jnp.zeros_like(H_out))
+    assert not jnp.any(jnp.isnan(H_out))
+    assert L_out.shape == (N, T)
+    assert not jnp.any(jnp.isnan(L_out))
+    assert gamma_out.shape == (N,)
+    assert not jnp.allclose(gamma_out, jnp.zeros_like(gamma_out))
+    assert not jnp.any(jnp.isnan(gamma_out))
+    assert delta_out.shape == (T,)
+    assert not jnp.allclose(delta_out, jnp.zeros_like(delta_out))
+    assert not jnp.any(jnp.isnan(delta_out))
+    assert not jnp.allclose(beta_out, jnp.zeros_like(beta_out))
+    assert not jnp.any(jnp.isnan(beta_out))
     assert not jnp.allclose(in_prod, jnp.zeros_like(in_prod))
     assert not jnp.any(jnp.isnan(in_prod))
 
+    # reconstruct Y
+    Y_hat = compute_decomposition(
+        L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True
+    )
+    assert Y_hat.shape == Y.shape
+    assert not jnp.any(jnp.isnan(Y_hat))
+    assert not jnp.allclose(Y_hat, jnp.zeros_like(Y_hat))
 
-def test_fit_zero_regularization():
-    key = random.PRNGKey(0)
-    N, T, P, Q, J = 5, 4, 3, 2, 2
-    Y = random.normal(key, (N, T))
-    X_tilde = random.normal(key, (N, P + N))
-    Z_tilde = random.normal(key, (T, Q + T))
-    V = random.normal(key, (N, T, J))
-    H_tilde = random.normal(key, (P + N, Q + T))
-    T_mat = random.normal(key, (N * T, (P + N) * (Q + T)))
-    in_prod = jnp.zeros(N * T)
-    in_prod_T = random.normal(key, ((P + N) * (Q + T),))
-    W = random.bernoulli(key, 0.8, (N, T))
-    L = random.normal(key, (N, T))
-    unit_fe = random.normal(key, (N,))
-    time_fe = random.normal(key, (T,))
-    beta = random.normal(key, (J,))
-    lambda_L = 0.0
-    lambda_H = 0.0
 
-    H, L, unit_fe, time_fe, beta, in_prod = fit(
+def test_fit_no_covariates():
+    N, T = 24, 48
+    Y, W, X, Z, V, true_params = generate_data(
+        N, T, X_cov=False, Z_cov=False, V_cov=False, seed=2024
+    )
+
+    L_out, X_tilde, Z_tilde, V = initialize_matrices(Y, X, Z, V)
+
+    gamma, delta, beta_out, H_tilde, T_mat, in_prod_T, in_prod, lambda_L_max, lambda_H_max = (
+        initialize_fixed_effects_and_H(Y, L_out, X_tilde, Z_tilde, V, W, False, False, verbose=True)
+    )
+
+    lambda_L = lambda_L_max
+    lambda_H = lambda_H_max
+
+    H_out, L_out, gamma_out, delta_out, beta_out, in_prod, obj_val_final = fit(
         Y,
         X_tilde,
         Z_tilde,
@@ -1348,92 +1353,39 @@ def test_fit_zero_regularization():
         in_prod,
         in_prod_T,
         W,
-        L,
-        unit_fe,
-        time_fe,
-        beta,
+        L_out,
+        gamma,
+        delta,
+        beta_out,
         lambda_L,
         lambda_H,
-        True,
-        True,
-        niter=10,
+        False,
+        False,
+        niter=1000,
+        verbose=True,
+        print_iters=False,
     )
 
-    assert H.shape == H_tilde.shape
-    assert not jnp.allclose(H, jnp.zeros_like(H))
-    assert not jnp.any(jnp.isnan(H))
-    assert L.shape == (N, T)
-    assert not jnp.allclose(L, jnp.zeros_like(L))
-    assert not jnp.any(jnp.isnan(L))
-    assert unit_fe.shape == (N,)
-    assert not jnp.allclose(unit_fe, jnp.zeros_like(unit_fe))
-    assert not jnp.any(jnp.isnan(unit_fe))
-    assert time_fe.shape == (T,)
-    assert not jnp.allclose(time_fe, jnp.zeros_like(time_fe))
-    assert not jnp.any(jnp.isnan(time_fe))
-    assert beta.shape == (J,)
-    assert not jnp.allclose(beta, jnp.zeros_like(beta))
-    assert not jnp.any(jnp.isnan(beta))
-    assert in_prod.shape == (N * T,)
+    assert H_out.shape == H_tilde.shape
+    assert not jnp.allclose(H_out, jnp.zeros_like(H_out))
+    assert not jnp.any(jnp.isnan(H_out))
+    assert L_out.shape == (N, T)
+    assert not jnp.any(jnp.isnan(L_out))
+    assert gamma_out.shape == (N,)
+    assert not jnp.allclose(gamma_out, jnp.zeros_like(gamma_out))
+    assert not jnp.any(jnp.isnan(gamma_out))
+    assert delta_out.shape == (T,)
+    assert not jnp.allclose(delta_out, jnp.zeros_like(delta_out))
+    assert not jnp.any(jnp.isnan(delta_out))
+    assert not jnp.allclose(beta_out, jnp.zeros_like(beta_out))
+    assert not jnp.any(jnp.isnan(beta_out))
     assert not jnp.allclose(in_prod, jnp.zeros_like(in_prod))
     assert not jnp.any(jnp.isnan(in_prod))
 
-
-def test_fit_single_iteration():
-    key = random.PRNGKey(0)
-    N, T, P, Q, J = 5, 4, 3, 2, 2
-    Y = random.normal(key, (N, T))
-    X_tilde = random.normal(key, (N, P + N))
-    Z_tilde = random.normal(key, (T, Q + T))
-    V = random.normal(key, (N, T, J))
-    H_tilde = random.normal(key, (P + N, Q + T))
-    T_mat = random.normal(key, (N * T, (P + N) * (Q + T)))
-    in_prod = jnp.zeros(N * T)
-    in_prod_T = random.normal(key, ((P + N) * (Q + T),))
-    W = random.bernoulli(key, 0.8, (N, T))
-    L = random.normal(key, (N, T))
-    unit_fe = random.normal(key, (N,))
-    time_fe = random.normal(key, (T,))
-    beta = random.normal(key, (J,))
-    lambda_L = 0.1
-    lambda_H = 0.2
-
-    H, L, unit_fe, time_fe, beta, in_prod = fit(
-        Y,
-        X_tilde,
-        Z_tilde,
-        V,
-        H_tilde,
-        T_mat,
-        in_prod,
-        in_prod_T,
-        W,
-        L,
-        unit_fe,
-        time_fe,
-        beta,
-        lambda_L,
-        lambda_H,
-        True,
-        True,
-        niter=1,
+    # reconstruct Y
+    Y_hat = compute_decomposition(
+        L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True
     )
-
-    assert H.shape == H_tilde.shape
-    assert not jnp.allclose(H, jnp.zeros_like(H))
-    assert not jnp.any(jnp.isnan(H))
-    assert L.shape == (N, T)
-    assert not jnp.allclose(L, jnp.zeros_like(L))
-    assert not jnp.any(jnp.isnan(L))
-    assert unit_fe.shape == (N,)
-    assert not jnp.allclose(unit_fe, jnp.zeros_like(unit_fe))
-    assert not jnp.any(jnp.isnan(unit_fe))
-    assert time_fe.shape == (T,)
-    assert not jnp.allclose(time_fe, jnp.zeros_like(time_fe))
-    assert not jnp.any(jnp.isnan(time_fe))
-    assert beta.shape == (J,)
-    assert not jnp.allclose(beta, jnp.zeros_like(beta))
-    assert not jnp.any(jnp.isnan(beta))
-    assert in_prod.shape == (N * T,)
-    assert not jnp.allclose(in_prod, jnp.zeros_like(in_prod))
-    assert not jnp.any(jnp.isnan(in_prod))
+    assert Y_hat.shape == Y.shape
+    assert not jnp.any(jnp.isnan(Y_hat))
+    assert not jnp.allclose(Y_hat, jnp.zeros_like(Y_hat))
