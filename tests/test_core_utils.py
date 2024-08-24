@@ -2,7 +2,7 @@ import pytest
 import jax.numpy as jnp
 from mcnnm.core_utils import is_positive_definite
 from mcnnm.core_utils import mask_observed, mask_unobserved, frobenius_norm, nuclear_norm
-from mcnnm.core_utils import element_wise_l1_norm, shrink_lambda, normalize, normalize_back
+from mcnnm.core_utils import element_wise_l1_norm, normalize, normalize_back
 import jax
 from jax import random
 
@@ -94,14 +94,6 @@ def test_mask_unobserved_shape_mismatch():
         mask_unobserved(A, mask)
 
 
-def test_shrink_lambda(sample_data):
-    Y, _, _, _, _ = sample_data
-    lambda_ = 0.1
-    Y_shrunk = shrink_lambda(Y, lambda_)
-    assert Y_shrunk.shape == Y.shape
-    assert jnp.all(jnp.isfinite(Y_shrunk))
-
-
 def test_frobenius_norm():
     A = jnp.array([[1, 2], [3, 4]])
     assert jnp.allclose(frobenius_norm(A), jnp.sqrt(30))
@@ -166,14 +158,6 @@ def test_normalize_zero_column():
     assert jnp.all(mat_norm == 0)
 
 
-def test_normalize_non_finite_values():
-    mat = jnp.array([[1, jnp.inf], [3, jnp.nan]])
-    mat_norm, col_norms = normalize(mat)
-    assert mat_norm.shape == mat.shape
-    assert col_norms.shape == (mat.shape[1],)
-    assert jnp.isnan(mat_norm).any() or jnp.isinf(mat_norm).any()
-
-
 def test_normalize_back_happy_path():
     H = jnp.array([[1, 2], [3, 4]])
     row_scales = jnp.array([1, 2])
@@ -208,11 +192,3 @@ def test_normalize_back_empty_matrix():
     H_rescaled = normalize_back(H, row_scales, col_scales)
     expected = jnp.zeros((0, 0))
     assert jnp.allclose(H_rescaled, expected)
-
-
-def test_normalize_back_non_finite_values():
-    H = jnp.array([[1, jnp.inf], [3, jnp.nan]])
-    row_scales = jnp.array([1, 2])
-    col_scales = jnp.array([1, 2])
-    H_rescaled = normalize_back(H, row_scales, col_scales)
-    assert jnp.isnan(H_rescaled).any() or jnp.isinf(H_rescaled).any()

@@ -144,23 +144,6 @@ def element_wise_l1_norm(A: Array) -> Scalar:
 
 
 @jit
-def shrink_lambda(A: Array, lambda_: Scalar) -> Array:
-    """
-    Applies the soft-thresholding operator to the singular values of a matrix A.
-
-    Args:
-        A: The input matrix.
-        lambda_: The shrinkage parameter.
-
-    Returns:
-        Array: The matrix with soft-thresholded singular values.
-    """
-    u, s, vt = jnp.linalg.svd(A, full_matrices=False)
-    s_shrunk = jnp.maximum(s - lambda_, 0)
-    return u @ jnp.diag(s_shrunk) @ vt
-
-
-@jit
 def normalize(mat: Array) -> Tuple[Array, Array]:
     """
     Normalize the columns of the input matrix.
@@ -178,16 +161,16 @@ def normalize(mat: Array) -> Tuple[Array, Array]:
 
 
 @jit
-def normalize_back(H: Array, row_scales: Array, col_scales: Array) -> Array:
+def normalize_back(mat: Array, row_scales: Array, col_scales: Array) -> Array:
     """
     Rescale the rows and columns of the matrix H using the provided scales.
     """
-    H_new = H.copy()
+    mat_new = mat.copy()
 
     if row_scales.size > 0:
-        H_new /= row_scales[:, None]
+        mat_new /= row_scales[:, None]
 
     if col_scales.size > 0:
-        H_new /= col_scales[None, :]
+        mat_new /= col_scales[None, :]
 
-    return H_new
+    return mat_new
