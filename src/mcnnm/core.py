@@ -40,7 +40,7 @@ def initialize_coefficients(
         (X_tilde.shape[1], Z_tilde.shape[1])
     )  # X_tilde and Z_tilde covariate coefficients
 
-    beta_shape = max(V.shape[2], 1)
+    beta_shape = max(V.shape[2], 0)
     beta = jnp.zeros((beta_shape,))  # unit-time covariate coefficients
 
     return H_tilde, gamma, delta, beta
@@ -72,19 +72,38 @@ def initialize_matrices(
             - Z_tilde (Array): The augmented time-specific covariates matrix of shape (T, Q+T).
             - V (Array): The unit-time-specific covariates tensor of shape (N, T, J).
     """
+    # N, T = Y.shape
+    # L = jnp.zeros_like(Y)
+    # # Initialize covariates as 0 if not used
+    # if X is None:
+    #     X = jnp.zeros((N, 1))
+    # if Z is None:
+    #     Z = jnp.zeros((T, 1))
+    # if V is None:
+    #     V = jnp.zeros((N, T, 1))
+    #
+    #
+    # # Add identity matrices to X and Z to obtain X_tilde and Z_tilde
+    # X_tilde = jnp.concatenate((X, jnp.eye(N)), axis=1)
+    # Z_tilde = jnp.concatenate((Z, jnp.eye(T)), axis=1)
+    #
+    # return L, X_tilde, Z_tilde, V
     N, T = Y.shape
-    L = jnp.zeros_like(Y)
-    # Initialize covariates as 0 if not used
-    if X is None:
-        X = jnp.zeros((N, 1))
-    if Z is None:
-        Z = jnp.zeros((T, 1))
-    if V is None:
-        V = jnp.zeros((N, T, 1))
+    P = X.shape[1] if X is not None else 0
+    Q = Z.shape[1] if Z is not None else 0
+    J = V.shape[2] if V is not None else 0
+
+    # Initialize X, Z, and V to zero matrices if None
+    X = jnp.zeros((N, P)) if X is None else X
+    Z = jnp.zeros((T, Q)) if Z is None else Z
+    V = jnp.zeros((N, T, J)) if V is None else V
 
     # Add identity matrices to X and Z to obtain X_tilde and Z_tilde
     X_tilde = jnp.concatenate((X, jnp.eye(N)), axis=1)
     Z_tilde = jnp.concatenate((Z, jnp.eye(T)), axis=1)
+
+    # Initialize L to a zero matrix
+    L = jnp.zeros((N, T))
 
     return L, X_tilde, Z_tilde, V
 
@@ -103,7 +122,7 @@ def compute_svd(M: Array) -> Tuple[Array, Array, Array]:
 @jit
 def svt(U: Array, V: Array, sing_vals: Array, threshold: Scalar) -> Array:
     """
-    Perform singular value thresholding (SVT) on the given singular value decomposition.
+    Perform soft singular value thresholding (SVT) on the given singular value decomposition.
 
     Args:
         U (Array): The left singular vectors matrix.
@@ -114,8 +133,8 @@ def svt(U: Array, V: Array, sing_vals: Array, threshold: Scalar) -> Array:
     Returns:
         Array: The thresholded low-rank matrix.
     """
-    thresholded_sing_vals = jnp.maximum(sing_vals - threshold, 0)
-    return U @ jnp.diag(thresholded_sing_vals) @ V.T
+    soft_thresholded_sing_vals = jnp.maximum(sing_vals - threshold, 0)
+    return U @ jnp.diag(soft_thresholded_sing_vals) @ V.T
 
 
 @jit
@@ -149,7 +168,7 @@ def update_unit_fe(
     b_ = T_ + L + time_fe - Y
     b_mask_ = b_ * W
     l = jnp.sum(W, axis=1)
-    res = jnp.where(l > 0, -jnp.sum(b_mask_, axis=1) / l, 0.0)
+    res = jnp.where(l > 0, -jnp.sum(b_mask_, axis=1) / (l + 1e-8), 0.0)
     return jnp.where(use_unit_fe, res, jnp.zeros_like(res))
 
 
@@ -184,7 +203,7 @@ def update_time_fe(
     b_ = T_ + L + jnp.expand_dims(unit_fe, axis=1) - Y
     b_mask_ = b_ * W
     l = jnp.sum(W, axis=0)
-    res = jnp.where(l > 0, -jnp.sum(b_mask_, axis=0) / l, 0.0)
+    res = jnp.where(l > 0, -jnp.sum(b_mask_, axis=0) / (l + 1e-8), 0.0)
     return jnp.where(use_time_fe, res, jnp.zeros_like(res))
 
 
@@ -226,7 +245,7 @@ def update_beta(
 
     V_b_prod_ = jnp.einsum("ntj,nt->j", V_mask_, b_mask_)
 
-    return jnp.where(V_sum_ > 0, -V_b_prod_ / V_sum_, 0.0)
+    return jnp.where(V_sum_ > 0, -V_b_prod_ / (V_sum_ + 1e-8), 0.0)
 
 
 @jit
@@ -491,7 +510,11 @@ def initialize_fixed_effects_and_H(
 
     def cond_fun(carry):
         obj_val, prev_obj_val, _, _, i = carry
-        rel_error = (obj_val - prev_obj_val) / (jnp.abs(prev_obj_val))
+        rel_error = jnp.where(
+            jnp.isfinite(prev_obj_val),
+            (obj_val - prev_obj_val) / (jnp.abs(prev_obj_val) + 1e-8),
+            jnp.inf,
+        )
         return lax.cond(
             ((rel_error < rel_tol) & (rel_error > 0)),
             lambda _: False,
@@ -524,7 +547,7 @@ def initialize_fixed_effects_and_H(
 
         return new_obj_val, obj_val, gamma, delta, i + 1
 
-    init_val = (jnp.inf, jnp.inf, gamma, delta, 0)
+    init_val = (1e10, 1e10, gamma, delta, 0)
     obj_val, _, gamma, delta, _ = lax.while_loop(cond_fun, body_fun, init_val)
 
     Y_hat = compute_decomposition(
@@ -732,8 +755,9 @@ def update_L(
 
     U, S, Vt = jnp.linalg.svd(proj, full_matrices=False)
     V = Vt.T
+    svt_threshold = lambda_L * num_train / 2
 
-    L_upd = svt(U, V, S, lambda_L * num_train / 2)
+    L_upd = svt(U, V, S, svt_threshold)
 
     return L_upd, S
 
@@ -824,9 +848,15 @@ def fit(
 
     def cond_fun(carry):
         obj_val, prev_obj_val, *_ = carry
-        rel_error = (obj_val - prev_obj_val) / (jnp.abs(prev_obj_val))
+        # rel_error = (obj_val - prev_obj_val) / (jnp.abs(prev_obj_val))
+        rel_error = jnp.where(
+            jnp.isfinite(obj_val),
+            (obj_val - prev_obj_val) / (jnp.abs(prev_obj_val) + 1e-8),
+            jnp.inf,
+        )
         return lax.cond(
-            ((rel_error < rel_tol) & (rel_error > 0)),
+            (rel_error < rel_tol)
+            & (rel_error > -0.5),  # Allow for slightly negative relative error
             lambda _: False,
             lambda _: carry[-1] < niter,
             None,
@@ -836,7 +866,7 @@ def fit(
         obj_val, prev_obj_val, gamma, delta, beta, L, H_tilde, in_prod, i = carry
         gamma = update_unit_fe(Y, X_tilde, Z_tilde, H_tilde, W, L, delta, use_unit_fe)
         delta = update_time_fe(Y, X_tilde, Z_tilde, H_tilde, W, L, gamma, use_time_fe)
-        beta = update_beta(Y, X_tilde, Z_tilde, V, H_tilde, W, L, gamma, delta)
+        beta = update_beta(Y, X_tilde, Z_tilde, V, H_tilde, W, L, gamma, delta)  # TODO: FIX
         H_tilde, in_prod = update_H(
             Y,
             X_tilde,
@@ -900,7 +930,17 @@ def fit(
         )
         return new_obj_val, obj_val, gamma, delta, beta, L, H_tilde, in_prod, i + 1
 
-    init_val = (obj_val, obj_val, gamma, delta, beta, L, H_tilde, in_prod, 0)
+    init_val = (
+        2 * obj_val,
+        obj_val,
+        gamma,
+        delta,
+        beta,
+        L,
+        H_tilde,
+        in_prod,
+        0,
+    )  # TODO: improve initialization
     obj_val, _, gamma, delta, beta, L, H, in_prod, term_iter = lax.while_loop(
         cond_fun, body_fun, init_val
     )
