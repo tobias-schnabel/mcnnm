@@ -131,7 +131,7 @@ def generate_data(
     nperiods: int = 100,
     Y_mean: float = 10.0,
     treatment_probability: float = 0.5,
-    rank: int = 10,
+    rank: int = 5,
     treatment_effect: float = 5.0,
     unit_fe: bool = True,
     time_fe: bool = True,
@@ -143,7 +143,7 @@ def generate_data(
     noise_scale: float = 1,
     assignment_mechanism: Literal[
         "staggered", "block", "single_treated_period", "single_treated_unit", "last_periods"
-    ] = "last_periods",  # TODO: fix staggered, does not work correctly
+    ] = "last_periods",  # TODO: fix staggered, does not work correctly (maybe?)
     treated_fraction: float = 0.2,
     last_treated_periods: int = 2,
     autocorrelation: float = 0.0,
