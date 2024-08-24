@@ -1,5 +1,9 @@
 import jax.numpy as jnp
 import numpy as np
+from numpy import ndarray, dtype, floating
+from numpy._typing import _64Bit
+from mcnnm.utils import generate_data
+
 from mcnnm.core import (
     initialize_coefficients,
     compute_svd,
@@ -13,13 +17,15 @@ from mcnnm.core import (
     update_H,
     update_L,
     update_beta,
+    fit,
 )
 import jax
 from jax import random
 from mcnnm.types import Array
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any
 
 key = jax.random.PRNGKey(2024)
+# jax.config.update("jax_debug_nans", True)
 
 
 def initialize_matrices_numpy(
@@ -27,9 +33,7 @@ def initialize_matrices_numpy(
     X: Optional[np.ndarray],
     Z: Optional[np.ndarray],
     V: Optional[np.ndarray],
-    use_unit_fe: bool,
-    use_time_fe: bool,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     N, T = Y.shape
     L = np.zeros_like(Y)
     # Initialize covariates as 0 if not used
@@ -46,18 +50,13 @@ def initialize_matrices_numpy(
     X_tilde = np.concatenate((X, X_add), axis=1)
     Z_tilde = np.concatenate((Z, Z_add), axis=1)
 
-    # Initialize unit and time fixed effects
-    unit_fe = np.ones(N) if use_unit_fe else np.zeros(N)
-    time_fe = np.ones(T) if use_time_fe else np.zeros(T)
-
-    return L, X_tilde, Z_tilde, V, unit_fe, time_fe
+    return L, X_tilde, Z_tilde, V
 
 
 def initialize_coefficients_numpy(
     Y: np.ndarray, X_tilde: np.ndarray, Z_tilde: np.ndarray, V: np.ndarray
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     N, T = Y.shape
-    L = np.zeros_like(Y)
     gamma = np.zeros(N)  # unit FE coefficients
     delta = np.zeros(T)  # time FE coefficients
 
@@ -68,7 +67,7 @@ def initialize_coefficients_numpy(
     beta_shape = max(V.shape[2], 1)
     beta = np.zeros((beta_shape,))  # unit-time covariate coefficients
 
-    return L, H_tilde, gamma, delta, beta
+    return H_tilde, gamma, delta, beta
 
 
 def mask_observed_numpy(A: np.ndarray, mask: np.ndarray) -> np.ndarray:
@@ -261,28 +260,38 @@ def compute_objective_value_numpy(
 
 def initialize_fixed_effects_and_H_numpy(
     Y: np.ndarray,
-    X: np.ndarray,
-    Z: np.ndarray,
+    L: np.ndarray,
+    X_tilde: np.ndarray,
+    Z_tilde: np.ndarray,
     V: np.ndarray,
     W: np.ndarray,
     use_unit_fe: bool,
     use_time_fe: bool,
     niter: int = 1000,
     rel_tol: float = 1e-5,
-) -> Tuple[np.ndarray, np.ndarray, float, float, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[
+    ndarray,
+    ndarray,
+    ndarray,
+    ndarray,
+    ndarray[Any, dtype[floating[_64Bit]]],
+    ndarray[Any, dtype[floating[_64Bit]]],
+    ndarray[Any, dtype[Any]],
+    float | Any,
+    int | Any,
+]:
     # Convert all inputs to numpy arrays
     Y = np.array(Y)
-    X = np.array(X)
-    Z = np.array(Z)
+    L = np.array(L)
+    X_tilde = np.array(X_tilde)
+    Z_tilde = np.array(Z_tilde)
     V = np.array(V)
     W = np.array(W)
 
     N, T = Y.shape
     in_prod = np.zeros_like(W)
-    L, X_tilde, Z_tilde, V, unit_fe, time_fe = initialize_matrices_numpy(
-        Y, X, Z, V, use_unit_fe, use_time_fe
-    )
-    _, H, _, _, beta = initialize_coefficients_numpy(Y, X_tilde, Z_tilde, V)
+
+    H_tilde, gamma, delta, beta = initialize_coefficients_numpy(Y, X_tilde, Z_tilde, V)
 
     H_rows, H_cols = X_tilde.shape[1], Z_tilde.shape[1]
 
@@ -291,15 +300,15 @@ def initialize_fixed_effects_and_H_numpy(
 
     for iter_ in range(niter):
 
-        unit_fe = update_unit_fe_numpy(Y, X_tilde, Z_tilde, H, W, L, time_fe, use_unit_fe)
-        time_fe = update_time_fe_numpy(Y, X_tilde, Z_tilde, H, W, L, unit_fe, use_time_fe)
+        unit_fe = update_unit_fe_numpy(Y, X_tilde, Z_tilde, H_tilde, W, L, delta, use_unit_fe)
+        time_fe = update_time_fe_numpy(Y, X_tilde, Z_tilde, H_tilde, W, L, gamma, use_time_fe)
 
         new_obj_val = compute_objective_value_numpy(
             Y,
             X_tilde,
             Z_tilde,
             V,
-            H,
+            H_tilde,
             W,
             L,
             unit_fe,
@@ -319,7 +328,7 @@ def initialize_fixed_effects_and_H_numpy(
         obj_val = new_obj_val
 
     E = compute_decomposition_numpy(
-        L, X_tilde, Z_tilde, V, H, unit_fe, time_fe, beta, use_unit_fe, use_time_fe
+        L, X_tilde, Z_tilde, V, H_tilde, unit_fe, time_fe, beta, use_unit_fe, use_time_fe
     )
     P_omega = mask_observed_numpy(Y - E, W)
     _, _, s = np.linalg.svd(P_omega, full_matrices=False)
@@ -343,7 +352,7 @@ def initialize_fixed_effects_and_H_numpy(
     all_Vs = np.dot(T_mat.T, P_omega_resh) / np.sqrt(num_train)
     lambda_H_max = 2 * np.max(np.abs(all_Vs))
 
-    return unit_fe, time_fe, lambda_L_max, lambda_H_max, T_mat, in_prod_T, in_prod
+    return unit_fe, time_fe, beta, H_tilde, T_mat, in_prod_T, in_prod, lambda_L_max, lambda_H_max
 
 
 def test_initialize_coefficients_shape():
@@ -358,13 +367,11 @@ def test_initialize_coefficients_shape():
     X_tilde = jnp.concatenate((X, X_add), axis=1)
     Z_tilde = jnp.concatenate((Z, Z_add), axis=1)
 
-    L, H_tilde, gamma, delta, beta = initialize_coefficients(Y, X_tilde, Z_tilde, V)
-    assert L.shape == Y.shape
+    H_tilde, gamma, delta, beta = initialize_coefficients(Y, X_tilde, Z_tilde, V)
     assert H_tilde.shape == (X_tilde.shape[1], Z_tilde.shape[1])
     assert gamma.shape == (Y.shape[0],)
     assert delta.shape == (Y.shape[1],)
     assert beta.shape == (max(V.shape[2], 1),)
-    assert jnp.allclose(L, jnp.zeros_like(L))
     assert jnp.allclose(H_tilde, jnp.zeros_like(H_tilde))
     assert jnp.allclose(gamma, jnp.zeros_like(gamma))
     assert jnp.allclose(delta, jnp.zeros_like(delta))
@@ -376,13 +383,11 @@ def test_initialize_coefficients_empty():
     X = jnp.zeros((0, 0))
     Z = jnp.zeros((0, 0))
     V = jnp.zeros((0, 0, 0))
-    L, H_tilde, gamma, delta, beta = initialize_coefficients(Y, X, Z, V)
-    assert L.shape == Y.shape
+    H_tilde, gamma, delta, beta = initialize_coefficients(Y, X, Z, V)
     assert H_tilde.shape == (X.shape[1] + Y.shape[0], Z.shape[1] + Y.shape[1])
     assert gamma.shape == (Y.shape[0],)
     assert delta.shape == (Y.shape[1],)
     assert beta.shape == (max(V.shape[2], 1),)
-    assert jnp.allclose(L, jnp.zeros_like(L))
     assert jnp.allclose(H_tilde, jnp.zeros_like(H_tilde))
     assert jnp.allclose(gamma, jnp.zeros_like(gamma))
     assert jnp.allclose(delta, jnp.zeros_like(delta))
@@ -401,13 +406,11 @@ def test_initialize_coefficients_single_element():
     X_tilde = jnp.concatenate((X, X_add), axis=1)
     Z_tilde = jnp.concatenate((Z, Z_add), axis=1)
 
-    L, H_tilde, gamma, delta, beta = initialize_coefficients(Y, X_tilde, Z_tilde, V)
-    assert L.shape == Y.shape
+    H_tilde, gamma, delta, beta = initialize_coefficients(Y, X_tilde, Z_tilde, V)
     assert H_tilde.shape == (X_tilde.shape[1], Z_tilde.shape[1])
     assert gamma.shape == (Y.shape[0],)
     assert delta.shape == (Y.shape[1],)
     assert beta.shape == (max(V.shape[2], 1),)
-    assert jnp.allclose(L, jnp.zeros_like(L))
     assert jnp.allclose(H_tilde, jnp.zeros_like(H_tilde))
     assert jnp.allclose(gamma, jnp.zeros_like(gamma))
     assert jnp.allclose(delta, jnp.zeros_like(delta))
@@ -624,24 +627,22 @@ def test_initialize_matrices_happy_path():
     X = jnp.array([[1, 1], [1, 1]])
     Z = jnp.array([[1, 1], [1, 1]])
     V = jnp.array([[[1], [1]], [[1], [1]]])
-    L, X_out, Z_out, V_out, unit_fe, time_fe = initialize_matrices(Y, X, Z, V, True, True)
+    L, X_out, Z_out, V_out = initialize_matrices(Y, X, Z, V)
     assert L.shape == Y.shape
     assert X_out.shape == (Y.shape[0], X.shape[1] + Y.shape[0])
     assert Z_out.shape == (Y.shape[1], Z.shape[1] + Y.shape[1])
     assert V_out.shape == V.shape
-    assert unit_fe.shape == (Y.shape[0],)
-    assert time_fe.shape == (Y.shape[1],)
+    assert jnp.allclose(L, jnp.zeros_like(L))
 
 
 def test_initialize_matrices_no_covariates():
     Y = jnp.array([[1, 2], [3, 4]])
-    L, X_out, Z_out, V_out, unit_fe, time_fe = initialize_matrices(Y, None, None, None, True, True)
+    L, X_out, Z_out, V_out = initialize_matrices(Y, None, None, None)
     assert L.shape == Y.shape
     assert X_out.shape == (Y.shape[0], Y.shape[0] + 1)
     assert Z_out.shape == (Y.shape[1], Y.shape[1] + 1)
     assert V_out.shape == (Y.shape[0], Y.shape[1], 1)
-    assert unit_fe.shape == (Y.shape[0],)
-    assert time_fe.shape == (Y.shape[1],)
+    assert jnp.allclose(L, jnp.zeros_like(L))
 
 
 def test_initialize_matrices_no_unit_fe():
@@ -649,14 +650,12 @@ def test_initialize_matrices_no_unit_fe():
     X = jnp.array([[1, 1], [1, 1]])
     Z = jnp.array([[1, 1], [1, 1]])
     V = jnp.array([[[1], [1]], [[1], [1]]])
-    L, X_out, Z_out, V_out, unit_fe, time_fe = initialize_matrices(Y, X, Z, V, False, True)
+    L, X_out, Z_out, V_out = initialize_matrices(Y, X, Z, V)
     assert L.shape == Y.shape
     assert X_out.shape == (Y.shape[0], X.shape[1] + Y.shape[0])
     assert Z_out.shape == (Y.shape[1], Z.shape[1] + Y.shape[1])
     assert V_out.shape == V.shape
-    assert unit_fe.shape == (Y.shape[0],)
-    assert jnp.allclose(unit_fe, jnp.zeros_like(unit_fe))
-    assert time_fe.shape == (Y.shape[1],)
+    assert jnp.allclose(L, jnp.zeros_like(L))
 
 
 def test_initialize_matrices_no_time_fe():
@@ -664,14 +663,12 @@ def test_initialize_matrices_no_time_fe():
     X = jnp.array([[1, 1], [1, 1]])
     Z = jnp.array([[1, 1], [1, 1]])
     V = jnp.array([[[1], [1]], [[1], [1]]])
-    L, X_out, Z_out, V_out, unit_fe, time_fe = initialize_matrices(Y, X, Z, V, True, False)
+    L, X_out, Z_out, V_out = initialize_matrices(Y, X, Z, V)
     assert L.shape == Y.shape
     assert X_out.shape == (Y.shape[0], X.shape[1] + Y.shape[0])
     assert Z_out.shape == (Y.shape[1], Z.shape[1] + Y.shape[1])
     assert V_out.shape == V.shape
-    assert unit_fe.shape == (Y.shape[0],)
-    assert time_fe.shape == (Y.shape[1],)
-    assert jnp.allclose(time_fe, jnp.zeros_like(time_fe))
+    assert jnp.allclose(L, jnp.zeros_like(L))
 
 
 def test_compute_decomposition():
@@ -898,38 +895,81 @@ def test_compute_objective_value():
 
 
 def test_initialize_fixed_effects_and_H():
-    # Set random seed for reproducibility
-    key = random.PRNGKey(0)
+    key = random.PRNGKey(2024)
+    N, T = 5, 4
+    Y, W, X, Z, V, true_params = generate_data(N, T, seed=key)
 
-    # Generate random input data
-    N, T, P, Q, J = 10, 20, 5, 3, 4
-    Y = random.normal(key, (N, T))
-    X = random.normal(key, (N, P))
-    Z = random.normal(key, (T, Q))
-    V = random.normal(key, (N, T, J))
-    W = random.bernoulli(key, 0.2, (N, T))
-
+    L, X_tilde, Z_tilde, V = initialize_matrices(Y, X, Z, V)
     # Test case 1: With unit and time fixed effects
-    expected_output = initialize_fixed_effects_and_H_numpy(Y, X, Z, V, W, True, True)
-    output = initialize_fixed_effects_and_H(Y, X, Z, V, W, True, True)
-    for expected, actual in zip(expected_output, output):
-        assert jnp.allclose(actual, expected, rtol=1.5, atol=1.5)
+    expected_output = initialize_fixed_effects_and_H_numpy(Y, L, X_tilde, Z_tilde, V, W, True, True)
+    output = initialize_fixed_effects_and_H(Y, L, X_tilde, Z_tilde, V, W, True, True)
+
+    assert len(expected_output) == len(output), "Output tuples have different lengths"
+
+    element_names = [
+        "gamma",
+        "delta",
+        "beta",
+        "H_tilde",
+        "T_mat",
+        "in_prod_T",
+        "in_prod",
+        "lambda_L_max",
+        "lambda_H_max",
+    ]
+
+    all_match = True
+    for i, (expected, actual, name) in enumerate(zip(expected_output, output, element_names)):
+        if isinstance(expected, (np.ndarray, jnp.ndarray)):
+            is_close = jnp.allclose(actual, expected, rtol=1e-5, atol=1e-8)
+            if not is_close:
+                all_match = False
+                print(f"\nMismatch in {name} (element {i}):")
+                print(f"Expected shape: {expected.shape}, Actual shape: {actual.shape}")
+                diff = jnp.abs(expected - actual)
+                max_diff_idx = jnp.unravel_index(jnp.argmax(diff), diff.shape)
+                print(f"Max absolute difference: {diff[max_diff_idx]} at index {max_diff_idx}")
+                print(f"Expected value at max diff: {expected[max_diff_idx]}")
+                print(f"Actual value at max diff: {actual[max_diff_idx]}")
+                if diff.size > 1:
+                    rel_diff = jnp.abs((expected - actual) / jnp.where(expected != 0, expected, 1))
+                    max_rel_diff_idx = jnp.unravel_index(jnp.argmax(rel_diff), rel_diff.shape)
+                    print(
+                        f"Max relative difference: {rel_diff[max_rel_diff_idx]} at index {max_rel_diff_idx}"
+                    )
+                    print(f"Expected value at max rel diff: {expected[max_rel_diff_idx]}")
+                    print(f"Actual value at max rel diff: {actual[max_rel_diff_idx]}")
+            else:
+                print(f"{name} (element {i}) matches within tolerance.")
+        else:
+            if expected != actual:
+                all_match = False
+                print(f"\nMismatch in {name} (element {i}):")
+                print(f"Expected: {expected}")
+                print(f"Actual: {actual}")
+            else:
+                print(f"{name} (element {i}) matches exactly.")
+
+    if all_match:
+        print("\nAll elements match within tolerance.")
+    else:
+        raise AssertionError("One or more elements did not match within tolerance.")
 
     # Test case 2: With unit fixed effects only
-    expected_output = initialize_fixed_effects_and_H_numpy(Y, X, Z, V, W, True, False)
-    output = initialize_fixed_effects_and_H(Y, X, Z, V, W, True, False)
+    expected_output = initialize_fixed_effects_and_H_numpy(Y, L, X_tilde, Z, V, W, True, False)
+    output = initialize_fixed_effects_and_H(Y, L, X_tilde, Z_tilde, V, W, True, False)
     for expected, actual in zip(expected_output, output):
         assert jnp.allclose(actual, expected, rtol=1.5, atol=1.5)
 
     # Test case 3: With time fixed effects only
-    expected_output = initialize_fixed_effects_and_H_numpy(Y, X, Z, V, W, False, True)
-    output = initialize_fixed_effects_and_H(Y, X, Z, V, W, False, True)
+    expected_output = initialize_fixed_effects_and_H_numpy(Y, L, X_tilde, Z, V, W, False, True)
+    output = initialize_fixed_effects_and_H(Y, L, X_tilde, Z_tilde, V, W, False, True)
     for expected, actual in zip(expected_output, output):
         assert jnp.allclose(actual, expected, rtol=1.5, atol=1.5)
 
     # Test case 4: Without unit and time fixed effects
-    expected_output = initialize_fixed_effects_and_H_numpy(Y, X, Z, V, W, False, False)
-    output = initialize_fixed_effects_and_H(Y, X, Z, V, W, False, False)
+    expected_output = initialize_fixed_effects_and_H_numpy(Y, L, X_tilde, Z, V, W, False, False)
+    output = initialize_fixed_effects_and_H(Y, L, X_tilde, Z_tilde, V, W, False, False)
     for expected, actual in zip(expected_output, output):
         assert jnp.allclose(actual, expected, rtol=1.5, atol=1.5)
 
@@ -1163,3 +1203,237 @@ def test_update_L_without_fixed_effects():
     assert not jnp.any(jnp.isnan(L_upd))
     assert not jnp.any(jnp.isnan(S))
     assert not jnp.allclose(L_upd, jnp.zeros_like(L))
+
+
+def test_fit_happy_path():
+    key = random.PRNGKey(2024)
+    N, T = 24, 48
+    Y, W, X, Z, V, true_params = generate_data(N, T, seed=key)
+
+    L, X_tilde, Z_tilde, V = initialize_matrices(Y, X, Z, V)
+
+    gamma, delta, beta, H_tilde, T_mat, in_prod_T, in_prod, lambda_L_max, lambda_H_max = (
+        initialize_fixed_effects_and_H(Y, L, X_tilde, Z_tilde, V, W, True, True)
+    )
+
+    lambda_L = lambda_L_max
+    lambda_H = lambda_H_max
+
+    H, L, unit_fe, time_fe, beta, in_prod, obj_val = fit(
+        Y,
+        X_tilde,
+        Z_tilde,
+        V,
+        H_tilde,
+        T_mat,
+        in_prod,
+        in_prod_T,
+        W,
+        L,
+        gamma,
+        delta,
+        beta,
+        lambda_L,
+        lambda_H,
+        True,
+        True,
+        niter=10,
+        verbose=True,
+    )
+
+    assert H.shape == H_tilde.shape
+    # assert not jnp.allclose(H, jnp.zeros_like(H))
+    assert not jnp.any(jnp.isnan(H))
+    assert L.shape == (N, T)
+    # assert not jnp.allclose(L, jnp.zeros_like(L))
+    assert not jnp.any(jnp.isnan(L))
+    assert unit_fe.shape == (N,)
+    assert not jnp.allclose(unit_fe, jnp.zeros_like(unit_fe))
+    assert not jnp.any(jnp.isnan(unit_fe))
+    assert time_fe.shape == (T,)
+    assert not jnp.allclose(time_fe, jnp.zeros_like(time_fe))
+    assert not jnp.any(jnp.isnan(time_fe))
+    # assert beta.shape == (J,)
+    # assert not jnp.allclose(beta, jnp.zeros_like(beta))
+    assert not jnp.any(jnp.isnan(beta))
+    # assert in_prod.shape == (N * T,)
+    # assert not jnp.allclose(in_prod, jnp.zeros_like(in_prod))
+    assert not jnp.any(jnp.isnan(in_prod))
+
+
+def test_fit_no_fixed_effects():
+    key = random.PRNGKey(0)
+    N, T, P, Q, J = 5, 4, 3, 2, 2
+    Y = random.normal(key, (N, T))
+    X_tilde = random.normal(key, (N, P + N))
+    Z_tilde = random.normal(key, (T, Q + T))
+    V = random.normal(key, (N, T, J))
+    H_tilde = random.normal(key, (P + N, Q + T))
+    T_mat = random.normal(key, (N * T, (P + N) * (Q + T)))
+    in_prod = jnp.zeros(N * T)
+    in_prod_T = random.normal(key, ((P + N) * (Q + T),))
+    W = random.bernoulli(key, 0.8, (N, T))
+    L = random.normal(key, (N, T))
+    unit_fe = jnp.zeros((N,))
+    time_fe = jnp.zeros((T,))
+    beta = random.normal(key, (J,))
+    lambda_L = 0.1
+    lambda_H = 0.2
+
+    H, L, unit_fe, time_fe, beta, in_prod = fit(
+        Y,
+        X_tilde,
+        Z_tilde,
+        V,
+        H_tilde,
+        T_mat,
+        in_prod,
+        in_prod_T,
+        W,
+        L,
+        unit_fe,
+        time_fe,
+        beta,
+        lambda_L,
+        lambda_H,
+        False,
+        False,
+        niter=10,
+    )
+
+    assert H.shape == H_tilde.shape
+    assert not jnp.allclose(H, jnp.zeros_like(H))
+    assert not jnp.any(jnp.isnan(H))
+    assert L.shape == (N, T)
+    assert not jnp.allclose(L, jnp.zeros_like(L))
+    assert not jnp.any(jnp.isnan(L))
+    assert unit_fe.shape == (N,)
+    assert not jnp.any(jnp.isnan(unit_fe))
+    assert time_fe.shape == (T,)
+    assert not jnp.any(jnp.isnan(time_fe))
+    assert beta.shape == (J,)
+    assert not jnp.allclose(beta, jnp.zeros_like(beta))
+    assert not jnp.any(jnp.isnan(beta))
+    assert in_prod.shape == (N * T,)
+    assert not jnp.allclose(in_prod, jnp.zeros_like(in_prod))
+    assert not jnp.any(jnp.isnan(in_prod))
+
+
+def test_fit_zero_regularization():
+    key = random.PRNGKey(0)
+    N, T, P, Q, J = 5, 4, 3, 2, 2
+    Y = random.normal(key, (N, T))
+    X_tilde = random.normal(key, (N, P + N))
+    Z_tilde = random.normal(key, (T, Q + T))
+    V = random.normal(key, (N, T, J))
+    H_tilde = random.normal(key, (P + N, Q + T))
+    T_mat = random.normal(key, (N * T, (P + N) * (Q + T)))
+    in_prod = jnp.zeros(N * T)
+    in_prod_T = random.normal(key, ((P + N) * (Q + T),))
+    W = random.bernoulli(key, 0.8, (N, T))
+    L = random.normal(key, (N, T))
+    unit_fe = random.normal(key, (N,))
+    time_fe = random.normal(key, (T,))
+    beta = random.normal(key, (J,))
+    lambda_L = 0.0
+    lambda_H = 0.0
+
+    H, L, unit_fe, time_fe, beta, in_prod = fit(
+        Y,
+        X_tilde,
+        Z_tilde,
+        V,
+        H_tilde,
+        T_mat,
+        in_prod,
+        in_prod_T,
+        W,
+        L,
+        unit_fe,
+        time_fe,
+        beta,
+        lambda_L,
+        lambda_H,
+        True,
+        True,
+        niter=10,
+    )
+
+    assert H.shape == H_tilde.shape
+    assert not jnp.allclose(H, jnp.zeros_like(H))
+    assert not jnp.any(jnp.isnan(H))
+    assert L.shape == (N, T)
+    assert not jnp.allclose(L, jnp.zeros_like(L))
+    assert not jnp.any(jnp.isnan(L))
+    assert unit_fe.shape == (N,)
+    assert not jnp.allclose(unit_fe, jnp.zeros_like(unit_fe))
+    assert not jnp.any(jnp.isnan(unit_fe))
+    assert time_fe.shape == (T,)
+    assert not jnp.allclose(time_fe, jnp.zeros_like(time_fe))
+    assert not jnp.any(jnp.isnan(time_fe))
+    assert beta.shape == (J,)
+    assert not jnp.allclose(beta, jnp.zeros_like(beta))
+    assert not jnp.any(jnp.isnan(beta))
+    assert in_prod.shape == (N * T,)
+    assert not jnp.allclose(in_prod, jnp.zeros_like(in_prod))
+    assert not jnp.any(jnp.isnan(in_prod))
+
+
+def test_fit_single_iteration():
+    key = random.PRNGKey(0)
+    N, T, P, Q, J = 5, 4, 3, 2, 2
+    Y = random.normal(key, (N, T))
+    X_tilde = random.normal(key, (N, P + N))
+    Z_tilde = random.normal(key, (T, Q + T))
+    V = random.normal(key, (N, T, J))
+    H_tilde = random.normal(key, (P + N, Q + T))
+    T_mat = random.normal(key, (N * T, (P + N) * (Q + T)))
+    in_prod = jnp.zeros(N * T)
+    in_prod_T = random.normal(key, ((P + N) * (Q + T),))
+    W = random.bernoulli(key, 0.8, (N, T))
+    L = random.normal(key, (N, T))
+    unit_fe = random.normal(key, (N,))
+    time_fe = random.normal(key, (T,))
+    beta = random.normal(key, (J,))
+    lambda_L = 0.1
+    lambda_H = 0.2
+
+    H, L, unit_fe, time_fe, beta, in_prod = fit(
+        Y,
+        X_tilde,
+        Z_tilde,
+        V,
+        H_tilde,
+        T_mat,
+        in_prod,
+        in_prod_T,
+        W,
+        L,
+        unit_fe,
+        time_fe,
+        beta,
+        lambda_L,
+        lambda_H,
+        True,
+        True,
+        niter=1,
+    )
+
+    assert H.shape == H_tilde.shape
+    assert not jnp.allclose(H, jnp.zeros_like(H))
+    assert not jnp.any(jnp.isnan(H))
+    assert L.shape == (N, T)
+    assert not jnp.allclose(L, jnp.zeros_like(L))
+    assert not jnp.any(jnp.isnan(L))
+    assert unit_fe.shape == (N,)
+    assert not jnp.allclose(unit_fe, jnp.zeros_like(unit_fe))
+    assert not jnp.any(jnp.isnan(unit_fe))
+    assert time_fe.shape == (T,)
+    assert not jnp.allclose(time_fe, jnp.zeros_like(time_fe))
+    assert not jnp.any(jnp.isnan(time_fe))
+    assert beta.shape == (J,)
+    assert not jnp.allclose(beta, jnp.zeros_like(beta))
+    assert not jnp.any(jnp.isnan(beta))
+    assert in_prod.shape == (N * T,)
+    assert not jnp.allclose(in_prod, jnp.zeros_like(in_prod))
+    assert not jnp.any(jnp.isnan(in_prod))
