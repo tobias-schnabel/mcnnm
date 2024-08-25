@@ -2,7 +2,7 @@ import pytest
 import jax.numpy as jnp
 import pandas as pd
 import numpy as np
-from mcnnm.utils import check_inputs, generate_data, convert_inputs
+from mcnnm.utils import check_inputs, generate_data, convert_inputs, propose_lambda
 from typing import Literal
 import jax
 from jax import random
@@ -536,3 +536,38 @@ def test_staggered_assignment_mechanism():
     # Check that Y and W have the expected shapes
     assert Y.shape == (nobs, nperiods)
     assert W.shape == (nobs, nperiods)
+
+
+def test_propose_lambda_default():
+    lambdas = propose_lambda(1.0)
+    assert len(lambdas) == 6
+    assert jnp.allclose(lambdas[0], 1e-3)
+    assert jnp.allclose(lambdas[-1], 1.0)
+
+
+def test_propose_lambda_custom():
+    lambdas = propose_lambda(10.0, 0.1, 5)
+    assert len(lambdas) == 5
+    assert jnp.allclose(lambdas[0], 0.1)
+    assert jnp.allclose(lambdas[-1], 10.0)
+
+
+def test_propose_lambda_small_max_lambda():
+    with pytest.raises(ValueError, match="max_lambda .* is too small"):
+        propose_lambda(1e-11)
+
+
+def test_propose_lambda_equal_max_min_lambda():
+    lambdas = propose_lambda(1.0, 1.0, 3)
+    assert len(lambdas) == 3
+    assert jnp.allclose(lambdas, jnp.ones(3))
+
+
+def test_propose_lambda_max_smaller_than_min():
+    with pytest.raises(ValueError):
+        propose_lambda(1.0, 10.0, 4)
+
+
+def test_propose_lambda_single_value():
+    with pytest.raises(ValueError):
+        propose_lambda(5.0, 5.0, 1)

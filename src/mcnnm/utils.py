@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 
-from .types import Array
+from .types import Array, Scalar
 
 
 def convert_inputs(
@@ -260,3 +260,38 @@ def generate_data(
     }
 
     return Y, W, X, Z, V, true_params
+
+
+def propose_lambda(
+    max_lambda: Scalar, min_lambda: Optional[Scalar] = None, n_lambdas: int = 6
+) -> Array:
+    """
+    Creates a log-spaced list of proposed lambda values between max_lambda and min_lambda.
+
+    Args:
+        max_lambda: The maximum lambda value.
+        min_lambda: The minimum lambda value. If None, it is set to max_lambda - 3 (in log10 scale).
+        n_lambdas: The number of lambda values to generate.
+
+    Returns:
+        Array: The sequence of proposed lambda values.
+
+    Raises:
+        ValueError: If max_lambda is smaller than the default minimum lambda value (1e-10).
+    """
+    min_log_lambda = jnp.log10(max_lambda) - 3 if min_lambda is None else jnp.log10(min_lambda)
+    max_log_lambda = jnp.log10(max_lambda)
+
+    if min_lambda and max_lambda < min_lambda:
+        raise ValueError("max_lambda must be greater than or equal to min_lambda.")
+
+    if max_log_lambda < -10:
+        raise ValueError(
+            f"max_lambda ({max_lambda}) is too small. It should be greater than or equal to 1e-10."
+        )
+    if n_lambdas < 2:
+        raise ValueError("n_lambdas must be greater than or equal to 2.")
+    # Ensure min_log_lambda is not smaller than a small positive value to avoid zero or negative lambdas
+    min_log_lambda = jnp.maximum(min_log_lambda, -10)
+
+    return jnp.logspace(min_log_lambda, max_log_lambda, n_lambdas)
