@@ -187,10 +187,10 @@ def generate_data(
     Z = jnp.array(np.random.normal(Z_mean, covariates_scale, (nperiods, 2))) if Z_cov else None
     Z_coef = np.random.normal(0, covariates_scale, 2) if Z_cov else np.array([])
     V = (
-        jnp.array(np.random.normal(V_mean, covariates_scale, (nobs, nperiods, 2)))
+        jnp.array(np.random.normal(V_mean, covariates_scale, (nobs, nperiods, 2)))  # type: ignore
         if V_cov
         else None
-    )  # type: ignore[assignment]
+    )  # type: ignore
     V_coef = np.random.normal(0, covariates_scale, 2) if V_cov else np.array([])
 
     # Generate autocorrelated errors
