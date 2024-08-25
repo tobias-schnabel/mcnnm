@@ -805,7 +805,8 @@ def fit(
         beta (Array): The initial unit-time-specific covariate coefficients vector of shape (J,).
         lambda_L (Scalar): The regularization parameter for the nuclear norm of L.
         lambda_H (Scalar): The regularization parameter for the element-wise L1 norm of H_tilde.
-        use_unit_fe (bool): Whether to include unit fixed effects in the decomposition.
+        use_unit_fe (bool): Whether to include unit fixed effects in the decomposition. Currently one of use_unit_fe or
+            use_time_fe must be True if covariates are used.
         use_time_fe (bool): Whether to include time fixed effects in the decomposition.
         niter (int, optional): The maximum number of iterations for the coordinate descent algorithm. Default is 1000.
         rel_tol (float, optional): The relative tolerance for convergence. Default is 1e-5.
