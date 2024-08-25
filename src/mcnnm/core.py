@@ -72,22 +72,6 @@ def initialize_matrices(
             - Z_tilde (Array): The augmented time-specific covariates matrix of shape (T, Q+T).
             - V (Array): The unit-time-specific covariates tensor of shape (N, T, J).
     """
-    # N, T = Y.shape
-    # L = jnp.zeros_like(Y)
-    # # Initialize covariates as 0 if not used
-    # if X is None:
-    #     X = jnp.zeros((N, 1))
-    # if Z is None:
-    #     Z = jnp.zeros((T, 1))
-    # if V is None:
-    #     V = jnp.zeros((N, T, 1))
-    #
-    #
-    # # Add identity matrices to X and Z to obtain X_tilde and Z_tilde
-    # X_tilde = jnp.concatenate((X, jnp.eye(N)), axis=1)
-    # Z_tilde = jnp.concatenate((Z, jnp.eye(T)), axis=1)
-    #
-    # return L, X_tilde, Z_tilde, V
     N, T = Y.shape
     P = X.shape[1] if X is not None else 0
     Q = Z.shape[1] if Z is not None else 0
@@ -249,7 +233,7 @@ def update_beta(
 
 
 @jit
-def compute_decomposition(
+def compute_Y_hat(
     L: Array,
     X_tilde: Array,
     Z_tilde: Array,
@@ -401,7 +385,7 @@ def compute_objective_value(
     train_size = jnp.sum(W)
     norm_H = element_wise_l1_norm(H_tilde)
 
-    Y_hat = compute_decomposition(
+    Y_hat = compute_Y_hat(
         L, X_tilde, Z_tilde, V, H_tilde, gamma, delta, beta, use_unit_fe, use_time_fe
     )
     error_matrix = Y_hat - Y
@@ -550,7 +534,7 @@ def initialize_fixed_effects_and_H(
     init_val = (1e10, 1e10, gamma, delta, 0)
     obj_val, _, gamma, delta, _ = lax.while_loop(cond_fun, body_fun, init_val)
 
-    Y_hat = compute_decomposition(
+    Y_hat = compute_Y_hat(
         L, X_tilde, Z_tilde, V, H_tilde, gamma, delta, beta, use_unit_fe, use_time_fe
     )
     masked_error_matrix = mask_observed(Y - Y_hat, W)
@@ -634,7 +618,7 @@ def update_H(
     H_tilde_rows, H_tilde_cols = X_tilde.shape[1], Z_tilde.shape[1]
     num_train = jnp.sum(W)
 
-    L_hat = compute_decomposition(
+    L_hat = compute_Y_hat(
         L, X_tilde, Z_tilde, V, H_tilde, unit_fe, time_fe, beta, use_unit_fe, use_time_fe
     )
     residual = (Y - L_hat) * W / jnp.sqrt(num_train)
@@ -746,7 +730,7 @@ def update_L(
         Tuple[Array, Array]: A tuple containing the updated low-rank matrix L and the singular values.
     """
     num_train = jnp.sum(W)
-    P_mat = compute_decomposition(
+    P_mat = compute_Y_hat(
         L, X_tilde, Z_tilde, V, H_tilde, unit_fe, time_fe, beta, use_unit_fe, use_time_fe
     )
     P_omega = Y - P_mat
