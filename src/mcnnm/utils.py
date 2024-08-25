@@ -182,11 +182,15 @@ def generate_data(
     V_mean = Y_mean - np.random.normal(4, 1)
 
     # Generate covariates and their coefficients
-    X = np.random.normal(X_mean, covariates_scale, (nobs, 2)) if X_cov else None
+    X = jnp.array(np.random.normal(X_mean, covariates_scale, (nobs, 2))) if X_cov else None
     X_coef = np.random.normal(0, covariates_scale, 2) if X_cov else np.array([])
-    Z = np.random.normal(Z_mean, covariates_scale, (nperiods, 2)) if Z_cov else None
+    Z = jnp.array(np.random.normal(Z_mean, covariates_scale, (nperiods, 2))) if Z_cov else None
     Z_coef = np.random.normal(0, covariates_scale, 2) if Z_cov else np.array([])
-    V = np.random.normal(V_mean, covariates_scale, (nobs, nperiods, 2)) if V_cov else None
+    V = (
+        jnp.array(np.random.normal(V_mean, covariates_scale, (nobs, nperiods, 2)))
+        if V_cov
+        else None
+    )  # type: ignore[assignment]
     V_coef = np.random.normal(0, covariates_scale, 2) if V_cov else np.array([])
 
     # Generate autocorrelated errors
@@ -204,8 +208,8 @@ def generate_data(
         + Y_mean
         + np.outer(unit_fe_values, np.ones(nperiods))
         + np.outer(np.ones(nobs), time_fe_values)
-        + (np.repeat(X @ X_coef, nperiods).reshape(nobs, nperiods) if X_cov else 0)
-        + (np.tile((Z @ Z_coef).reshape(1, -1), (nobs, 1)) if Z_cov else 0)
+        + (np.repeat(X @ X_coef, nperiods).reshape(nobs, nperiods) if X_cov else 0)  # type: ignore
+        + (np.tile((Z @ Z_coef).reshape(1, -1), (nobs, 1)) if Z_cov else 0)  # type: ignore
         + (np.sum(V * V_coef, axis=2) if V_cov else 0)
         + errors
     )
@@ -243,7 +247,7 @@ def generate_data(
     W = jnp.array(treat, dtype=jnp.float64)
     X = jnp.array(X) if X is not None else None
     Z = jnp.array(Z) if Z is not None else None
-    V = jnp.array(V) if V is not None else None
+    V = jnp.array(V) if V is not None else None  # type: ignore[assignment]
 
     true_params = {
         "L": L,
@@ -262,7 +266,7 @@ def generate_data(
         "Y(0)": jnp.array(Y_0),
     }
 
-    return Y, W, X, Z, V, true_params
+    return Y, W, X, Z, V, true_params  # type: ignore
 
 
 def propose_lambda(

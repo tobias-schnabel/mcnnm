@@ -540,7 +540,7 @@ def initialize_fixed_effects_and_H(
     masked_error_matrix = mask_observed(Y - Y_hat, W)
     s = jnp.linalg.svd(masked_error_matrix, compute_uv=False)
     lambda_L_max = 2.0 * jnp.max(s) / num_train
-    lambda_L_max = cast(Scalar, lambda_L_max)
+    lambda_L_max = cast(Scalar, lambda_L_max)  # type: ignore[assignment]
 
     T_mat = jnp.zeros((Y.size, H_rows * H_cols))
 
@@ -556,7 +556,7 @@ def initialize_fixed_effects_and_H(
     P_omega_resh = masked_error_matrix.ravel()
     all_Vs = jnp.dot(T_mat.T, P_omega_resh) / jnp.sqrt(num_train)
     lambda_H_max = 2 * jnp.max(jnp.abs(all_Vs))
-    lambda_H_max = cast(Scalar, lambda_H_max)
+    lambda_H_max = cast(Scalar, lambda_H_max)  # type: ignore[assignment]
 
     # Truncate the value to 5 decimal places for printing
     truncated_ov = jnp.round(obj_val, decimals=5)
@@ -813,7 +813,7 @@ def fit(
     _, singular_values, _ = jnp.linalg.svd(L, full_matrices=False)
     sum_sigma = jnp.sum(singular_values)
 
-    obj_val = compute_objective_value(
+    obj_val = compute_objective_value(  # type: ignore[assignment]
         Y,
         X_tilde,
         Z_tilde,
