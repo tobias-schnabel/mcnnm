@@ -851,7 +851,7 @@ def fit(
         obj_val, prev_obj_val, gamma, delta, beta, L, H_tilde, in_prod, i = carry
         gamma = update_unit_fe(Y, X_tilde, Z_tilde, H_tilde, W, L, delta, use_unit_fe)
         delta = update_time_fe(Y, X_tilde, Z_tilde, H_tilde, W, L, gamma, use_time_fe)
-        beta = update_beta(Y, X_tilde, Z_tilde, V, H_tilde, W, L, gamma, delta)  # TODO: FIX
+        beta = update_beta(Y, X_tilde, Z_tilde, V, H_tilde, W, L, gamma, delta)
         H_tilde, in_prod = update_H(
             Y,
             X_tilde,

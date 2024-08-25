@@ -1537,7 +1537,7 @@ def test_fit_no_time_fixed_effects():
     assert not jnp.allclose(Y_hat, jnp.zeros_like(Y_hat))
 
 
-def test_fit_no_fixed_effects():
+def test_fit_no_fixed_effects():  # TODO: Fix fit function to handle this case
     N, T = 5, 5
     Y, W, X, Z, V, true_params = generate_data(
         N, T, unit_fe=False, time_fe=False, seed=2024, noise_scale=0.1
@@ -1580,9 +1580,9 @@ def test_fit_no_fixed_effects():
 
     assert H_out.shape == H_tilde.shape
     assert not jnp.allclose(H_out, jnp.zeros_like(H_out))
-    # assert not jnp.any(jnp.isnan(H_out)) TODO
+    # assert not jnp.any(jnp.isnan(H_out))
     assert L_out.shape == (N, T)
-    # assert not jnp.any(jnp.isnan(L_out)) TODO
+    # assert not jnp.any(jnp.isnan(L_out))
     assert gamma_out.shape == (N,)
     assert jnp.allclose(gamma_out, jnp.zeros_like(gamma_out))
     assert not jnp.any(jnp.isnan(gamma_out))
@@ -1590,16 +1590,16 @@ def test_fit_no_fixed_effects():
     assert jnp.allclose(delta_out, jnp.zeros_like(delta_out))
     assert not jnp.any(jnp.isnan(delta_out))
     assert not jnp.allclose(beta_out, jnp.zeros_like(beta_out))
-    # assert not jnp.any(jnp.isnan(beta_out))  TODO
+    # assert not jnp.any(jnp.isnan(beta_out))
     assert not jnp.allclose(in_prod, jnp.zeros_like(in_prod))
-    # assert not jnp.any(jnp.isnan(in_prod)) TODO
+    # assert not jnp.any(jnp.isnan(in_prod))
 
     # reconstruct Y
     Y_hat = compute_Y_hat(
         L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True
     )
     assert Y_hat.shape == Y.shape
-    # assert not jnp.any(jnp.isnan(Y_hat)) TODO
+    # assert not jnp.any(jnp.isnan(Y_hat))
     assert not jnp.allclose(Y_hat, jnp.zeros_like(Y_hat))
 
 
