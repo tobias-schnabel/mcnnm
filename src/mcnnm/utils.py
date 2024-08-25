@@ -1,9 +1,12 @@
 from typing import Optional, Tuple, List, Literal, Dict
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 
 from .types import Array, Scalar
+
+jax.config.update("jax_enable_x64", True)
 
 
 def convert_inputs(
@@ -295,3 +298,57 @@ def propose_lambda(
     min_log_lambda = jnp.maximum(min_log_lambda, -10)
 
     return jnp.logspace(min_log_lambda, max_log_lambda, n_lambdas)
+
+
+def generate_lambda_grid(max_lambda_L, max_lambda_H, n_lambda):
+    """
+    Generates a grid of lambda values for the MC-NNM model.
+
+    This function creates a 2D grid of lambda values by generating log-spaced sequences
+    for both lambda_L and lambda_H, and then forming a meshgrid from these sequences.
+
+    Args:
+        max_lambda_L (float): The maximum lambda value for the L dimension.
+        max_lambda_H (float): The maximum lambda value for the H dimension.
+        n_lambda (int): The number of lambda values to generate for both dimensions.
+
+    Returns:
+        jnp.ndarray: A 2D array where each row represents a pair of lambda values (lambda_L, lambda_H).
+    """
+    lambda_L_values = propose_lambda(max_lambda_L, n_lambdas=n_lambda)
+    lambda_H_values = propose_lambda(max_lambda_H, n_lambdas=n_lambda)
+
+    lambda_grid = jnp.array(jnp.meshgrid(lambda_L_values, lambda_H_values)).T.reshape(-1, 2)
+    return lambda_grid
+
+
+def extract_shortest_path(lambda_grid):
+    """
+    Extracts the shortest path along the edges of a 2D lambda grid.
+
+    This function traverses the edges of the given lambda grid starting from the top-left corner
+    (highest lambda_L and lambda_H), moving down to the bottom-left corner (lowest lambda_L, highest lambda_H),
+    and then right to the bottom-right corner (lowest lambda_L and lambda_H).
+
+    Args:
+        lambda_grid (jnp.ndarray): A 2D array representing the flattened lambda grid.
+
+    Returns:
+        jnp.ndarray: A 2D array containing the lambda pairs along the shortest path.
+    """
+    # Infer n_lambda_L and n_lambda_H from the grid shape
+    total_points = lambda_grid.shape[0]
+    n_lambda_L = int(jnp.sqrt(total_points))
+    n_lambda_H = n_lambda_L  # Assuming a square grid
+
+    shortest_path = []
+
+    # Add the top edge of the grid (fixed highest lambda_L, decreasing lambda_H)
+    for j in range(n_lambda_H - 1, -1, -1):
+        shortest_path.append(lambda_grid[(n_lambda_L - 1) * n_lambda_H + j])
+
+    # Add the left edge of the grid (decreasing lambda_L, fixed lowest lambda_H)
+    for i in range(n_lambda_L - 2, -1, -1):
+        shortest_path.append(lambda_grid[i * n_lambda_H])
+
+    return jnp.array(shortest_path)

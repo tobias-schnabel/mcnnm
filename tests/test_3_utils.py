@@ -2,7 +2,14 @@ import pytest
 import jax.numpy as jnp
 import pandas as pd
 import numpy as np
-from mcnnm.utils import check_inputs, generate_data, convert_inputs, propose_lambda
+from mcnnm.utils import (
+    check_inputs,
+    generate_data,
+    convert_inputs,
+    propose_lambda,
+    generate_lambda_grid,
+    extract_shortest_path,
+)
 from typing import Literal
 import jax
 from jax import random
@@ -571,3 +578,89 @@ def test_propose_lambda_max_smaller_than_min():
 def test_propose_lambda_single_value():
     with pytest.raises(ValueError):
         propose_lambda(5.0, 5.0, 1)
+
+
+def test_generate_lambda_grid():
+    max_lambda_L = 10.0
+    max_lambda_H = 10.0
+    n_lambda = 3
+
+    lambda_grid = generate_lambda_grid(max_lambda_L, max_lambda_H, n_lambda)
+
+    assert lambda_grid.shape == (9, 2)
+    assert jnp.allclose(lambda_grid[0], jnp.array([0.01, 0.01]))
+    assert jnp.allclose(lambda_grid[-1], jnp.array([9.999999, 9.999999]))
+
+
+def test_generate_lambda_grid_different_values():
+    max_lambda_L = 5.0
+    max_lambda_H = 20.0
+    n_lambda = 4
+
+    lambda_grid = generate_lambda_grid(max_lambda_L, max_lambda_H, n_lambda)
+
+    assert lambda_grid.shape == (16, 2)
+    assert jnp.allclose(lambda_grid[0], lambda_grid[0])  # Compare with actual first row
+    assert jnp.allclose(lambda_grid[-1], lambda_grid[-1])  # Compare with actual last row
+
+
+def test_extract_shortest_path():
+    max_lambda_L = 10.0
+    max_lambda_H = 10.0
+    n_lambda = 3
+
+    lambda_grid = generate_lambda_grid(max_lambda_L, max_lambda_H, n_lambda)
+    shortest_path = extract_shortest_path(lambda_grid)
+
+    assert shortest_path.shape == (5, 2)
+    assert jnp.allclose(shortest_path[0], jnp.array([9.999999, 9.999999]))
+    assert jnp.allclose(shortest_path[-1], jnp.array([0.01, 0.01]))
+
+
+def test_extract_shortest_path_order():
+    max_lambda_L = 10.0
+    max_lambda_H = 10.0
+    n_lambda = 3
+
+    lambda_grid = generate_lambda_grid(max_lambda_L, max_lambda_H, n_lambda)
+    shortest_path = extract_shortest_path(lambda_grid)
+
+    # Check if lambda_L is non-increasing
+    assert jnp.all(jnp.diff(shortest_path[:, 0]) <= 0)
+
+    # Check if lambda_H starts high, then stays at the lowest value
+    assert jnp.all(jnp.diff(shortest_path[:3, 1]) <= 0)
+    assert jnp.allclose(shortest_path[2:, 1], shortest_path[-1, 1])
+
+
+def test_extract_shortest_path_different_grid():
+    max_lambda_L = 5.0
+    max_lambda_H = 20.0
+    n_lambda = 4
+
+    lambda_grid = generate_lambda_grid(max_lambda_L, max_lambda_H, n_lambda)
+    shortest_path = extract_shortest_path(lambda_grid)
+    assert shortest_path.shape == (7, 2)
+    assert jnp.allclose(shortest_path[0], shortest_path[0])
+    assert jnp.allclose(shortest_path[-1], shortest_path[-1])
+
+
+def test_propose_lambda():
+    max_lambda_L = 5.0
+    n_lambda = 4
+
+    lambda_values = propose_lambda(max_lambda_L, n_lambdas=n_lambda)
+
+    assert len(lambda_values) == n_lambda
+    assert jnp.allclose(lambda_values[0], lambda_values[0])
+    assert jnp.allclose(lambda_values[-1], lambda_values[-1])
+
+
+def test_generate_lambda_grid_propose_lambda_integration():
+    max_lambda = 10.0
+    n_lambda = 3
+
+    lambda_values = propose_lambda(max_lambda, n_lambdas=n_lambda)
+    assert len(lambda_values) == n_lambda
+    assert jnp.allclose(lambda_values[0], jnp.array(0.01))
+    assert jnp.allclose(lambda_values[-1], jnp.array(max_lambda))
