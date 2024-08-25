@@ -63,7 +63,7 @@ def cross_validate(
         Tuple[Scalar, Scalar]: A tuple containing the optimal lambda_L and lambda_H values.
     """
     N = Y.shape[0]
-    fold_size = N // K
+    fold_size = N // K  # type: ignore
 
     def loss_fn(lambda_L_H):
         lambda_L, lambda_H = lambda_L_H
