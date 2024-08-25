@@ -9,6 +9,7 @@ from mcnnm.utils import (
     propose_lambda,
     generate_lambda_grid,
     extract_shortest_path,
+    generate_time_based_validate_defaults,
 )
 from typing import Literal
 import jax
@@ -664,3 +665,25 @@ def test_generate_lambda_grid_propose_lambda_integration():
     assert len(lambda_values) == n_lambda
     assert jnp.allclose(lambda_values[0], jnp.array(0.01))
     assert jnp.allclose(lambda_values[-1], jnp.array(max_lambda))
+
+
+@pytest.fixture
+def sample_data():
+    key = random.PRNGKey(2024)
+    N, T, P, Q, J = 10, 5, 3, 2, 4
+    Y = random.normal(key, (N, T))
+    W = random.bernoulli(key, 0.2, (N, T))
+    X = random.normal(key, (N, P))
+    Z = random.normal(key, (T, Q))
+    V = random.normal(key, (N, T, J))
+    return Y, W, X, Z, V
+
+
+def test_generate_time_based_validate_defaults_happy_path():
+    Y = jnp.ones((10, 5))
+    initial_window, step_size, horizon, K, T = generate_time_based_validate_defaults(Y)
+    assert initial_window == 4
+    assert step_size == 1
+    assert horizon == 1
+    assert K == 5
+    assert T == 5

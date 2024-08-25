@@ -356,3 +356,30 @@ def extract_shortest_path(lambda_grid):
         shortest_path.append(lambda_grid[i * n_lambda_H])
 
     return jnp.array(shortest_path)
+
+
+def generate_time_based_validate_defaults(Y: Array):
+    """
+    Generates default parameters for time-based validation.
+
+    This function calculates default values for various parameters used in time-based validation,
+    including the initial window size, step size, horizon, and lambda grid.
+
+    Args:
+        Y (Array): The observed outcome matrix of shape (N, T).
+
+    Returns:
+        dict: A dictionary containing the default parameters for time-based validation.
+            - initial_window (int): Number of initial time periods to use for the first training set.
+            - step_size (int): Number of time periods to move forward for each split.
+            - horizon (int): Number of future time periods to predict (forecast horizon).
+    """
+    N, T = Y.shape
+    T = int(T)
+
+    initial_window = int(0.8 * T)
+    K = 5
+    step_size = max(1, (T - initial_window) // K)
+    horizon = step_size
+
+    return initial_window, step_size, horizon, K, T
