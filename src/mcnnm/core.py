@@ -289,13 +289,6 @@ def compute_Y_hat(
     V_beta_term = jnp.einsum("ntj,j->nt", V, beta)
     decomposition += V_beta_term
 
-    lax.cond(
-        jnp.any(decomposition) < 0,
-        lambda _: jdb.print("Negative decomposition value"),
-        lambda _: None,
-        None,
-    )
-
     return decomposition
 
 
@@ -403,38 +396,38 @@ def compute_objective_value(
     error_mask = mask_observed(error_matrix, W)  # mask the error matrix
     weighted_error_term = (1 / train_size) * jnp.trace(error_mask @ inv_omega @ error_mask.T)
 
-    lax.cond(
-        weighted_error_term < 0,
-        lambda _: jdb.print("WARNING: Negative weighted error term"),
-        lambda _: None,
-        None,
-    )
+    # lax.cond(
+    #     weighted_error_term < 0,
+    #     lambda _: jdb.print("WARNING: Negative weighted error term"),
+    #     lambda _: None,
+    #     None,
+    # )
     L_regularization_term = lambda_L * sum_sing_vals
 
-    lax.cond(
-        L_regularization_term < 0,
-        lambda _: jdb.print("WARNING: Negative L regularization term"),
-        lambda _: None,
-        None,
-    )
+    # lax.cond(
+    #     L_regularization_term < 0,
+    #     lambda _: jdb.print("WARNING: Negative L regularization term"),
+    #     lambda _: None,
+    #     None,
+    # )
 
     H_regularization_term = lambda_H * norm_H
 
-    lax.cond(
-        H_regularization_term < 0,
-        lambda _: jdb.print("WARNING: Negative H regularization term"),
-        lambda _: None,
-        None,
-    )
+    # lax.cond(
+    #     H_regularization_term < 0,
+    #     lambda _: jdb.print("WARNING: Negative H regularization term"),
+    #     lambda _: None,
+    #     None,
+    # )
 
     obj_val = weighted_error_term + L_regularization_term + H_regularization_term
-
-    lax.cond(
-        obj_val < 0,
-        lambda _: jdb.print("WARNING: NEGATIVE Objective function value: {ov}", ov=obj_val),
-        lambda _: None,
-        None,
-    )
+    # fov = obj_val.copy()
+    # lax.cond(
+    #     fov < 0,
+    #     lambda _: jdb.print("WARNING: NEGATIVE Objective function value: {ov}", ov=fov),
+    #     lambda _: None,
+    #     None,
+    # )
 
     return obj_val
 
@@ -765,6 +758,7 @@ def fit(
     lambda_H: Scalar,
     use_unit_fe: bool,
     use_time_fe: bool,
+    Omega_inv: Optional[Array] = None,
     niter: int = 1000,
     rel_tol: float = 1e-5,
     verbose: bool = False,
@@ -791,7 +785,9 @@ def fit(
         lambda_H (Scalar): The regularization parameter for the element-wise L1 norm of H_tilde.
         use_unit_fe (bool): Whether to include unit fixed effects in the decomposition. Currently one of use_unit_fe or
             use_time_fe must be True if covariates are used.
-        use_time_fe (bool): Whether to include time fixed effects in the decomposition.
+        use_time_fe (bool): Whether to include time fixed effects in the decomposition. Currently one of use_unit_fe or
+            use_time_fe must be True if covariates are used.
+        Omega_inv (Optional[Array]): The inverse of the omega matrix of shape (T, T). If None, the identity matrix is
         niter (int, optional): The maximum number of iterations for the coordinate descent algorithm. Default is 1000.
         rel_tol (float, optional): The relative tolerance for convergence. Default is 1e-5.
         verbose (bool, optional): Whether to print the objective value at each iteration. Default is False.
@@ -829,6 +825,7 @@ def fit(
         lambda_H,
         use_unit_fe,
         use_time_fe,
+        inv_omega=Omega_inv,
     )
 
     def cond_fun(carry):
@@ -905,6 +902,7 @@ def fit(
             lambda_H,
             use_unit_fe,
             use_time_fe,
+            inv_omega=Omega_inv,
         )
 
         lax.cond(
