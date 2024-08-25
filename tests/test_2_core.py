@@ -15,7 +15,7 @@ from mcnnm.core import (
     update_time_fe,
     initialize_matrices,
     compute_objective_value,
-    compute_decomposition,
+    compute_Y_hat,
     initialize_fixed_effects_and_H,
     svt,
     update_H,
@@ -131,7 +131,7 @@ def update_time_fe_numpy(
     b_ = T_ + L + np.expand_dims(unit_fe, axis=1) - Y
     b_mask_ = b_ * W
     l = np.sum(W, axis=0)
-    res = np.where(l > 0, -np.sum(b_mask_, axis=0) / l, 0.0)
+    res = np.where(l > 0, -np.sum(b_mask_, axis=0) / (l + 1e-8), 0.0)
     return np.where(use_time_fe, res, np.zeros_like(res))
 
 
@@ -166,10 +166,10 @@ def compute_beta_numpy(
 
     V_b_prod_ = np.einsum("ntj,nt->j", V_mask_, b_mask_)
 
-    return np.where(V_sum_ > 0, -V_b_prod_ / V_sum_, 0.0)
+    return np.where(V_sum_ > 0, -V_b_prod_ / (V_sum_ + 1e-8), 0.0)
 
 
-def compute_decomposition_numpy(
+def compute_Y_hat_numpy(
     L: np.ndarray,
     X: np.ndarray,
     Z: np.ndarray,
@@ -239,9 +239,7 @@ def compute_objective_value_numpy(
     if inv_omega is None:
         inv_omega = np.eye(T)
 
-    est_mat = compute_decomposition_numpy(
-        L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe
-    )
+    est_mat = compute_Y_hat_numpy(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
 
     err_mat = est_mat - Y
     err_mask = err_mat * W
@@ -307,7 +305,7 @@ def initialize_fixed_effects_and_H_numpy(
         prev_obj_val = obj_val
         obj_val = new_obj_val
 
-    Y_hat = compute_decomposition_numpy(
+    Y_hat = compute_Y_hat_numpy(
         L, X_tilde, Z_tilde, V, H_tilde, gamma, delta, beta, use_unit_fe, use_time_fe
     )
     masked_error_matrix = mask_observed_numpy(Y - Y_hat, W)
@@ -651,7 +649,7 @@ def test_initialize_matrices_no_time_fe():
     assert jnp.allclose(L, jnp.zeros_like(L))
 
 
-def test_compute_decomposition():
+def test_compute_Y_hat():
     # Set random seed for reproducibility
     key = random.PRNGKey(0)
 
@@ -669,40 +667,40 @@ def test_compute_decomposition():
     # Test with both unit and time fixed effects
     use_unit_fe = True
     use_time_fe = True
-    expected_output = compute_decomposition_numpy(
+    expected_output = compute_Y_hat_numpy(
         L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe
     )
-    output = compute_decomposition(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
+    output = compute_Y_hat(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
     assert jnp.allclose(output, expected_output)
     assert not jnp.allclose(output, jnp.zeros_like(output))
 
     # Test with only unit fixed effects
     use_unit_fe = True
     use_time_fe = False
-    expected_output = compute_decomposition_numpy(
+    expected_output = compute_Y_hat_numpy(
         L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe
     )
-    output = compute_decomposition(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
+    output = compute_Y_hat(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
     assert jnp.allclose(output, expected_output)
     assert not jnp.allclose(output, jnp.zeros_like(output))
 
     # Test with only time fixed effects
     use_unit_fe = False
     use_time_fe = True
-    expected_output = compute_decomposition_numpy(
+    expected_output = compute_Y_hat_numpy(
         L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe
     )
-    output = compute_decomposition(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
+    output = compute_Y_hat(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
     assert jnp.allclose(output, expected_output)
     assert not jnp.allclose(output, jnp.zeros_like(output))
 
     # Test without fixed effects
     use_unit_fe = False
     use_time_fe = False
-    expected_output = compute_decomposition_numpy(
+    expected_output = compute_Y_hat_numpy(
         L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe
     )
-    output = compute_decomposition(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
+    output = compute_Y_hat(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
     assert jnp.allclose(output, expected_output)
     assert not jnp.allclose(output, jnp.zeros_like(output))
 
@@ -1194,7 +1192,7 @@ def test_fit_happy_path():
     assert not jnp.any(jnp.isnan(in_prod))
 
     # reconstruct Y
-    Y_hat = compute_decomposition(
+    Y_hat = compute_Y_hat(
         L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True
     )
     assert Y_hat.shape == Y.shape
@@ -1249,7 +1247,7 @@ def test_fit_no_X_covariates():
     assert not jnp.any(jnp.isnan(in_prod))
 
     # reconstruct Y
-    Y_hat = compute_decomposition(
+    Y_hat = compute_Y_hat(
         L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True
     )
     assert Y_hat.shape == Y.shape
@@ -1304,7 +1302,7 @@ def test_fit_no_Z_covariates():
     assert not jnp.any(jnp.isnan(in_prod))
 
     # reconstruct Y
-    Y_hat = compute_decomposition(
+    Y_hat = compute_Y_hat(
         L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True
     )
     assert Y_hat.shape == Y.shape
@@ -1359,7 +1357,7 @@ def test_fit_no_V_covariates():
     assert not jnp.any(jnp.isnan(in_prod))
 
     # reconstruct Y
-    Y_hat = compute_decomposition(
+    Y_hat = compute_Y_hat(
         L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True
     )
     assert Y_hat.shape == Y.shape
@@ -1416,7 +1414,7 @@ def test_fit_no_covariates():
     assert not jnp.any(jnp.isnan(in_prod))
 
     # reconstruct Y
-    Y_hat = compute_decomposition(
+    Y_hat = compute_Y_hat(
         L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True
     )
     assert Y_hat.shape == Y.shape
@@ -1474,7 +1472,7 @@ def test_fit_no_unit_fixed_effects():
     assert not jnp.any(jnp.isnan(in_prod))
 
     # reconstruct Y
-    Y_hat = compute_decomposition(
+    Y_hat = compute_Y_hat(
         L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True
     )
     assert Y_hat.shape == Y.shape
@@ -1531,7 +1529,7 @@ def test_fit_no_time_fixed_effects():
     assert not jnp.any(jnp.isnan(in_prod))
 
     # reconstruct Y
-    Y_hat = compute_decomposition(
+    Y_hat = compute_Y_hat(
         L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True
     )
     assert Y_hat.shape == Y.shape
@@ -1597,7 +1595,7 @@ def test_fit_no_fixed_effects():
     # assert not jnp.any(jnp.isnan(in_prod)) TODO
 
     # reconstruct Y
-    Y_hat = compute_decomposition(
+    Y_hat = compute_Y_hat(
         L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True
     )
     assert Y_hat.shape == Y.shape
@@ -1670,7 +1668,7 @@ def test_fit_no_fixed_effects_no_covariates():
     assert not jnp.any(jnp.isnan(in_prod))
 
     # reconstruct Y
-    Y_hat = compute_decomposition(
+    Y_hat = compute_Y_hat(
         L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, False, False
     )
     assert Y_hat.shape == Y.shape
