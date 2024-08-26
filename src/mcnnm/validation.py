@@ -1,95 +1,111 @@
 from typing import Tuple, Optional
 
 import jax
-import jax.debug as jdb
 import jax.numpy as jnp
 
-from .core import fit
-from .types import Array, Scalar
+from .core import fit, initialize_matrices, initialize_fixed_effects_and_H
+from .utils import generate_lambda_grid, extract_shortest_path
+from .types import Array
 
 
 def cross_validate(
     Y: Array,
-    W: Array,
-    X_tilde: Array,
-    Z_tilde: Array,
+    X: Array,
+    Z: Array,
     V: Array,
-    Omega_inv: Optional[Array],
-    L: Array,
-    gamma: Array,
-    delta: Array,
-    beta: Array,
-    H_tilde: Array,
-    T_mat: Array,
-    in_prod: Array,
-    in_prod_T: Array,
+    W: Array,
+    Omega_inv: Array,
     use_unit_fe: bool,
     use_time_fe: bool,
-    lambda_grid: Array,
+    num_lam: int,
     max_iter: Optional[int] = 1000,
     tol: Optional[float] = 1e-5,
+    cv_ratio: Optional[float] = 0.8,
     K: Optional[int] = 5,
-) -> Tuple[Scalar, Scalar]:
-    """
-    Perform K-fold cross-validation to select optimal regularization parameters for the MC-NNM model.
+) -> Tuple[Array, Array]:
+    N, T = Y.shape
 
-    This function splits the data into K folds along the unit dimension, trains the model on K-1 folds,
-    and evaluates it on the remaining fold. This process is repeated for all folds and all lambda pairs
-    in the lambda_grid. The lambda pair that yields the lowest average loss across all folds is selected.
+    def create_folds(key):
+        def create_fold_mask(key):
+            return jax.random.bernoulli(key, cv_ratio, shape=(N, T))
 
-    Args:
-        Y (Array): The observed outcome matrix of shape (N, T).
-        W (Array): The binary treatment matrix of shape (N, T).
-        X_tilde (Array): The augmented unit-specific covariates matrix of shape (N, P+N).
-        Z_tilde (Array): The augmented time-specific covariates matrix of shape (T, Q+T).
-        V (Array): The unit-time specific covariates tensor of shape (N, T, J).
-        Omega_inv (Array, optional): The autocorrelation matrix of shape (T, T). Defaults to an Identity matrix.
-        L (Array): The initialized low-rank matrix of shape (N, T).
-        gamma (Array): The initialized unit fixed effects vector of shape (N,).
-        delta (Array): The initialized time fixed effects vector of shape (T,).
-        beta (Array): The initialized unit-time specific covariate coefficients vector of shape (J,).
-        H_tilde (Array): The initialized covariate coefficients matrix of shape (P+N, Q+T).
-        T_mat (Array): The precomputed matrix T of shape (N * T, (P+N) * (Q+T)).
-        in_prod (Array): The inner product vector of shape (N * T,).
-        in_prod_T (Array): The inner product vector of T of shape ((P+N) * (Q+T),).
-        use_unit_fe (bool): Whether to use unit fixed effects.
-        use_time_fe (bool): Whether to use time fixed effects.
-        lambda_grid (Array): Grid of (lambda_L, lambda_H) pairs to search over.
-        max_iter (int, optional): Maximum number of iterations for fitting the model in each fold. Default is 1000.
-        tol (float, optional): Convergence tolerance for fitting the model in each fold. Default is 1e-5.
-        K (int, optional): Number of folds for cross-validation. Default is 5.
+        keys = jax.random.split(key, K)
+        fold_masks = jax.vmap(create_fold_mask)(keys)
+        return fold_masks * W
 
-    Returns:
-        Tuple[Scalar, Scalar]: A tuple containing the optimal lambda_L and lambda_H values.
-    """
-    N = Y.shape[0]
-    fold_size = N // K  # type: ignore
+    fold_masks = create_folds(jax.random.PRNGKey(2024))
+    L, X_tilde, Z_tilde, V = initialize_matrices(Y, X, Z, V)
 
-    def loss_fn(lambda_L_H):
-        lambda_L, lambda_H = lambda_L_H
+    def initialize_fold(fold_mask):
+        Y_train = Y * fold_mask
+        W_train = W * fold_mask
 
-        def fold_loss(k):
-            mask = (jnp.arange(N) >= k * fold_size) & (jnp.arange(N) < (k + 1) * fold_size)
+        (
+            gamma_init,
+            delta_init,
+            beta_init,
+            H_tilde_init,
+            T_mat_init,
+            in_prod_T_init,
+            in_prod_init,
+            lambda_L_max,
+            lambda_H_max,
+        ) = initialize_fixed_effects_and_H(
+            Y_train, L, X_tilde, Z_tilde, V, W_train, use_unit_fe, use_time_fe, verbose=False
+        )
+        return (
+            gamma_init,
+            delta_init,
+            beta_init,
+            H_tilde_init,
+            T_mat_init,
+            in_prod_T_init,
+            in_prod_init,
+            lambda_L_max,
+            lambda_H_max,
+            fold_mask,
+        )
 
-            Y_train = jnp.where(mask[:, None], jnp.zeros_like(Y), Y)
-            W_train = jnp.where(mask[:, None], jnp.zeros_like(W), W)
-            X_tilde_train = jnp.where(mask[:, None], jnp.zeros_like(X_tilde), X_tilde)
-            V_train = jnp.where(mask[:, None, None], jnp.zeros_like(V), V)
+    fold_configs = jax.vmap(initialize_fold)(fold_masks)
 
-            _, _, _, _, _, _, loss = fit(
+    max_lambda_L = jnp.max(fold_configs[7])
+    max_lambda_H = jnp.max(fold_configs[8])
+
+    full_lambda_grid = generate_lambda_grid(max_lambda_L, max_lambda_H, num_lam)
+    shortest_path = extract_shortest_path(full_lambda_grid)
+    lambda_grid = jnp.vstack((shortest_path, jnp.array([[0.0, 0.0]])))
+
+    def fold_loss(
+        gamma_init,
+        delta_init,
+        beta_init,
+        H_tilde_init,
+        T_mat_init,
+        in_prod_T_init,
+        in_prod_init,
+        lambda_L_max,
+        lambda_H_max,
+        fold_mask,
+    ):  # fold_config
+        Y_train = Y * fold_mask
+        W_train = W * fold_mask
+
+        def compute_loss(L, lambda_L_H):
+            lambda_L, lambda_H = lambda_L_H
+            _, L_new, _, _, _, _, loss = fit(
                 Y=Y_train,
-                X_tilde=X_tilde_train,
+                X_tilde=X_tilde,
                 Z_tilde=Z_tilde,
-                V=V_train,
-                H_tilde=H_tilde,
-                T_mat=T_mat,
-                in_prod=in_prod,
-                in_prod_T=in_prod_T,
+                V=V,
+                H_tilde=H_tilde_init,
+                T_mat=T_mat_init,
+                in_prod=in_prod_init,
+                in_prod_T=in_prod_T_init,
                 W=W_train,
                 L=L,
-                gamma=gamma,
-                delta=delta,
-                beta=beta,
+                gamma=gamma_init,
+                delta=delta_init,
+                beta=beta_init,
                 lambda_L=lambda_L,
                 lambda_H=lambda_H,
                 use_unit_fe=use_unit_fe,
@@ -99,28 +115,24 @@ def cross_validate(
                 rel_tol=tol,
             )
 
-            return loss
+            def compute_rmse(loss):
+                return jnp.sqrt(loss)
 
-        def fold_loss_wrapper(i, acc):
-            return acc + fold_loss(i)
+            def return_inf(loss):
+                return jnp.inf
 
-        losses = jax.lax.fori_loop(0, K, fold_loss_wrapper, 0.0)
+            fold_rmse = jax.lax.cond(loss >= 0, compute_rmse, return_inf, loss)
 
-        return jnp.mean(losses)
+            return L_new, fold_rmse
 
-    losses = jax.vmap(loss_fn)(lambda_grid)
+        _, fold_rmses = jax.lax.scan(compute_loss, L, lambda_grid)
+        return fold_rmses
 
-    def select_best_lambda(_):
-        best_idx = jnp.argmin(losses)
-        return lambda_grid[best_idx]
+    fold_rmses = jax.vmap(fold_loss, in_axes=(0, 0, 0, 0, 0, 0, 0, 0, 0, 0))(*fold_configs)
+    min_index = jnp.argmin(jnp.stack(fold_rmses))
+    # mean_rmses = jnp.mean(fold_rmses, axis=0)
+    # min_idx = jnp.argmin(mean_rmses)
 
-    def use_default_lambda(_):
-        mid_idx = len(lambda_grid) // 2
-        jdb.print("No finite losses found. Using default lambda values.")
-        return lambda_grid[mid_idx]
+    best_lambda_L, best_lambda_H = lambda_grid[min_index]
 
-    best_lambda_L_H = jax.lax.cond(
-        jnp.any(jnp.isfinite(losses)), select_best_lambda, use_default_lambda, operand=None
-    )
-
-    return best_lambda_L_H[0], best_lambda_L_H[1]
+    return best_lambda_L, best_lambda_H
