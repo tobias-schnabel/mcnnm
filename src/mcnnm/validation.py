@@ -270,7 +270,7 @@ def holdout_validate(
         print("Warning: Not enough data for holdout validation. Using fewer folds.")
     if holdout_masks.shape[0] == 0:
         print("Error: No data available for holdout validation. Exiting.")
-        return jnp.nan, jnp.nan
+        return (jnp.array(jnp.nan), jnp.array(jnp.nan))
     L, X_tilde, Z_tilde, V = initialize_matrices(Y, X, Z, V)
 
     def initialize_holdout(holdout_mask):
