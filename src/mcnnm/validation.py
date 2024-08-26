@@ -125,7 +125,7 @@ def cross_validate(
         lambda_L_max,
         lambda_H_max,
         fold_mask,
-    ):  # fold_config
+    ):
         Y_train = Y * fold_mask
         W_train = W * fold_mask
 
@@ -250,7 +250,7 @@ def holdout_validate(
     """
     N, T = Y.shape
 
-    def create_holdout_masks(initial_window, step_size, horizon, K, max_window_size):
+    def create_holdout_masks(W, initial_window, step_size, horizon, K, max_window_size):
         masks = []
         start_index = initial_window
         for _ in range(K):
@@ -259,16 +259,22 @@ def holdout_validate(
                 start_index = max(end_index - max_window_size, 0)
             mask = jnp.zeros((N, T), dtype=bool)
             mask = mask.at[:, :end_index].set(True)
-            masks.append(mask)
-            start_index += step_size
+            n_train = jnp.sum(W * mask)
+            if n_train > 0:
+                masks.append(mask)
+                start_index += step_size
         return jnp.array(masks)
 
-    holdout_masks = create_holdout_masks(initial_window, step_size, horizon, K, max_window_size)
+    holdout_masks = create_holdout_masks(W, initial_window, step_size, horizon, K, max_window_size)
+    if holdout_masks.shape[0] < K:
+        print("Warning: Not enough data for holdout validation. Using fewer folds.")
+    if holdout_masks.shape[0] == 0:
+        print("Error: No data available for holdout validation. Exiting.")
+        return jnp.nan, jnp.nan
     L, X_tilde, Z_tilde, V = initialize_matrices(Y, X, Z, V)
 
     def initialize_holdout(holdout_mask):
-        mask = jnp.array(holdout_mask)
-        Y_train = Y * mask
+        Y_train = Y * holdout_mask
         W_train = W * holdout_mask
 
         (
