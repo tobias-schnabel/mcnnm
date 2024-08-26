@@ -928,12 +928,12 @@ def fit(
         cond_fun, body_fun, init_val
     )
 
-    lax.cond(
-        term_iter == niter,
-        lambda _: jax.debug.print("WARNING: Did not converge"),
-        lambda _: None,
-        None,
-    )
+    # lax.cond(
+    #     term_iter == niter,
+    #     lambda _: jax.debug.print("WARNING: Did not converge"),
+    #     lambda _: None,
+    #     None,
+    # )
 
     lax.cond(
         verbose,

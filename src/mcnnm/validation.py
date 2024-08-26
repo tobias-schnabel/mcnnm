@@ -130,8 +130,6 @@ def cross_validate(
 
     fold_rmses = jax.vmap(fold_loss, in_axes=(0, 0, 0, 0, 0, 0, 0, 0, 0, 0))(*fold_configs)
     min_index = jnp.argmin(jnp.stack(fold_rmses))
-    # mean_rmses = jnp.mean(fold_rmses, axis=0)
-    # min_idx = jnp.argmin(mean_rmses)
 
     best_lambda_L, best_lambda_H = lambda_grid[min_index]
 
