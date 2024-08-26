@@ -681,9 +681,8 @@ def sample_data():
 
 def test_generate_time_based_validate_defaults_happy_path():
     Y = jnp.ones((10, 5))
-    initial_window, step_size, horizon, K, T = generate_time_based_validate_defaults(Y)
+    initial_window, step_size, horizon, K = generate_time_based_validate_defaults(Y)
     assert initial_window == 4
     assert step_size == 1
     assert horizon == 1
     assert K == 5
-    assert T == 5

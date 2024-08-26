@@ -382,4 +382,4 @@ def generate_time_based_validate_defaults(Y: Array):
     step_size = max(1, (T - initial_window) // K)
     horizon = step_size
 
-    return initial_window, step_size, horizon, K, T
+    return initial_window, step_size, horizon, K
