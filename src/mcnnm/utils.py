@@ -304,7 +304,7 @@ def propose_lambda(
     return jnp.logspace(min_log_lambda, max_log_lambda, n_lambdas)
 
 
-def generate_lambda_grid(max_lambda_L, max_lambda_H, n_lambda):
+def generate_lambda_grid(max_lambda_L: Scalar, max_lambda_H: Scalar, n_lambda: int):
     """
     Generates a grid of lambda values for the MC-NNM model.
 
@@ -312,8 +312,8 @@ def generate_lambda_grid(max_lambda_L, max_lambda_H, n_lambda):
     for both lambda_L and lambda_H, and then forming a meshgrid from these sequences.
 
     Args:
-        max_lambda_L (float): The maximum lambda value for the L dimension.
-        max_lambda_H (float): The maximum lambda value for the H dimension.
+        max_lambda_L (Scalar): The maximum lambda value for the L dimension.
+        max_lambda_H (Scalar): The maximum lambda value for the H dimension.
         n_lambda (int): The number of lambda values to generate for both dimensions.
 
     Returns:
@@ -358,7 +358,7 @@ def extract_shortest_path(lambda_grid):
     return jnp.array(shortest_path)
 
 
-def generate_time_based_validate_defaults(Y: Array):
+def generate_holdout_val_defaults(Y: Array):
     """
     Generates default parameters for time-based validation.
 

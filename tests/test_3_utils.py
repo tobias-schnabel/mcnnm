@@ -9,7 +9,7 @@ from mcnnm.utils import (
     propose_lambda,
     generate_lambda_grid,
     extract_shortest_path,
-    generate_time_based_validate_defaults,
+    generate_holdout_val_defaults,
 )
 from typing import Literal
 import jax
@@ -679,9 +679,9 @@ def sample_data():
     return Y, W, X, Z, V
 
 
-def test_generate_time_based_validate_defaults_happy_path():
+def test_generate_holdout_val_defaults_happy_path():
     Y = jnp.ones((10, 5))
-    initial_window, step_size, horizon, K = generate_time_based_validate_defaults(Y)
+    initial_window, step_size, horizon, K = generate_holdout_val_defaults(Y)
     assert initial_window == 4
     assert step_size == 1
     assert horizon == 1
