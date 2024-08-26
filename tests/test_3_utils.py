@@ -10,6 +10,7 @@ from mcnnm.utils import (
     generate_lambda_grid,
     extract_shortest_path,
     generate_holdout_val_defaults,
+    validate_holdout_config,
 )
 from typing import Literal
 import jax
@@ -686,3 +687,99 @@ def test_generate_holdout_val_defaults_happy_path():
     assert step_size == 1
     assert horizon == 1
     assert K == 5
+
+
+def test_validate_holdout_config_valid():
+    initial_window = 10
+    step_size = 5
+    horizon = 3
+    K = 4
+    max_window_size = 15
+    T = 30
+
+    result = validate_holdout_config(initial_window, step_size, horizon, K, max_window_size, T)
+    assert result == (initial_window, step_size, horizon, K, max_window_size)
+
+
+def test_validate_holdout_config_invalid_initial_window():
+    initial_window = 0
+    step_size = 5
+    horizon = 3
+    K = 4
+    max_window_size = 15
+    T = 30
+
+    with pytest.raises(ValueError, match="initial_window must be greater than 0."):
+        validate_holdout_config(initial_window, step_size, horizon, K, max_window_size, T)
+
+
+def test_validate_holdout_config_invalid_step_size():
+    initial_window = 10
+    step_size = 0
+    horizon = 3
+    K = 4
+    max_window_size = 15
+    T = 30
+
+    with pytest.raises(ValueError, match="step_size must be greater than 0."):
+        validate_holdout_config(initial_window, step_size, horizon, K, max_window_size, T)
+
+
+def test_validate_holdout_config_invalid_horizon():
+    initial_window = 10
+    step_size = 5
+    horizon = 0
+    K = 4
+    max_window_size = 15
+    T = 30
+
+    with pytest.raises(ValueError, match="horizon must be greater than 0."):
+        validate_holdout_config(initial_window, step_size, horizon, K, max_window_size, T)
+
+
+def test_validate_holdout_config_invalid_K():
+    initial_window = 10
+    step_size = 5
+    horizon = 3
+    K = 0
+    max_window_size = 15
+    T = 30
+
+    with pytest.raises(ValueError, match="K must be greater than 0."):
+        validate_holdout_config(initial_window, step_size, horizon, K, max_window_size, T)
+
+
+def test_validate_holdout_config_invalid_max_window_size():
+    initial_window = 10
+    step_size = 5
+    horizon = 3
+    K = 4
+    max_window_size = 0
+    T = 30
+
+    with pytest.raises(ValueError, match="max_window_size must be greater than 0 if specified."):
+        validate_holdout_config(initial_window, step_size, horizon, K, max_window_size, T)
+
+
+def test_validate_holdout_config_max_window_size_less_than_horizon():
+    initial_window = 10
+    step_size = 2
+    horizon = 10
+    K = 4
+    max_window_size = 8
+    T = 40
+
+    result = validate_holdout_config(initial_window, step_size, horizon, K, max_window_size, T)
+    assert result == (initial_window, step_size, horizon, K, horizon)
+
+
+def test_validate_holdout_config_non_overlapping_folds():
+    initial_window = 10
+    step_size = 5
+    horizon = 5
+    K = 4
+    max_window_size = 30
+    T = 50
+
+    result = validate_holdout_config(initial_window, step_size, horizon, K, max_window_size, T)
+    assert result == (initial_window, step_size, horizon, K, max_window_size)

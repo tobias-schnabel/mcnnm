@@ -383,3 +383,68 @@ def generate_holdout_val_defaults(Y: Array):
     horizon = step_size
 
     return initial_window, step_size, horizon, K
+
+
+def validate_holdout_config(
+    initial_window: int,
+    step_size: int,
+    horizon: int,
+    K: int,
+    max_window_size: Optional[int],
+    T: int,
+) -> Tuple[int, int, int, int, Optional[int]]:
+    """
+    Validate the configuration of initial_window, step_size, horizon, K, and max_window_size for holdout validation.
+
+    Args:
+        initial_window (int): The size of the initial time window for holdout validation.
+        step_size (int): The step size for moving the time window in each holdout fold.
+        horizon (int): The size of the holdout horizon (number of time steps to predict).
+        K (int): The number of holdout folds.
+        max_window_size (int, optional): The maximum size of the time window. If specified, it limits the
+            size of the time window used for initializing the model configurations in each holdout fold.
+        T (int): The total number of time steps in the data.
+
+    Returns:
+        Tuple[int, int, int, int, Optional[int]]: A tuple containing the validated or default values for
+            initial_window, step_size, horizon, K, and max_window_size.
+
+    Raises:
+        ValueError: If the configuration is invalid or inconsistent and cannot be adjusted to sensible defaults.
+
+    """
+    if initial_window <= 0:
+        raise ValueError("initial_window must be greater than 0.")
+    if step_size <= 0:
+        raise ValueError("step_size must be greater than 0.")
+    if horizon <= 0:
+        raise ValueError("horizon must be greater than 0.")
+    if K <= 0:
+        raise ValueError("K must be greater than 0.")
+    if max_window_size is not None and max_window_size <= 0:
+        raise ValueError("max_window_size must be greater than 0 if specified.")
+
+    total_steps = initial_window + (K - 1) * step_size + horizon
+    if total_steps > T:  # pragma: no cover
+        # Adjust the configuration to sensible defaults
+        initial_window, step_size, horizon, K = generate_holdout_val_defaults(jnp.zeros((1, T)))
+        total_steps = initial_window + (K - 1) * step_size + horizon
+        if total_steps > T:
+            raise ValueError(
+                "Cannot generate a valid holdout configuration. Please adjust the parameters manually."
+            )
+
+    if max_window_size is not None and max_window_size < horizon:
+        max_window_size = horizon
+
+    # Check for non-overlapping folds
+    end_index = initial_window
+    for _ in range(K - 1):
+        start_index = end_index
+        end_index = start_index + step_size
+        if end_index > T:
+            raise ValueError(  # pragma: no cover
+                "The holdout folds are overlapping. Please adjust the step_size or reduce the number of folds (K)."
+            )
+
+    return initial_window, step_size, horizon, K, max_window_size
