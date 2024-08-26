@@ -23,6 +23,54 @@ def cross_validate(
     cv_ratio: Optional[float] = 0.8,
     K: Optional[int] = 5,
 ) -> Tuple[Array, Array]:
+    """
+    Perform K-fold cross-validation to select the best regularization parameters for the model.
+
+    This function splits the data into K folds, trains the model on K-1 folds, and evaluates it
+    on the remaining fold. The process is repeated for each fold and for different combinations
+    of regularization parameters (lambda_L and lambda_H) specified in the lambda grid. The best
+    lambda values are selected based on the minimum average root mean squared error (RMSE) across
+    all folds.
+
+    Args:
+        Y (Array): The target variable matrix of shape (N, T).
+        X (Array): The feature matrix for unit-specific covariates of shape (N, P).
+        Z (Array): The feature matrix for time-specific covariates of shape (T, Q).
+        V (Array): The feature matrix for unit-time covariates of shape (N, T, R).
+        W (Array): The binary matrix indicating the presence of observations of shape (N, T).
+        Omega_inv (Array): The inverse of the covariance matrix of shape (T, T).
+        use_unit_fe (bool): Whether to include unit fixed effects in the model.
+        use_time_fe (bool): Whether to include time fixed effects in the model.
+        num_lam (int): The number of lambda values to include in the lambda grid.
+        max_iter (int, optional): The maximum number of iterations for model fitting. Default is 1000.
+        tol (float, optional): The tolerance for convergence in model fitting. Default is 1e-5.
+        cv_ratio (float, optional): The ratio of data to use for training in each fold. Default is 0.8.
+        K (int, optional): The number of folds for cross-validation. Default is 5.
+
+    Returns:
+        Tuple[Array, Array]: A tuple containing the best lambda_L and lambda_H values.
+
+    Raises:
+        ValueError: If the input arrays have inconsistent shapes.
+
+    Example:
+        >>> Y = jnp.random.normal(size=(100, 50))
+        >>> X = jnp.random.normal(size=(100, 10))
+        >>> Z = jnp.random.normal(size=(50, 5))
+        >>> V = jnp.random.normal(size=(100, 50, 3))
+        >>> W = jnp.random.choice([0, 1], size=(100, 50))
+        >>> Omega_inv = jnp.eye(50)
+        >>> best_lambda_L, best_lambda_H = cross_validate(Y, X, Z, V, W, Omega_inv, True, True, 10)
+
+    Note:
+        - The function assumes that the input arrays have consistent shapes and are of type `jax.numpy.ndarray`.
+        - The function uses `jax.vmap` and `jax.lax.scan` for parallelization and efficient computation.
+        - The function initializes the model parameters using the `initialize_matrices` and
+        `initialize_fixed_effects_and_H` functions.
+        - The function generates a lambda grid using the `generate_lambda_grid` and `extract_shortest_path` functions.
+        - The function computes the RMSE for each fold and lambda combination using the `fit` function.
+        - The function selects the best lambda values based on the minimum average RMSE across all folds.
+    """
     N, T = Y.shape
 
     def create_folds(key):
