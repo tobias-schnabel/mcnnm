@@ -266,7 +266,7 @@ def compute_Y_hat(
         use_time_fe (bool): Whether to include time fixed effects in the decomposition.
 
     Returns:
-        Array: The decomposed matrix of shape (N, T).
+        Array: The estimated matrix \\(\\hat{Y}\\) of shape (N, T).
     """
     N, T = L.shape
     P = X_tilde.shape[1]
