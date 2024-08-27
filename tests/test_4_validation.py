@@ -28,7 +28,7 @@ def test_cross_validate(N, T, fe_params, X_cov, Z_cov, V_cov, noise_scale):
         noise_scale=noise_scale,
     )
 
-    opt_lambda_L, opt_lambda_H = cross_validate(
+    opt_lambda_L, opt_lambda_H, max_lam_L, max_lam_H = cross_validate(
         Y=Y,
         W=W,
         X=X,
@@ -49,6 +49,12 @@ def test_cross_validate(N, T, fe_params, X_cov, Z_cov, V_cov, noise_scale):
     assert not jnp.isnan(opt_lambda_H)
     assert jnp.isfinite(opt_lambda_H)
     assert opt_lambda_H >= 0
+    assert not jnp.isnan(max_lam_L)
+    assert jnp.isfinite(max_lam_L)
+    assert max_lam_L >= 0
+    assert not jnp.isnan(max_lam_H)
+    assert jnp.isfinite(max_lam_H)
+    assert max_lam_H >= 0
 
 
 @pytest.mark.parametrize("N, T", [(10, 10)])
@@ -73,7 +79,7 @@ def test_holdout_validate(N, T, fe_params, X_cov, Z_cov, V_cov, noise_scale):
 
     initial_window, step_size, horizon, K = generate_holdout_val_defaults(Y)
 
-    opt_lambda_L, opt_lambda_H = holdout_validate(
+    opt_lambda_L, opt_lambda_H, max_lam_L, max_lam_H = holdout_validate(
         Y=Y,
         W=W,
         X=X,
@@ -97,6 +103,12 @@ def test_holdout_validate(N, T, fe_params, X_cov, Z_cov, V_cov, noise_scale):
     assert not jnp.isnan(opt_lambda_H)
     assert jnp.isfinite(opt_lambda_H)
     assert opt_lambda_H >= 0
+    assert not jnp.isnan(max_lam_L)
+    assert jnp.isfinite(max_lam_L)
+    assert max_lam_L >= 0
+    assert not jnp.isnan(max_lam_H)
+    assert jnp.isfinite(max_lam_H)
+    assert max_lam_H >= 0
 
 
 @pytest.mark.parametrize("use_max_window", [False, True])
@@ -128,7 +140,7 @@ def test_holdout_validate_max_window(use_max_window):
         step_size = 2
         horizon = 6
 
-    opt_lambda_L, opt_lambda_H = holdout_validate(
+    opt_lambda_L, opt_lambda_H, max_lam_L, max_lam_H = holdout_validate(
         Y=Y,
         W=W,
         X=X,
@@ -153,6 +165,12 @@ def test_holdout_validate_max_window(use_max_window):
     assert not jnp.isnan(opt_lambda_H)
     assert jnp.isfinite(opt_lambda_H)
     assert opt_lambda_H >= 0
+    assert not jnp.isnan(max_lam_L)
+    assert jnp.isfinite(max_lam_L)
+    assert max_lam_L >= 0
+    assert not jnp.isnan(max_lam_H)
+    assert jnp.isfinite(max_lam_H)
+    assert max_lam_H >= 0
 
 
 def test_holdout_validate_invalid():
@@ -184,7 +202,7 @@ def test_holdout_validate_invalid():
     # horizon = 6 means each fold will include 6 periods for evaluation.
     # max_window = 15 limits the window size for initializing the model configurations in each fold.
 
-    opt_lambda_L, opt_lambda_H = holdout_validate(
+    opt_lambda_L, opt_lambda_H, max_lam_L, max_lam_H = holdout_validate(
         Y=Y,
         W=W,
         X=X,
@@ -205,6 +223,8 @@ def test_holdout_validate_invalid():
 
     assert jnp.isnan(opt_lambda_L)
     assert jnp.isnan(opt_lambda_H)
+    assert jnp.isnan(max_lam_L)
+    assert jnp.isnan(max_lam_H)
     # Assert that both opt_lambda_L and opt_lambda_H are NaN (not-a-number).
     # This is expected because the time-based validation parameters are set in a way that no holdout folds fall within
     # the last 5 periods, which are the only periods in which data is unobserved

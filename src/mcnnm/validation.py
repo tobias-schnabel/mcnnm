@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 
 from .core import fit, initialize_matrices, initialize_fixed_effects_and_H
-from .utils import generate_lambda_grid, extract_shortest_path
+from .utils import generate_lambda_grid
 from .types import Array
 
 
@@ -14,7 +14,7 @@ def cross_validate(
     Z: Array,
     V: Array,
     W: Array,
-    Omega_inv: Array,
+    Omega_inv: Optional[Array],
     use_unit_fe: bool,
     use_time_fe: bool,
     num_lam: int,
@@ -22,7 +22,7 @@ def cross_validate(
     tol: Optional[float] = 1e-5,
     cv_ratio: Optional[float] = 0.8,
     K: Optional[int] = 5,
-) -> Tuple[Array, Array]:
+) -> Tuple[Array, Array, Array, Array]:
     """
     Perform K-fold cross-validation to select the best regularization parameters for the model.
 
@@ -38,7 +38,7 @@ def cross_validate(
         Z (Array): The feature matrix for time-specific covariates of shape (T, Q).
         V (Array): The feature matrix for unit-time covariates of shape (N, T, R).
         W (Array): The binary matrix indicating the presence of observations of shape (N, T).
-        Omega_inv (Array): The inverse of the covariance matrix of shape (T, T).
+        Omega_inv (Array, optional): The inverse of the covariance matrix of shape (T, T). Default is None.
         use_unit_fe (bool): Whether to include unit fixed effects in the model.
         use_time_fe (bool): Whether to include time fixed effects in the model.
         num_lam (int): The number of lambda values to include in the lambda grid.
@@ -48,7 +48,8 @@ def cross_validate(
         K (int, optional): The number of folds for cross-validation. Default is 5.
 
     Returns:
-        Tuple[Array, Array]: A tuple containing the best lambda_L and lambda_H values.
+        Tuple[Array, Array, Array, Array]: A tuple containing the best lambda_L and lambda_H values along with the
+        maximum lambda_L and lambda_H values.
 
     Raises:
         ValueError: If the input arrays have inconsistent shapes.
@@ -110,9 +111,7 @@ def cross_validate(
     max_lambda_L = jnp.max(fold_configs[7])
     max_lambda_H = jnp.max(fold_configs[8])
 
-    full_lambda_grid = generate_lambda_grid(max_lambda_L, max_lambda_H, num_lam)
-    shortest_path = extract_shortest_path(full_lambda_grid)
-    lambda_grid = jnp.vstack((shortest_path, jnp.array([[0.0, 0.0]])))
+    lambda_grid = generate_lambda_grid(max_lambda_L, max_lambda_H, num_lam)
 
     def fold_loss(
         gamma_init,
@@ -169,11 +168,11 @@ def cross_validate(
 
     fold_rmses = jax.vmap(fold_loss, in_axes=(0, 0, 0, 0, 0, 0, 0, 0, 0, 0))(*fold_configs)
     mean_rmses = jnp.mean(fold_rmses, axis=0)
-    min_index = jnp.argmin(mean_rmses)
+    min_lambda_pair_index = jnp.argmin(mean_rmses)
 
-    best_lambda_L, best_lambda_H = lambda_grid[min_index]
+    best_lambda_L, best_lambda_H = lambda_grid[min_lambda_pair_index]
 
-    return best_lambda_L, best_lambda_H
+    return best_lambda_L, best_lambda_H, max_lambda_L, max_lambda_H
 
 
 def holdout_validate(
@@ -182,7 +181,7 @@ def holdout_validate(
     Z: Array,
     V: Array,
     W: Array,
-    Omega_inv: Array,
+    Omega_inv: Optional[Array],
     use_unit_fe: bool,
     use_time_fe: bool,
     num_lam: int,
@@ -193,7 +192,7 @@ def holdout_validate(
     max_window_size: Optional[int] = None,
     max_iter: Optional[int] = 1000,
     tol: Optional[float] = 1e-5,
-) -> Tuple[Array, Array]:
+) -> Tuple[Array, Array, Array, Array]:
     """
     Perform holdout validation to select the optimal regularization parameters for the MC-NNM model.
 
@@ -208,7 +207,7 @@ def holdout_validate(
         Z (Array): The time-specific covariates matrix of shape (T, Q).
         V (Array): The unit-time specific covariates tensor of shape (N, T, J).
         W (Array): The binary matrix indicating observed (0) and missing (1) entries in Y, shape (N, T).
-        Omega_inv (Array): The autocorrelation matrix of shape (T, T).
+        Omega_inv (Array, optional): The autocorrelation matrix of shape (T, T). Defaults to None.
         use_unit_fe (bool): Whether to use unit fixed effects.
         use_time_fe (bool): Whether to use time fixed effects.
         num_lam (int): The number of lambda values to generate in the grid.
@@ -227,7 +226,8 @@ def holdout_validate(
         tol (float, optional): Convergence tolerance for fitting the model. Defaults to 1e-5.
 
     Returns:
-        Tuple[Array, Array]: A tuple containing the optimal lambda_L and lambda_H values.
+        Tuple[Array, Array, Array, Array]: A tuple containing the optimal lambda_L and lambda_H values along with
+        the maximum lambda_L and lambda_H values.
 
     Steps:
         1. Create K holdout masks, each representing a specific time window in the data. The time windows are
@@ -270,7 +270,7 @@ def holdout_validate(
         print("Warning: Not enough data for holdout validation. Using fewer folds.")
     if holdout_masks.shape[0] == 0:
         print("Error: No data available for holdout validation. Exiting.")
-        return (jnp.array(jnp.nan), jnp.array(jnp.nan))
+        return (jnp.array(jnp.nan), jnp.array(jnp.nan), jnp.array(jnp.nan), jnp.array(jnp.nan))
     L, X_tilde, Z_tilde, V = initialize_matrices(Y, X, Z, V)
 
     def initialize_holdout(holdout_mask):
@@ -308,9 +308,7 @@ def holdout_validate(
     max_lambda_L = jnp.max(holdout_configs[7])
     max_lambda_H = jnp.max(holdout_configs[8])
 
-    full_lambda_grid = generate_lambda_grid(max_lambda_L, max_lambda_H, num_lam)
-    shortest_path = extract_shortest_path(full_lambda_grid)
-    lambda_grid = jnp.vstack((shortest_path, jnp.array([[0.0, 0.0]])))
+    lambda_grid = generate_lambda_grid(max_lambda_L, max_lambda_H, num_lam)
 
     def holdout_loss(
         gamma_init,
@@ -371,4 +369,4 @@ def holdout_validate(
 
     best_lambda_L, best_lambda_H = lambda_grid[min_index]
 
-    return best_lambda_L, best_lambda_H
+    return best_lambda_L, best_lambda_H, max_lambda_L, max_lambda_H
