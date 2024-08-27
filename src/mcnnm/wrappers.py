@@ -1,25 +1,27 @@
 from .types import Array, Scalar
-from typing import NamedTuple, Optional
-import jax
+from typing import NamedTuple, Optional, Literal, cast
 import jax.numpy as jnp
+
+from .core import compute_Y_hat
 
 
 def compute_treatment_effect(
     Y: Array,
+    W: Array,
     L: Array,
+    X_tilde: Array,
+    Z_tilde: Array,
+    V: Array,
+    H_tilde: Array,
     gamma: Array,
     delta: Array,
     beta: Array,
-    H: Array,
-    X: Array,
-    W: Array,
-    Z: Array,
-    V: Array,
     use_unit_fe: bool,
     use_time_fe: bool,
 ) -> Scalar:
     """
     Compute the average treatment effect using the MC-NNM model estimates.
+    Thin wrapper around the `compute_Y_hat` function.
 
     This function calculates the difference between the observed outcomes and the
     completed (counterfactual) outcomes for treated units, then averages this
@@ -27,45 +29,26 @@ def compute_treatment_effect(
 
     Args:
         Y (Array): The observed outcome matrix.
+        W (Array): The binary treatment matrix.
         L (Array): The estimated low-rank matrix.
+        X_tilde (Array): The augmented unit-specific covariates matrix.
+        Z_tilde (Array): The augmented time-specific covariates matrix.
+        V (Array): The unit-time specific covariates tensor.
+        H_tilde (Array): The augmented covariate coefficient matrix.
         gamma (Array): The estimated unit fixed effects.
         delta (Array): The estimated time fixed effects.
         beta (Array): The estimated unit-time specific covariate coefficients.
-        H (Array): The estimated covariate coefficient matrix.
-        X (Array): The unit-specific covariates matrix.
-        W (Array): The binary treatment matrix.
-        Z (Array): The time-specific covariates matrix.
-        V (Array): The unit-time specific covariates tensor.
-        use_unit_fe (bool): Whether to use unit fixed effects.
-        use_time_fe (bool): Whether to use time fixed effects.
 
     Returns:
         Scalar: The estimated average treatment effect.
     """
-    N, T = Y.shape
-    X_tilde = jnp.hstack((X, jnp.eye(N)))
-    Z_tilde = jnp.hstack((Z, jnp.eye(T)))
-    Y_completed = L + jnp.dot(X_tilde, jnp.dot(H, Z_tilde.T))
-
-    def add_unit_fe(y):
-        return y + jnp.outer(gamma, jnp.ones(T))
-
-    def add_time_fe(y):
-        return y + jnp.outer(jnp.ones(N), delta)
-
-    Y_completed = jax.lax.cond(use_unit_fe, add_unit_fe, lambda y: y, Y_completed)
-
-    Y_completed = jax.lax.cond(use_time_fe, add_time_fe, lambda y: y, Y_completed)
-
-    Y_completed = jax.lax.cond(
-        V.shape[2] > 0,
-        lambda y: y + jnp.sum(V * beta[None, None, :], axis=2),
-        lambda y: y,
-        Y_completed,
+    Y_completed = compute_Y_hat(
+        L, X_tilde, Z_tilde, V, H_tilde, gamma, delta, beta, use_unit_fe, use_time_fe
     )
 
     treated_units = jnp.sum(W)
     tau = jnp.sum((Y - Y_completed) * W) / treated_units
+    tau = cast(Scalar, tau.item())
     return tau
 
 
@@ -113,17 +96,10 @@ def estimate(
     use_time_fe: bool = True,
     lambda_L: Optional[Scalar] = None,
     lambda_H: Optional[Scalar] = None,
-    n_lambda_L: int = 10,
-    n_lambda_H: int = 10,
-    return_tau: bool = True,
-    return_lambda: bool = True,
-    return_completed_L: bool = True,
-    return_completed_Y: bool = True,
-    return_fixed_effects: bool = False,
-    return_covariate_coefficients: bool = False,
+    n_lambda: int = 10,
     max_iter: int = 1000,
     tol: Scalar = 1e-4,
-    validation_method: str = "cv",
+    validation_method: Literal["cv", "holdout"] = "cv",
     K: int = 5,
     initial_window: Optional[int] = None,
     step_size: Optional[int] = None,
