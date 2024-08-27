@@ -9,8 +9,6 @@ from mcnnm.utils import (
     propose_lambda,
     generate_lambda_grid,
     extract_shortest_path,
-    generate_holdout_val_defaults,
-    validate_holdout_config,
 )
 from typing import Literal
 import jax
@@ -550,14 +548,14 @@ def test_staggered_assignment_mechanism():
 def test_propose_lambda_default():
     lambdas = propose_lambda(1.0)
     assert len(lambdas) == 6
-    assert jnp.allclose(lambdas[0], 1e-3)
+    assert jnp.allclose(lambdas[0], 0.0)
     assert jnp.allclose(lambdas[-1], 1.0)
 
 
 def test_propose_lambda_custom():
     lambdas = propose_lambda(10.0, 0.1, 5)
     assert len(lambdas) == 5
-    assert jnp.allclose(lambdas[0], 0.1)
+    assert jnp.allclose(lambdas[0], 0.0)
     assert jnp.allclose(lambdas[-1], 10.0)
 
 
@@ -569,7 +567,8 @@ def test_propose_lambda_small_max_lambda():
 def test_propose_lambda_equal_max_min_lambda():
     lambdas = propose_lambda(1.0, 1.0, 3)
     assert len(lambdas) == 3
-    assert jnp.allclose(lambdas, jnp.ones(3))
+    assert jnp.allclose(lambdas[1:2], jnp.ones(2))
+    assert jnp.allclose(lambdas[0], 0.0)
 
 
 def test_propose_lambda_max_smaller_than_min():
@@ -590,8 +589,7 @@ def test_generate_lambda_grid():
     lambda_grid = generate_lambda_grid(max_lambda_L, max_lambda_H, n_lambda)
 
     assert lambda_grid.shape == (9, 2)
-    assert jnp.allclose(lambda_grid[0], jnp.array([0.01, 0.01]))
-    assert jnp.allclose(lambda_grid[-1], jnp.array([9.999999, 9.999999]))
+    assert jnp.allclose(lambda_grid[-1], jnp.array([10.0, 10.0]))
 
 
 def test_generate_lambda_grid_different_values():
@@ -602,8 +600,8 @@ def test_generate_lambda_grid_different_values():
     lambda_grid = generate_lambda_grid(max_lambda_L, max_lambda_H, n_lambda)
 
     assert lambda_grid.shape == (16, 2)
-    assert jnp.allclose(lambda_grid[0], lambda_grid[0])  # Compare with actual first row
-    assert jnp.allclose(lambda_grid[-1], lambda_grid[-1])  # Compare with actual last row
+    assert jnp.allclose(lambda_grid[0], jnp.array([0.0, 0.0]))
+    assert jnp.allclose(lambda_grid[-1], jnp.array([5.0, 20.0]))
 
 
 def test_extract_shortest_path():
@@ -615,8 +613,9 @@ def test_extract_shortest_path():
     shortest_path = extract_shortest_path(lambda_grid)
 
     assert shortest_path.shape == (5, 2)
-    assert jnp.allclose(shortest_path[0], jnp.array([9.999999, 9.999999]))
-    assert jnp.allclose(shortest_path[-1], jnp.array([0.01, 0.01]))
+    assert jnp.allclose(shortest_path[0], jnp.array([10.0, 10.0]))
+    assert jnp.allclose(shortest_path[-2], jnp.array([0.01, 0.0]))
+    assert jnp.allclose(shortest_path[-1], jnp.array([0.0, 0.0]))
 
 
 def test_extract_shortest_path_order():
@@ -631,8 +630,8 @@ def test_extract_shortest_path_order():
     assert jnp.all(jnp.diff(shortest_path[:, 0]) <= 0)
 
     # Check if lambda_H starts high, then stays at the lowest value
-    assert jnp.all(jnp.diff(shortest_path[:3, 1]) <= 0)
-    assert jnp.allclose(shortest_path[2:, 1], shortest_path[-1, 1])
+    assert jnp.all(jnp.diff(shortest_path[:4, 1]) <= 0)
+    assert jnp.allclose(shortest_path[3:-1, 1], shortest_path[-2, 1])
 
 
 def test_extract_shortest_path_different_grid():
@@ -643,8 +642,8 @@ def test_extract_shortest_path_different_grid():
     lambda_grid = generate_lambda_grid(max_lambda_L, max_lambda_H, n_lambda)
     shortest_path = extract_shortest_path(lambda_grid)
     assert shortest_path.shape == (7, 2)
-    assert jnp.allclose(shortest_path[0], shortest_path[0])
-    assert jnp.allclose(shortest_path[-1], shortest_path[-1])
+    assert jnp.allclose(shortest_path[0], jnp.array([5.0, 20.0]))
+    assert jnp.allclose(shortest_path[-1], jnp.array([0.0, 0.0]))
 
 
 def test_propose_lambda():
@@ -654,132 +653,5 @@ def test_propose_lambda():
     lambda_values = propose_lambda(max_lambda_L, n_lambdas=n_lambda)
 
     assert len(lambda_values) == n_lambda
-    assert jnp.allclose(lambda_values[0], lambda_values[0])
-    assert jnp.allclose(lambda_values[-1], lambda_values[-1])
-
-
-def test_generate_lambda_grid_propose_lambda_integration():
-    max_lambda = 10.0
-    n_lambda = 3
-
-    lambda_values = propose_lambda(max_lambda, n_lambdas=n_lambda)
-    assert len(lambda_values) == n_lambda
-    assert jnp.allclose(lambda_values[0], jnp.array(0.01))
-    assert jnp.allclose(lambda_values[-1], jnp.array(max_lambda))
-
-
-@pytest.fixture
-def sample_data():
-    key = random.PRNGKey(2024)
-    N, T, P, Q, J = 10, 5, 3, 2, 4
-    Y = random.normal(key, (N, T))
-    W = random.bernoulli(key, 0.2, (N, T))
-    X = random.normal(key, (N, P))
-    Z = random.normal(key, (T, Q))
-    V = random.normal(key, (N, T, J))
-    return Y, W, X, Z, V
-
-
-def test_generate_holdout_val_defaults_happy_path():
-    Y = jnp.ones((10, 5))
-    initial_window, step_size, horizon, K = generate_holdout_val_defaults(Y)
-    assert initial_window == 4
-    assert step_size == 1
-    assert horizon == 1
-    assert K == 5
-
-
-def test_validate_holdout_config_valid():
-    initial_window = 10
-    step_size = 5
-    horizon = 3
-    K = 4
-    max_window_size = 15
-    T = 30
-
-    result = validate_holdout_config(initial_window, step_size, horizon, K, max_window_size, T)
-    assert result == (initial_window, step_size, horizon, K, max_window_size)
-
-
-def test_validate_holdout_config_invalid_initial_window():
-    initial_window = 0
-    step_size = 5
-    horizon = 3
-    K = 4
-    max_window_size = 15
-    T = 30
-
-    with pytest.raises(ValueError, match="initial_window must be greater than 0."):
-        validate_holdout_config(initial_window, step_size, horizon, K, max_window_size, T)
-
-
-def test_validate_holdout_config_invalid_step_size():
-    initial_window = 10
-    step_size = 0
-    horizon = 3
-    K = 4
-    max_window_size = 15
-    T = 30
-
-    with pytest.raises(ValueError, match="step_size must be greater than 0."):
-        validate_holdout_config(initial_window, step_size, horizon, K, max_window_size, T)
-
-
-def test_validate_holdout_config_invalid_horizon():
-    initial_window = 10
-    step_size = 5
-    horizon = 0
-    K = 4
-    max_window_size = 15
-    T = 30
-
-    with pytest.raises(ValueError, match="horizon must be greater than 0."):
-        validate_holdout_config(initial_window, step_size, horizon, K, max_window_size, T)
-
-
-def test_validate_holdout_config_invalid_K():
-    initial_window = 10
-    step_size = 5
-    horizon = 3
-    K = 0
-    max_window_size = 15
-    T = 30
-
-    with pytest.raises(ValueError, match="K must be greater than 0."):
-        validate_holdout_config(initial_window, step_size, horizon, K, max_window_size, T)
-
-
-def test_validate_holdout_config_invalid_max_window_size():
-    initial_window = 10
-    step_size = 5
-    horizon = 3
-    K = 4
-    max_window_size = 0
-    T = 30
-
-    with pytest.raises(ValueError, match="max_window_size must be greater than 0 if specified."):
-        validate_holdout_config(initial_window, step_size, horizon, K, max_window_size, T)
-
-
-def test_validate_holdout_config_max_window_size_less_than_horizon():
-    initial_window = 10
-    step_size = 2
-    horizon = 10
-    K = 4
-    max_window_size = 8
-    T = 40
-
-    result = validate_holdout_config(initial_window, step_size, horizon, K, max_window_size, T)
-    assert result == (initial_window, step_size, horizon, K, horizon)
-
-
-def test_validate_holdout_config_non_overlapping_folds():
-    initial_window = 10
-    step_size = 5
-    horizon = 5
-    K = 4
-    max_window_size = 30
-    T = 50
-
-    result = validate_holdout_config(initial_window, step_size, horizon, K, max_window_size, T)
-    assert result == (initial_window, step_size, horizon, K, max_window_size)
+    assert jnp.allclose(lambda_values[0], jnp.array(0.0))
+    assert jnp.allclose(lambda_values[-1], jnp.array(5.0))

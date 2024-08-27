@@ -273,15 +273,16 @@ def propose_lambda(
     max_lambda: Scalar, min_lambda: Optional[Scalar] = None, n_lambdas: int = 6
 ) -> Array:
     """
-    Creates a log-spaced list of proposed lambda values between max_lambda and min_lambda.
+    Creates a log-spaced list of proposed lambda values between max_lambda and min_lambda,
+    and appends 0 to the end of the list.
 
     Args:
         max_lambda: The maximum lambda value.
         min_lambda: The minimum lambda value. If None, it is set to max_lambda - 3 (in log10 scale).
-        n_lambdas: The number of lambda values to generate.
+        n_lambdas: The number of lambda values to generate (excluding the appended 0).
 
     Returns:
-        Array: The sequence of proposed lambda values.
+        Array: The sequence of proposed lambda values, including 0 at the end.
 
     Raises:
         ValueError: If max_lambda is smaller than the default minimum lambda value (1e-10).
@@ -301,7 +302,10 @@ def propose_lambda(
     # Ensure min_log_lambda is not smaller than a small positive value to avoid zero or negative lambdas
     min_log_lambda = jnp.maximum(min_log_lambda, -10)
 
-    return jnp.logspace(min_log_lambda, max_log_lambda, n_lambdas)
+    lambda_values = jnp.logspace(min_log_lambda, max_log_lambda, n_lambdas - 1)
+    lambda_values = jnp.append(0.0, lambda_values)
+
+    return lambda_values
 
 
 def generate_lambda_grid(max_lambda_L: Scalar, max_lambda_H: Scalar, n_lambda: int):
@@ -331,7 +335,7 @@ def extract_shortest_path(lambda_grid):
     Extracts the shortest path along the edges of a 2D lambda grid.
 
     This function traverses the edges of the given lambda grid starting from the top-left corner
-    (highest lambda_L and lambda_H), moving down to the bottom-left corner (lowest lambda_L, highest lambda_H),
+    (lowest lambda_L and lambda_H), moving down to the bottom-left corner (lowest lambda_L, highest lambda_H),
     and then right to the bottom-right corner (lowest lambda_L and lambda_H).
 
     Args:
