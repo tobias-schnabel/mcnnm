@@ -53,7 +53,7 @@ def compute_treatment_effect(
 
     treated_units = jnp.sum(W)
     tau = jnp.sum((Y - Y_completed) * W) / treated_units
-    tau = cast(Scalar, tau.item())
+    tau = cast(Scalar, tau.item())  # type: ignore
     return tau
 
 
@@ -286,16 +286,16 @@ def estimate(
         if validation_method == "cv":
             opt_lambda_L, opt_lambda_H, lambda_L_opt_range, lambda_H_opt_range = cross_validate(
                 Y=Y,
-                X=X,  # mypy: ignore[arg-type]
-                Z=Z,  # mypy: ignore[arg-type]
-                V=V,  # mypy: ignore[arg-type]
+                X=X,  # type: ignore[arg-type]
+                Z=Z,  # type: ignore[arg-type]
+                V=V,  # type: ignore[arg-type]
                 W=W,
                 Omega_inv=Omega_inv,
                 use_unit_fe=use_unit_fe,
                 use_time_fe=use_time_fe,
                 num_lam=n_lambda,
                 max_iter=max_iter,
-                tol=tol,  # mypy: ignore[arg-type]
+                tol=tol,  # type: ignore[arg-type]
                 K=K,
             )
         elif validation_method == "holdout":
@@ -315,9 +315,9 @@ def estimate(
             )
             opt_lambda_L, opt_lambda_H, lambda_L_opt_range, lambda_H_opt_range = holdout_validate(
                 Y=Y,
-                X=X,
-                Z=Z,
-                V=V,
+                X=X,  # type: ignore[arg-type]
+                Z=Z,  # type: ignore[arg-type]
+                V=V,  # type: ignore[arg-type]
                 W=W,
                 Omega_inv=Omega_inv,
                 use_unit_fe=use_unit_fe,
@@ -329,7 +329,7 @@ def estimate(
                 K=K,
                 max_window_size=max_window_size,
                 max_iter=max_iter,
-                tol=tol,  # mypy: ignore[arg-type]
+                tol=tol,  # type: ignore[arg-type]
             )
         else:
             raise ValueError("Invalid validation method. Must be 'cv' or 'holdout'.")
@@ -342,9 +342,9 @@ def estimate(
     L_final, H_final, in_prod_final, gamma_final, delta_final, beta_final, loss_final = final_fit(
         Y=Y,
         W=W,
-        X=X,  # mypy: ignore[arg-type]
-        Z=Z,  # mypy: ignore[arg-type]
-        V=V,  # mypy: ignore[arg-type]
+        X=X,  # type: ignore[arg-type]
+        Z=Z,  # type: ignore[arg-type]
+        V=V,  # type: ignore[arg-type]
         Omega_inv=Omega_inv,
         use_unit_fe=use_unit_fe,
         use_time_fe=use_time_fe,
@@ -375,7 +375,7 @@ def estimate(
         L=L_final,
         X_tilde=X_tilde,
         Z_tilde=Z_tilde,
-        V=V,  # mypy: ignore[arg-type]
+        V=V,  # type: ignore[arg-type]
         H_tilde=H_final,
         gamma=gamma_final,
         delta=delta_final,
