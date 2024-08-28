@@ -269,11 +269,11 @@ def generate_data(
     return Y, W, X, Z, V, true_params  # type: ignore
 
 
-def propose_lambda(
+def propose_lambda_values(
     max_lambda: Scalar, min_lambda: Optional[Scalar] = None, n_lambdas: int = 6
 ) -> Array:
     """
-    Creates a log-spaced list of proposed lambda values between max_lambda and min_lambda,
+    Creates a decreasing, log-spaced list of proposed lambda values between max_lambda and min_lambda,
     and appends 0 to the end of the list.
 
     Args:
@@ -282,7 +282,7 @@ def propose_lambda(
         n_lambdas: The number of lambda values to generate (excluding the appended 0).
 
     Returns:
-        Array: The sequence of proposed lambda values, including 0 at the end.
+        Array: The decreasing sequence of proposed lambda values, including 0 at the end.
 
     Raises:
         ValueError: If max_lambda is smaller than the default minimum lambda value (1e-10).
@@ -302,31 +302,29 @@ def propose_lambda(
     # Ensure min_log_lambda is not smaller than a small positive value to avoid zero or negative lambdas
     min_log_lambda = jnp.maximum(min_log_lambda, -10)
 
-    lambda_values = jnp.logspace(min_log_lambda, max_log_lambda, n_lambdas - 1)
-    lambda_values = jnp.append(0.0, lambda_values)
+    lambda_values = jnp.logspace(max_log_lambda, min_log_lambda, n_lambdas - 1)
+    lambda_values = jnp.append(lambda_values, 0.0)
 
     return lambda_values
 
 
-def generate_lambda_grid(max_lambda_L: Scalar, max_lambda_H: Scalar, n_lambda: int):
+def generate_lambda_grid(lambda_L_values: Array, lambda_H_values: Array) -> jnp.ndarray:
     """
     Generates a grid of lambda values for the MC-NNM model.
 
-    This function creates a 2D grid of lambda values by generating log-spaced sequences
-    for both lambda_L and lambda_H, and then forming a meshgrid from these sequences.
+    This function creates a 2D grid of lambda values by forming a meshgrid from the provided sequences
+    for both lambda_L and lambda_H.
 
     Args:
-        max_lambda_L (Scalar): The maximum lambda value for the L dimension.
-        max_lambda_H (Scalar): The maximum lambda value for the H dimension.
-        n_lambda (int): The number of lambda values to generate for both dimensions.
+        lambda_L_values (Array): The sequence of lambda values for the L dimension.
+        lambda_H_values (Array): The sequence of lambda values for the H dimension.
 
     Returns:
         jnp.ndarray: A 2D array where each row represents a pair of lambda values (lambda_L, lambda_H).
     """
-    lambda_L_values = propose_lambda(max_lambda_L, n_lambdas=n_lambda)
-    lambda_H_values = propose_lambda(max_lambda_H, n_lambdas=n_lambda)
-
-    lambda_grid = jnp.array(jnp.meshgrid(lambda_L_values, lambda_H_values)).T.reshape(-1, 2)
+    lambda_grid = (
+        jnp.array(jnp.meshgrid(lambda_L_values, lambda_H_values, indexing="ij")).reshape(2, -1).T
+    )
     return lambda_grid
 
 
