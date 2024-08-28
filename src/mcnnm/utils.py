@@ -316,8 +316,8 @@ def generate_lambda_grid(lambda_L_values: Array, lambda_H_values: Array) -> jnp.
     for both lambda_L and lambda_H.
 
     Args:
-        lambda_L_values (Array): The sequence of lambda values for the L dimension.
-        lambda_H_values (Array): The sequence of lambda values for the H dimension.
+        lambda_L_values (Array): The decreasing sequence of lambda values for the L dimension.
+        lambda_H_values (Array): The decreasing sequence of lambda values for the H dimension.
 
     Returns:
         jnp.ndarray: A 2D array where each row represents a pair of lambda values (lambda_L, lambda_H).
@@ -332,9 +332,9 @@ def extract_shortest_path(lambda_grid):
     """
     Extracts the shortest path along the edges of a 2D lambda grid.
 
-    This function traverses the edges of the given lambda grid starting from the top-left corner
-    (lowest lambda_L and lambda_H), moving down to the bottom-left corner (lowest lambda_L, highest lambda_H),
-    and then right to the bottom-right corner (lowest lambda_L and lambda_H).
+    This function traverses the edges of the given lambda grid starting from the top-right corner
+    (highest lambda_L and lambda_H), moving left to the top-left corner (lowest lambda_L, highest lambda_H),
+    and then down to the bottom-left corner (lowest lambda_L and lambda_H).
 
     Args:
         lambda_grid (jnp.ndarray): A 2D array representing the flattened lambda grid.
@@ -342,22 +342,26 @@ def extract_shortest_path(lambda_grid):
     Returns:
         jnp.ndarray: A 2D array containing the lambda pairs along the shortest path.
     """
-    # Infer n_lambda_L and n_lambda_H from the grid shape
-    total_points = lambda_grid.shape[0]
-    n_lambda_L = int(jnp.sqrt(total_points))
-    n_lambda_H = n_lambda_L  # Assuming a square grid
+    # Get unique lambda values
+    unique_lambda_L = jnp.unique(lambda_grid[:, 0])
+    unique_lambda_H = jnp.unique(lambda_grid[:, 1])
 
-    shortest_path = []
+    # Sort unique values in descending order
+    unique_lambda_L = jnp.sort(unique_lambda_L)[::-1]
+    unique_lambda_H = jnp.sort(unique_lambda_H)[::-1]
 
-    # Add the top edge of the grid (fixed highest lambda_L, decreasing lambda_H)
-    for j in range(n_lambda_H - 1, -1, -1):
-        shortest_path.append(lambda_grid[(n_lambda_L - 1) * n_lambda_H + j])
+    # Create the path
+    path = []
 
-    # Add the left edge of the grid (decreasing lambda_L, fixed lowest lambda_H)
-    for i in range(n_lambda_L - 2, -1, -1):
-        shortest_path.append(lambda_grid[i * n_lambda_H])
+    # Move from highest to lowest lambda_L, keeping lambda_H at its maximum
+    for lambda_L in unique_lambda_L:
+        path.append([lambda_L, unique_lambda_H[0]])
 
-    return jnp.array(shortest_path)
+    # Move from highest to lowest lambda_H, keeping lambda_L at its minimum
+    for lambda_H in unique_lambda_H[1:]:
+        path.append([unique_lambda_L[-1], lambda_H])
+
+    return jnp.array(path)
 
 
 def generate_holdout_val_defaults(Y: Array):

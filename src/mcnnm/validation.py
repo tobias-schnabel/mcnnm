@@ -9,8 +9,8 @@ from .core import (
     initialize_fixed_effects_and_H,
     compute_objective_value,
 )
-from .utils import generate_lambda_grid, propose_lambda_values
-from .types import Array
+from .utils import generate_lambda_grid, propose_lambda_values, extract_shortest_path
+from .types import Array, Scalar
 
 
 def cross_validate(
@@ -247,10 +247,6 @@ def cross_validate(
     lambda_H_opt_range = lambda_H_values[lambda_H_values >= best_lambda_H - 1e-8]
 
     return best_lambda_L, best_lambda_H, lambda_L_opt_range, lambda_H_opt_range
-
-
-def fit_warm_start():
-    pass  # TODO: Implement this function
 
 
 def holdout_validate(
@@ -499,9 +495,155 @@ def holdout_validate(
     holdout_rmses = jax.vmap(holdout_fold_loss, in_axes=(0, 0, 0, 0, 0, 0, 0, 0, 0, 0))(
         *holdout_configs
     )
-    mean_rmses = jnp.mean(holdout_rmses, axis=0)
-    min_index = jnp.argmin(mean_rmses)
+    mean_rmses = jnp.mean(
+        holdout_rmses, axis=0
+    )  # validation RMSE for each lambda pair averaged across all folds
+    min_index = jnp.argmin(mean_rmses)  # index of the lambda pair with the lowest average RMSE
 
+    # Get the corresponding lambda values from fold_configs
     best_lambda_L, best_lambda_H = lambda_grid[min_index]
 
-    return best_lambda_L, best_lambda_H, max_lambda_L, max_lambda_H
+    # Slice lambda_L_values and lambda_H_values
+    lambda_L_opt_range = lambda_L_values[lambda_L_values >= best_lambda_L - 1e-8]
+    lambda_H_opt_range = lambda_H_values[lambda_H_values >= best_lambda_H - 1e-8]
+
+    return best_lambda_L, best_lambda_H, lambda_L_opt_range, lambda_H_opt_range
+
+
+def final_fit(
+    Y: Array,
+    X: Array,
+    Z: Array,
+    V: Array,
+    W: Array,
+    Omega_inv: Optional[Array],
+    use_unit_fe: bool,
+    use_time_fe: bool,
+    best_lambda_L,
+    best_lambda_H,
+    lambda_L_opt_range,
+    lambda_H_opt_range,
+    max_iter: Optional[int] = 1000,
+    tol: Optional[float] = 1e-5,
+) -> Tuple[Array, Array, Array, Array, Array, Array, Scalar]:
+    """
+    Perform the final fit of the MC-NNM model using the optimal regularization parameters.
+
+    This function fits the model using a sequence of lambda values, starting from the largest
+    values in the optimal ranges and moving towards the best lambda values. This approach,
+    known as warm-starting, helps to improve convergence and stability of the final fit.
+
+    This function is similar to NNM_H, with one key difference. Instead of fitting all models
+    on the grid described by lambda_Ls and lambda_Hs, it only considers the shortest path from
+    the point on the grid with highest lambda_L and lambda_H to the point on the grid with
+    smallest values of lambda_L and lambda_H. The key benefit of using this function is that,
+    for chosen values of lambda_L and lambda_H, training can be much faster as the number of
+    trained models is M+N-1 compared to M*N, where M is the length of lambda_L and N is the
+    length of lambda_H.
+
+    Steps:
+    1. Initialize matrices and model parameters using the `initialize_matrices` and
+       `initialize_fixed_effects_and_H` functions.
+    2. Generate a lambda grid using the optimal lambda ranges.
+    3. Extract the shortest path of lambda values from the largest to the best values.
+    4. Iteratively fit the model for each lambda pair in the shortest path, using the
+       results from the previous fit as initial values for the next fit.
+    5. Return the final model parameters and loss.
+
+    Args:
+        Y (Array): The target variable matrix of shape (N, T).
+        X (Array): The feature matrix for unit-specific covariates of shape (N, P).
+        Z (Array): The feature matrix for time-specific covariates of shape (T, Q).
+        V (Array): The feature matrix for unit-time covariates of shape (N, T, R).
+        W (Array): The binary matrix indicating the presence of observations of shape (N, T).
+        Omega_inv (Array, optional): The inverse of the covariance matrix of shape (T, T).
+            If not provided, the identity matrix is used.
+        use_unit_fe (bool): Whether to include unit fixed effects in the model.
+        use_time_fe (bool): Whether to include time fixed effects in the model.
+        best_lambda_L: The best lambda_L value determined by cross-validation or holdout validation.
+        best_lambda_H: The best lambda_H value determined by cross-validation or holdout validation.
+        lambda_L_opt_range (Array): The optimal range of lambda_L values.
+        lambda_H_opt_range (Array): The optimal range of lambda_H values.
+        max_iter (int, optional): The maximum number of iterations for model fitting. Default is 1000.
+        tol (float, optional): The tolerance for convergence in model fitting. Default is 1e-5.
+
+    Returns:
+        Tuple[Array, Array, Array, Array, Array, Array, float]: A tuple containing the following elements:
+            - L_final (Array): The final low-rank matrix.
+            - H_final (Array): The final interactive fixed effects matrix.
+            - in_prod_final (Array): The final in-product matrix.
+            - gamma_final (Array): The final unit fixed effects.
+            - delta_final (Array): The final time fixed effects.
+            - beta_final (Array): The final coefficients for covariates.
+            - loss_final (float): The final loss value.
+
+    Note:
+        - The function uses the `fit` function to perform the model fitting for each lambda pair.
+        - The function uses `jax.lax.scan` for efficient iteration over the lambda pairs.
+        - The warm-starting approach helps to improve the stability and convergence of the final fit.
+    """
+    # Initialize matrices
+    L_init, X_tilde, Z_tilde, V = initialize_matrices(Y, X, Z, V)
+
+    # Initialize coefficients
+    (
+        gamma_init,
+        delta_init,
+        beta_init,
+        H_tilde_init,
+        T_mat_init,
+        in_prod_T_init,
+        in_prod_init,
+        lambda_L_max,
+        lambda_H_max,
+    ) = initialize_fixed_effects_and_H(
+        Y, L_init, X_tilde, Z_tilde, V, W, use_unit_fe, use_time_fe, verbose=False
+    )
+
+    lambda_grid = generate_lambda_grid(lambda_L_opt_range, lambda_H_opt_range)
+    shortest_path = extract_shortest_path(lambda_grid)
+
+    def fit_sequence(carry, lambda_L_H):
+        lambda_L, lambda_H = lambda_L_H
+        (
+            L_previous,
+            H_tilde_previous,
+            in_prod_previous,
+            gamma_previous,
+            delta_previous,
+            beta_previous,
+        ) = carry
+        H_new, L_new, gamma_new, delta_new, beta_new, in_prod_new, loss = fit(
+            Y=Y,
+            X_tilde=X_tilde,
+            Z_tilde=Z_tilde,
+            V=V,
+            H_tilde=H_tilde_previous,
+            T_mat=T_mat_init,
+            in_prod=in_prod_previous,
+            in_prod_T=in_prod_T_init,
+            W=W,
+            L=L_previous,
+            gamma=gamma_previous,
+            delta=delta_previous,
+            beta=beta_previous,
+            lambda_L=lambda_L,
+            lambda_H=lambda_H,
+            use_unit_fe=use_unit_fe,
+            use_time_fe=use_time_fe,
+            Omega_inv=Omega_inv,
+            niter=max_iter,
+            rel_tol=tol,
+        )
+
+        new_carry = (L_new, H_new, in_prod_new, gamma_new, delta_new, beta_new)
+
+        return new_carry, loss
+
+    init_state = (L_init, H_tilde_init, in_prod_init, gamma_init, delta_init, beta_init)
+    results, loss_sequence = jax.lax.scan(fit_sequence, init_state, shortest_path)
+
+    # unpack results for last lambda pair in shortest path
+    L_final, H_final, in_prod_final, gamma_final, delta_final, beta_final = results
+    loss_final = loss_sequence[-1]
+    return L_final, H_final, in_prod_final, gamma_final, delta_final, beta_final, loss_final

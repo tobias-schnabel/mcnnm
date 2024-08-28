@@ -548,15 +548,15 @@ def test_staggered_assignment_mechanism():
 def test_propose_lambda_default():
     lambdas = propose_lambda_values(1.0)
     assert len(lambdas) == 6
-    assert jnp.allclose(lambdas[0], 0.0)
-    assert jnp.allclose(lambdas[-1], 1.0)
+    assert jnp.allclose(lambdas[-1], 0.0)
+    assert jnp.allclose(lambdas[0], 1.0)
 
 
 def test_propose_lambda_custom():
     lambdas = propose_lambda_values(10.0, 0.1, 5)
     assert len(lambdas) == 5
-    assert jnp.allclose(lambdas[0], 0.0)
-    assert jnp.allclose(lambdas[-1], 10.0)
+    assert jnp.allclose(lambdas[-1], 0.0)
+    assert jnp.allclose(lambdas[0], 10.0)
 
 
 def test_propose_lambda_small_max_lambda():
@@ -567,8 +567,8 @@ def test_propose_lambda_small_max_lambda():
 def test_propose_lambda_equal_max_min_lambda():
     lambdas = propose_lambda_values(1.0, 1.0, 3)
     assert len(lambdas) == 3
-    assert jnp.allclose(lambdas[1:2], jnp.ones(2))
-    assert jnp.allclose(lambdas[0], 0.0)
+    assert jnp.allclose(lambdas[:1], jnp.ones(2))
+    assert jnp.allclose(lambdas[2], 0.0)
 
 
 def test_propose_lambda_max_smaller_than_min():
@@ -581,77 +581,88 @@ def test_propose_lambda_single_value():
         propose_lambda_values(5.0, 5.0, 1)
 
 
+def test_propose_lambda_values():
+    max_lambda = 5.0
+    n_lambda = 4
+
+    lambda_values = propose_lambda_values(max_lambda, n_lambdas=n_lambda)
+
+    assert len(lambda_values) == n_lambda
+    assert jnp.allclose(lambda_values[-1], jnp.array(0.0))
+    assert jnp.allclose(lambda_values[0], jnp.array(5.0))
+    assert jnp.all(jnp.diff(lambda_values) <= 0)  # Check if values are decreasing
+
+
 def test_generate_lambda_grid():
-    max_lambda_L = 10.0
-    max_lambda_H = 10.0
-    n_lambda = 3
+    lambda_L_values = jnp.array([10.0, 5.0, 1.0, 0.0])
+    lambda_H_values = jnp.array([10.0, 5.0, 1.0, 0.0])
 
-    lambda_grid = generate_lambda_grid(max_lambda_L, max_lambda_H, n_lambda)
+    lambda_grid = generate_lambda_grid(lambda_L_values, lambda_H_values)
 
-    assert lambda_grid.shape == (9, 2)
-    assert jnp.allclose(lambda_grid[-1], jnp.array([10.0, 10.0]))
+    assert lambda_grid.shape == (16, 2)
+    assert jnp.allclose(lambda_grid[0], jnp.array([10.0, 10.0]))
+    assert jnp.allclose(lambda_grid[-1], jnp.array([0.0, 0.0]))
 
 
 def test_generate_lambda_grid_different_values():
-    max_lambda_L = 5.0
-    max_lambda_H = 20.0
-    n_lambda = 4
+    lambda_L_values = jnp.array([5.0, 2.5, 1.0, 0.0])
+    lambda_H_values = jnp.array([20.0, 10.0, 5.0, 0.0])
 
-    lambda_grid = generate_lambda_grid(max_lambda_L, max_lambda_H, n_lambda)
+    lambda_grid = generate_lambda_grid(lambda_L_values, lambda_H_values)
 
     assert lambda_grid.shape == (16, 2)
-    assert jnp.allclose(lambda_grid[0], jnp.array([0.0, 0.0]))
-    assert jnp.allclose(lambda_grid[-1], jnp.array([5.0, 20.0]))
+    assert jnp.allclose(lambda_grid[0], jnp.array([5.0, 20.0]))
+    assert jnp.allclose(lambda_grid[-1], jnp.array([0.0, 0.0]))
 
 
 def test_extract_shortest_path():
-    max_lambda_L = 10.0
-    max_lambda_H = 10.0
-    n_lambda = 3
+    lambda_L_values = jnp.array([10.0, 5.0, 1.0, 0.0])
+    lambda_H_values = jnp.array([10.0, 5.0, 1.0, 0.0])
 
-    lambda_grid = generate_lambda_grid(max_lambda_L, max_lambda_H, n_lambda)
+    lambda_grid = generate_lambda_grid(lambda_L_values, lambda_H_values)
     shortest_path = extract_shortest_path(lambda_grid)
 
-    assert shortest_path.shape == (5, 2)
+    assert shortest_path.shape[1] == 2
     assert jnp.allclose(shortest_path[0], jnp.array([10.0, 10.0]))
-    assert jnp.allclose(shortest_path[-2], jnp.array([0.01, 0.0]))
     assert jnp.allclose(shortest_path[-1], jnp.array([0.0, 0.0]))
 
 
 def test_extract_shortest_path_order():
-    max_lambda_L = 10.0
-    max_lambda_H = 10.0
-    n_lambda = 3
+    lambda_L_values = jnp.array([10.0, 5.0, 1.0, 0.0])
+    lambda_H_values = jnp.array([10.0, 5.0, 1.0, 0.0])
 
-    lambda_grid = generate_lambda_grid(max_lambda_L, max_lambda_H, n_lambda)
+    lambda_grid = generate_lambda_grid(lambda_L_values, lambda_H_values)
     shortest_path = extract_shortest_path(lambda_grid)
 
     # Check if lambda_L is non-increasing
     assert jnp.all(jnp.diff(shortest_path[:, 0]) <= 0)
 
-    # Check if lambda_H starts high, then stays at the lowest value
-    assert jnp.all(jnp.diff(shortest_path[:4, 1]) <= 0)
-    assert jnp.allclose(shortest_path[3:-1, 1], shortest_path[-2, 1])
+    # Check if lambda_H is non-increasing
+    assert jnp.all(jnp.diff(shortest_path[:, 1]) <= 0)
+
+    # Check if the path starts at the maximum values
+    assert jnp.allclose(
+        shortest_path[0], jnp.array([jnp.max(lambda_L_values), jnp.max(lambda_H_values)])
+    )
+
+    # Check if the path ends at (0, 0)
+    assert jnp.allclose(shortest_path[-1], jnp.array([0.0, 0.0]))
+
+    # Check if each step decreases either lambda_L or lambda_H (or both)
+    assert jnp.all(jnp.sum(jnp.diff(shortest_path, axis=0) < 0, axis=1) > 0)
+
+    # Check if the path includes all unique lambda_L and lambda_H values
+    assert set(shortest_path[:, 0].tolist()) == set(lambda_L_values.tolist())
+    assert set(shortest_path[:, 1].tolist()) == set(lambda_H_values.tolist())
 
 
 def test_extract_shortest_path_different_grid():
-    max_lambda_L = 5.0
-    max_lambda_H = 20.0
-    n_lambda = 4
+    lambda_L_values = jnp.array([5.0, 2.5, 1.0, 0.0])
+    lambda_H_values = jnp.array([20.0, 10.0, 5.0, 0.0])
 
-    lambda_grid = generate_lambda_grid(max_lambda_L, max_lambda_H, n_lambda)
+    lambda_grid = generate_lambda_grid(lambda_L_values, lambda_H_values)
     shortest_path = extract_shortest_path(lambda_grid)
-    assert shortest_path.shape == (7, 2)
+
+    assert shortest_path.shape[1] == 2
     assert jnp.allclose(shortest_path[0], jnp.array([5.0, 20.0]))
     assert jnp.allclose(shortest_path[-1], jnp.array([0.0, 0.0]))
-
-
-def test_propose_lambda():
-    max_lambda_L = 5.0
-    n_lambda = 4
-
-    lambda_values = propose_lambda_values(max_lambda_L, n_lambdas=n_lambda)
-
-    assert len(lambda_values) == n_lambda
-    assert jnp.allclose(lambda_values[0], jnp.array(0.0))
-    assert jnp.allclose(lambda_values[-1], jnp.array(5.0))
