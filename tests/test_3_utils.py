@@ -6,7 +6,7 @@ from mcnnm.utils import (
     check_inputs,
     generate_data,
     convert_inputs,
-    propose_lambda,
+    propose_lambda_values,
     generate_lambda_grid,
     extract_shortest_path,
 )
@@ -546,14 +546,14 @@ def test_staggered_assignment_mechanism():
 
 
 def test_propose_lambda_default():
-    lambdas = propose_lambda(1.0)
+    lambdas = propose_lambda_values(1.0)
     assert len(lambdas) == 6
     assert jnp.allclose(lambdas[0], 0.0)
     assert jnp.allclose(lambdas[-1], 1.0)
 
 
 def test_propose_lambda_custom():
-    lambdas = propose_lambda(10.0, 0.1, 5)
+    lambdas = propose_lambda_values(10.0, 0.1, 5)
     assert len(lambdas) == 5
     assert jnp.allclose(lambdas[0], 0.0)
     assert jnp.allclose(lambdas[-1], 10.0)
@@ -561,11 +561,11 @@ def test_propose_lambda_custom():
 
 def test_propose_lambda_small_max_lambda():
     with pytest.raises(ValueError, match="max_lambda .* is too small"):
-        propose_lambda(1e-11)
+        propose_lambda_values(1e-11)
 
 
 def test_propose_lambda_equal_max_min_lambda():
-    lambdas = propose_lambda(1.0, 1.0, 3)
+    lambdas = propose_lambda_values(1.0, 1.0, 3)
     assert len(lambdas) == 3
     assert jnp.allclose(lambdas[1:2], jnp.ones(2))
     assert jnp.allclose(lambdas[0], 0.0)
@@ -573,12 +573,12 @@ def test_propose_lambda_equal_max_min_lambda():
 
 def test_propose_lambda_max_smaller_than_min():
     with pytest.raises(ValueError):
-        propose_lambda(1.0, 10.0, 4)
+        propose_lambda_values(1.0, 10.0, 4)
 
 
 def test_propose_lambda_single_value():
     with pytest.raises(ValueError):
-        propose_lambda(5.0, 5.0, 1)
+        propose_lambda_values(5.0, 5.0, 1)
 
 
 def test_generate_lambda_grid():
@@ -650,7 +650,7 @@ def test_propose_lambda():
     max_lambda_L = 5.0
     n_lambda = 4
 
-    lambda_values = propose_lambda(max_lambda_L, n_lambdas=n_lambda)
+    lambda_values = propose_lambda_values(max_lambda_L, n_lambdas=n_lambda)
 
     assert len(lambda_values) == n_lambda
     assert jnp.allclose(lambda_values[0], jnp.array(0.0))
