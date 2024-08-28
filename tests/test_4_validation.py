@@ -28,7 +28,7 @@ def test_cross_validate(N, T, fe_params, X_cov, Z_cov, V_cov, noise_scale):
         noise_scale=noise_scale,
     )
 
-    opt_lambda_L, opt_lambda_H, max_lam_L, max_lam_H = cross_validate(
+    opt_lambda_L, opt_lambda_H, lambda_L_opt_range, lambda_H_opt_range = cross_validate(
         Y=Y,
         W=W,
         X=X,
@@ -49,12 +49,13 @@ def test_cross_validate(N, T, fe_params, X_cov, Z_cov, V_cov, noise_scale):
     assert not jnp.isnan(opt_lambda_H)
     assert jnp.isfinite(opt_lambda_H)
     assert opt_lambda_H >= 0
-    assert not jnp.isnan(max_lam_L)
-    assert jnp.isfinite(max_lam_L)
-    assert max_lam_L >= 0
-    assert not jnp.isnan(max_lam_H)
-    assert jnp.isfinite(max_lam_H)
-    assert max_lam_H >= 0
+    assert not jnp.any(jnp.isnan(lambda_L_opt_range))
+    assert jnp.all(jnp.isfinite(lambda_L_opt_range))
+    assert jnp.all(lambda_L_opt_range >= 0)
+    assert not jnp.any(jnp.isnan(lambda_H_opt_range))
+    assert jnp.all(jnp.isfinite(lambda_H_opt_range))
+    assert jnp.all(lambda_H_opt_range >= 0)
+    assert jnp.all(jnp.isfinite(lambda_H_opt_range))
 
 
 @pytest.mark.parametrize("N, T", [(10, 10)])
