@@ -285,17 +285,17 @@ def estimate(
     if lambda_L is None or lambda_H is None:
         if validation_method == "cv":
             opt_lambda_L, opt_lambda_H, lambda_L_opt_range, lambda_H_opt_range = cross_validate(
-                Y,
-                X,
-                Z,
-                V,
-                W,
-                Omega,
-                use_unit_fe,
-                use_time_fe,
+                Y=Y,
+                X=X,  # mypy: ignore[arg-type]
+                Z=Z,  # mypy: ignore[arg-type]
+                V=V,  # mypy: ignore[arg-type]
+                W=W,
+                Omega_inv=Omega_inv,
+                use_unit_fe=use_unit_fe,
+                use_time_fe=use_time_fe,
                 num_lam=n_lambda,
                 max_iter=max_iter,
-                tol=tol,
+                tol=tol,  # mypy: ignore[arg-type]
                 K=K,
             )
         elif validation_method == "holdout":
@@ -306,17 +306,22 @@ def estimate(
 
             initial_window, step_size, horizon, K = generate_holdout_val_defaults(Y)
             initial_window, step_size, horizon, K, max_window_size = validate_holdout_config(
-                initial_window, step_size, horizon, K, max_window_size, T  # type: ignore[arg-type]
+                initial_window,  # type: ignore
+                step_size,  # type: ignore
+                horizon,  # type: ignore
+                K,
+                max_window_size,
+                T,
             )
             opt_lambda_L, opt_lambda_H, lambda_L_opt_range, lambda_H_opt_range = holdout_validate(
-                Y,
-                X,
-                Z,
-                V,
-                W,
-                Omega,
-                use_unit_fe,
-                use_time_fe,
+                Y=Y,
+                X=X,
+                Z=Z,
+                V=V,
+                W=W,
+                Omega_inv=Omega_inv,
+                use_unit_fe=use_unit_fe,
+                use_time_fe=use_time_fe,
                 num_lam=n_lambda,
                 initial_window=initial_window,
                 step_size=step_size,
@@ -324,7 +329,7 @@ def estimate(
                 K=K,
                 max_window_size=max_window_size,
                 max_iter=max_iter,
-                tol=tol,
+                tol=tol,  # mypy: ignore[arg-type]
             )
         else:
             raise ValueError("Invalid validation method. Must be 'cv' or 'holdout'.")
@@ -337,9 +342,9 @@ def estimate(
     L_final, H_final, in_prod_final, gamma_final, delta_final, beta_final, loss_final = final_fit(
         Y=Y,
         W=W,
-        X=X,
-        Z=Z,
-        V=V,
+        X=X,  # mypy: ignore[arg-type]
+        Z=Z,  # mypy: ignore[arg-type]
+        V=V,  # mypy: ignore[arg-type]
         Omega_inv=Omega_inv,
         use_unit_fe=use_unit_fe,
         use_time_fe=use_time_fe,
@@ -365,18 +370,18 @@ def estimate(
 
     # Compute the average treatment effect
     tau = compute_treatment_effect(
-        Y,
-        W,
-        L_final,
-        X_tilde,
-        Z_tilde,
-        V,
-        H_final,
-        gamma_final,
-        delta_final,
-        beta_final,
-        use_unit_fe,
-        use_time_fe,
+        Y=Y,
+        W=W,
+        L=L_final,
+        X_tilde=X_tilde,
+        Z_tilde=Z_tilde,
+        V=V,  # mypy: ignore[arg-type]
+        H_tilde=H_final,
+        gamma=gamma_final,
+        delta=delta_final,
+        beta=beta_final,
+        use_unit_fe=use_unit_fe,
+        use_time_fe=use_time_fe,
     )
 
     return MCNNMResults(
