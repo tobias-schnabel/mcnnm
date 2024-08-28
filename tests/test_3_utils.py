@@ -1,3 +1,5 @@
+# mypy: ignore-errors
+# type: ignore
 import pytest
 import jax.numpy as jnp
 import pandas as pd
@@ -9,6 +11,7 @@ from mcnnm.utils import (
     propose_lambda_values,
     generate_lambda_grid,
     extract_shortest_path,
+    validate_holdout_config,
 )
 from typing import Literal
 import jax
@@ -666,3 +669,73 @@ def test_extract_shortest_path_different_grid():
     assert shortest_path.shape[1] == 2
     assert jnp.allclose(shortest_path[0], jnp.array([5.0, 20.0]))
     assert jnp.allclose(shortest_path[-1], jnp.array([0.0, 0.0]))
+
+
+def test_valid_configuration():
+    initial_window, step_size, horizon, K, max_window_size = validate_holdout_config(
+        initial_window=10, step_size=5, horizon=3, K=4, max_window_size=None, T=30
+    )
+    assert initial_window == 10
+    assert step_size == 5
+    assert horizon == 3
+    assert K == 4
+    assert max_window_size is None
+
+
+def test_invalid_initial_window():
+    with pytest.raises(ValueError, match="initial_window must be greater than 0."):
+        validate_holdout_config(
+            initial_window=0, step_size=5, horizon=3, K=4, max_window_size=None, T=30
+        )
+
+
+def test_invalid_step_size():
+    with pytest.raises(ValueError, match="step_size must be greater than 0."):
+        validate_holdout_config(
+            initial_window=10, step_size=0, horizon=3, K=4, max_window_size=None, T=30
+        )
+
+
+def test_invalid_horizon():
+    with pytest.raises(ValueError, match="horizon must be greater than 0."):
+        validate_holdout_config(
+            initial_window=10, step_size=5, horizon=0, K=4, max_window_size=None, T=30
+        )
+
+
+def test_invalid_K():
+    with pytest.raises(ValueError, match="K must be greater than 0."):
+        validate_holdout_config(
+            initial_window=10, step_size=5, horizon=3, K=0, max_window_size=None, T=30
+        )
+
+
+def test_invalid_max_window_size():
+    with pytest.raises(ValueError, match="max_window_size must be greater than 0 if specified."):
+        validate_holdout_config(
+            initial_window=10, step_size=5, horizon=3, K=4, max_window_size=0, T=30
+        )
+
+
+def test_adjust_max_window_size():
+    initial_window, step_size, horizon, K, max_window_size = validate_holdout_config(
+        initial_window=10, step_size=5, horizon=3, K=4, max_window_size=2, T=30
+    )
+    assert max_window_size == 3  # Should be adjusted to horizon
+
+
+def test_configuration_exceeds_T():
+    initial_window, step_size, horizon, K, max_window_size = validate_holdout_config(
+        initial_window=20, step_size=10, horizon=5, K=4, max_window_size=None, T=30
+    )
+    # Check that the function adjusted the parameters to fit within T
+    assert initial_window + (K - 1) * step_size + horizon <= 30
+
+
+def test_overlapping_folds():
+    # This should not raise an error, but adjust the parameters
+    initial_window, step_size, horizon, K, max_window_size = validate_holdout_config(
+        initial_window=10, step_size=15, horizon=3, K=4, max_window_size=None, T=30
+    )
+    # Check that the adjusted parameters don't result in overlapping folds
+    assert initial_window + (K - 1) * step_size + horizon <= 30
