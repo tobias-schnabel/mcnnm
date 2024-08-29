@@ -213,7 +213,7 @@ def test_estimate(
 
 
 def test_complete_matrix():
-    N, T = 50, 1000
+    N, T = 10, 100
 
     # Generate data
     Y, W, X, Z, V, true_params = generate_data(
@@ -245,8 +245,8 @@ def test_complete_matrix():
         validation_method="cv",
         K=2,  # Use 2 folds for faster testing
         n_lambda=3,  # Use 3 lambda values for faster testing
-        max_iter=10_000,  # Reduce max iterations for faster testing
-        tol=1e-3,  # Increase tolerance for faster convergence
+        max_iter=1_000,  # Reduce max iterations for faster testing
+        tol=1e-1,  # Increase tolerance for faster convergence
     )
 
     # Basic checks

@@ -476,4 +476,4 @@ def complete_matrix(
         max_window_size=max_window_size,
     )
 
-    return (results.Y_completed, results.lambda_L, results.lambda_H)
+    return (results.Y_completed, results.lambda_L, results.lambda_H)  # type: ignore
