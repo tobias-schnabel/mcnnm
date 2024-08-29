@@ -112,149 +112,137 @@ def estimate(
     max_window_size: Optional[int] = None,
 ) -> MCNNMResults:
     """
-     Estimate the Matrix Completion with Nuclear Norm Minimization (MC-NNM) model.
+    Estimate the Matrix Completion with Nuclear Norm Minimization (MC-NNM) model.
 
-     This function performs the complete estimation process for the MC-NNM model, including
-     parameter selection, model fitting, and treatment effect computation. It handles various
-     input configurations and validation methods to provide a comprehensive analysis of the
-     given data.
+    This function performs the complete estimation process for the MC-NNM model, including
+    parameter selection, model fitting, and treatment effect computation. It handles various
+    input configurations and validation methods to provide a comprehensive analysis of the
+    given data.
 
+    Detailed Process:
 
+    1. Input Validation and Initialization:
+       - Checks the dimensions of input matrices Y and W.
+       - Initializes the inverse of the Omega matrix (Omega_inv) if provided, otherwise uses an identity matrix.
+       - Validates that Omega_inv is positive definite.
+       - Initializes matrices L, X_tilde, Z_tilde, and V using the initialize_matrices function.
+       - Initializes fixed effects and H matrix using the initialize_fixed_effects_and_H function.
 
-     Detailed Process:
-     1. Input Validation and Initialization:
-        - Checks the dimensions of input matrices Y and W.
-        - Initializes the inverse of the Omega matrix (Omega_inv) if provided, otherwise uses an identity matrix.
-        - Validates that Omega_inv is positive definite.
-        - Initializes matrices L, X_tilde, Z_tilde, and V using the initialize_matrices function.
-        - Initializes fixed effects and H matrix using the initialize_fixed_effects_and_H function.
+    2. Lambda Selection:
+       - If lambda_L or lambda_H are not provided, performs validation to select optimal values:
 
-     2. Lambda Selection:
-        - If lambda_L or lambda_H are not provided, performs validation to select optimal values:
-          a. Cross-validation (CV):
-             - Uses the cross_validate function to find optimal lambda values.
-             - Performs K-fold cross-validation on the data.
-          b. Holdout validation:
-             - Uses the holdout_validate function to find optimal lambda values.
-             - Requires initial_window, step_size, and horizon parameters.
-             - Generates default values for these parameters if not provided.
-             - Validates the holdout configuration using validate_holdout_config function.
-        - If lambda_L and lambda_H are provided, uses these values directly.
+         a. Cross-validation (CV):
+            - Uses the cross_validate function to find optimal lambda values.
+            - Performs K-fold cross-validation on the data.
+         b. Holdout validation:
+            - Uses the holdout_validate function to find optimal lambda values.
+            - Requires initial_window, step_size, and horizon parameters.
+            - Generates default values for these parameters if not provided.
+            - Validates the holdout configuration using validate_holdout_config function.
 
-     3. Model Fitting:
-        - Calls the final_fit function to fit the MC-NNM model using the selected lambda values.
-        - Uses a warm-start approach, fitting the model along a path of lambda values.
+       - If lambda_L and lambda_H are provided, uses these values directly.
 
-     4. Results Computation:
-        - Computes the completed outcome matrix using the compute_Y_hat function.
-        - Calculates the average treatment effect using the compute_treatment_effect function.
+    3. Model Fitting:
+       - Calls the final_fit function to fit the MC-NNM model using the selected lambda values.
+       - Uses a warm-start approach, fitting the model along a path of lambda values.
 
-     5. Return Results:
-        - Returns an MCNNMResults object containing the estimated parameters, completed matrix,
-          and treatment effect.
+    4. Results Computation:
+       - Computes the completed outcome matrix using the compute_Y_hat function.
+       - Calculates the average treatment effect using the compute_treatment_effect function.
 
-     Parameters:
-     Y (Array): The observed outcome matrix of shape (N, T), where N is the number of units
-                and T is the number of time periods.
-     W (Array): The treatment assignment matrix of shape (N, T). Binary values where 1 indicates
-                treatment and 0 indicates control.
-     X (Array, optional): Unit-specific covariates of shape (N, P), where P is the number of
-                          unit-specific covariates.
-     Z (Array, optional): Time-specific covariates of shape (T, Q), where Q is the number of
-                          time-specific covariates.
-     V (Array, optional): Unit-time specific covariates of shape (N, T, R), where R is the
-                          number of unit-time specific covariates.
-     Omega (Array, optional): The covariance matrix of shape (T, T) representing the time
-                              series correlation structure. If not provided, an identity
-                              matrix is used.
+    5. Return Results:
+       - Returns an MCNNMResults object containing the estimated parameters, completed matrix, and treatment effect.
 
-     .. note::
-    The Omega matrix is inverted internally.
+    Parameters:
+        Y (Array): The observed outcome matrix of shape (N, T), where N is the number of units
+                   and T is the number of time periods.
+        W (Array): The treatment assignment matrix of shape (N, T). Binary values where 1 indicates
+                   treatment and 0 indicates control.
+        X (Array, optional): Unit-specific covariates of shape (N, P), where P is the number of
+                             unit-specific covariates.
+        Z (Array, optional): Time-specific covariates of shape (T, Q), where Q is the number of
+                             time-specific covariates.
+        V (Array, optional): Unit-time specific covariates of shape (N, T, R), where R is the
+                             number of unit-time specific covariates.
+        Omega (Array, optional): The covariance matrix of shape (T, T) representing the time
+                                 series correlation structure. If not provided, an identity
+                                 matrix is used.
+        use_unit_fe (bool): Whether to include unit fixed effects in the model. Default is True.
+        use_time_fe (bool): Whether to include time fixed effects in the model. Default is True.
+        lambda_L (Scalar, optional): The regularization parameter for the nuclear norm of L.
+                                     If not provided, it will be selected via validation.
+        lambda_H (Scalar, optional): The regularization parameter for the nuclear norm of H.
+                                     If not provided, it will be selected via validation.
+        n_lambda (int): The number of lambda values to consider in the validation grid. Default is 10.
+        max_iter (int): Maximum number of iterations for the optimization algorithm. Default is 1000.
+        tol (Scalar): Tolerance for convergence of the optimization algorithm. Default is 1e-4.
+        validation_method (str): The method to use for selecting lambda values. Must be either
+                                 'cv' for cross-validation or 'holdout' for holdout validation.
+                                 Default is 'cv'.
+        K (int): The number of folds to use in cross-validation. Default is 5.
+        initial_window (int, optional): The size of the initial window for holdout validation.
+                                        Required if validation_method is 'holdout'.
+        step_size (int, optional): The step size for moving the window in holdout validation.
+                                   Required if validation_method is 'holdout'.
+        horizon (int, optional): The size of the holdout horizon in holdout validation.
+                                 Required if validation_method is 'holdout'.
+        max_window_size (int, optional): The maximum window size for holdout validation.
+                                         If not provided, no maximum is imposed.
 
-     use_unit_fe (bool): Whether to include unit fixed effects in the model. Default is True.
-     use_time_fe (bool): Whether to include time fixed effects in the model. Default is True.
+    Returns:
+        MCNNMResults: An object containing the following attributes:
+            - tau: The estimated average treatment effect.
+            - lambda_L: The final lambda_L value used in the model.
+            - lambda_H: The final lambda_H value used in the model.
+            - L: The estimated low-rank matrix.
+            - Y_completed: The completed outcome matrix.
+            - gamma: The estimated unit fixed effects (if use_unit_fe is True).
+            - delta: The estimated time fixed effects (if use_time_fe is True).
+            - beta: The estimated coefficients for covariates.
+            - H: The estimated interactive fixed effects matrix.
 
-     .. warning::
-    Currently, at least one of ``use_unit_fe`` or ``use_time_fe`` must be True if any
-    covariates (X, Z, or V) are used in the model. This is a requirement of the current
-    implementation.
+    Raises:
+        ValueError: If Omega_inv is not positive definite, if an invalid validation method is
+                    specified, or if required parameters for holdout validation are missing.
 
+    Notes:
+        - The function uses JAX for numerical computations, which allows for automatic
+          differentiation and potential GPU acceleration.
+        - The estimation process involves several steps of initialization, validation, and
+          optimization, which can be computationally intensive for large datasets.
+        - The choice of validation method and associated parameters can significantly affect
+          the final estimates and computational time.
+        - The function handles missing data in the outcome matrix Y through the treatment
+          assignment matrix W.
+        - The implementation supports various types of fixed effects and covariates, allowing
+          for flexible model specifications.
 
-     lambda_L (Scalar, optional): The regularization parameter for the nuclear norm of L.
-                                  If not provided, it will be selected via validation.
-     lambda_H (Scalar, optional): The regularization parameter for the nuclear norm of H.
-                                  If not provided, it will be selected via validation.
-     n_lambda (int): The number of lambda values to consider in the validation grid. Default is 10.
-     max_iter (int): Maximum number of iterations for the optimization algorithm. Default is 1000.
-     tol (Scalar): Tolerance for convergence of the optimization algorithm. Default is 1e-4.
-     validation_method (str): The method to use for selecting lambda values. Must be either
-                              'cv' for cross-validation or 'holdout' for holdout validation.
-                              Default is 'cv'.
-     K (int): The number of folds to use in cross-validation. Default is 5.
-     initial_window (int, optional): The size of the initial window for holdout validation.
-                                     Required if validation_method is 'holdout'.
-     step_size (int, optional): The step size for moving the window in holdout validation.
-                                Required if validation_method is 'holdout'.
-     horizon (int, optional): The size of the holdout horizon in holdout validation.
-                              Required if validation_method is 'holdout'.
-     max_window_size (int, optional): The maximum window size for holdout validation.
-                                      If not provided, no maximum is imposed.
+    Example:
+        >>> from mcnnm.wrappers import estimate
+        >>> from mcnnm.utils import generate_data
+        >>> N, T = 100, 50  # Number of units and time periods
+        >>> noise_scale = 1.0 # Scale of the noise in the data
+        >>> Y, W, X, Z, V, true_params = generate_data(
+        ...     nobs=N,
+        ...     nperiods=T,
+        ...     unit_fe=True,
+        ...     time_fe=True,
+        ...     X_cov=True,
+        ...     Z_cov=True,
+        ...     V_cov=True,
+        ...     seed=2024,
+        ...     noise_scale=noise_scale,
+        ... )
+        >>> results = estimate(Y, W, X, Z, V, validation_method='cv', K=5)
+        >>> print(results.tau)  # Print the estimated average treatment effect
+        >>> print(f"True ATE: {true_params['treatment_effect']}")  # Compare with the true ATE
 
-     Returns:
-     MCNNMResults: An object containing the following attributes:
-         - tau: The estimated average treatment effect.
-         - lambda_L: The final lambda_L value used in the model.
-         - lambda_H: The final lambda_H value used in the model.
-         - L: The estimated low-rank matrix.
-         - Y_completed: The completed outcome matrix.
-         - gamma: The estimated unit fixed effects (if use_unit_fe is True).
-         - delta: The estimated time fixed effects (if use_time_fe is True).
-         - beta: The estimated coefficients for covariates.
-         - H: The estimated interactive fixed effects matrix.
-
-     Raises:
-     ValueError: If Omega_inv is not positive definite, if an invalid validation method is
-                 specified, or if required parameters for holdout validation are missing.
-
-     Notes:
-     - The function uses JAX for numerical computations, which allows for automatic
-       differentiation and potential GPU acceleration.
-     - The estimation process involves several steps of initialization, validation, and
-       optimization, which can be computationally intensive for large datasets.
-     - The choice of validation method and associated parameters can significantly affect
-       the final estimates and computational time.
-     - The function handles missing data in the outcome matrix Y through the treatment
-       assignment matrix W.
-     - The implementation supports various types of fixed effects and covariates, allowing
-       for flexible model specifications.
-
-     Example:
-     >>> from mcnnm.wrappers import estimate
-     >>> from mcnnm.utils import generate_data
-     >>> N, T = 100, 50  # Number of units and time periods
-     >>> noise_scale = 1.0 # Scale of the noise in the data
-     >>> Y, W, X, Z, V, true_params = generate_data(
-     ...     nobs=N,
-     ...     nperiods=T,
-     ...     unit_fe=True,
-     ...     time_fe=True,
-     ...     X_cov=True,
-     ...     Z_cov=True,
-     ...     V_cov=True,
-     ...     seed=2024,
-     ...     noise_scale=noise_scale,
-     ... )
-     >>> results = estimate(Y, W, X, Z, V, validation_method='cv', K=5)
-     >>> print(results.tau)  # Print the estimated average treatment effect
-     >>> print(f"True ATE: {true_params['treatment_effect']}")  # Compare with the true ATE
-
-
-     See Also:
-     - cross_validate: Function used for cross-validation.
-     - holdout_validate: Function used for holdout validation.
-     - final_fit: Function used for the final model fitting.
-     - compute_Y_hat: Function used to compute the completed outcome matrix.
-     - compute_treatment_effect: Function used to compute the average treatment effect.
+    See Also:
+        - cross_validate: Function used for cross-validation.
+        - holdout_validate: Function used for holdout validation.
+        - final_fit: Function used for the final model fitting.
+        - compute_Y_hat: Function used to compute the completed outcome matrix.
+        - compute_treatment_effect: Function used to compute the average treatment effect.
     """
 
     N, T = Y.shape
