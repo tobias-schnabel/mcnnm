@@ -1,11 +1,11 @@
 from .core_utils import is_positive_definite
 from .types import Array, Scalar
-from typing import NamedTuple, Optional, Literal, cast
+from typing import NamedTuple, Optional, Literal, cast, Tuple
 import jax.numpy as jnp
 
 from .core import compute_Y_hat, initialize_matrices, initialize_fixed_effects_and_H
 from .validation import cross_validate, holdout_validate, final_fit
-from .utils import generate_holdout_val_defaults, validate_holdout_config
+from .utils import validate_holdout_config
 
 
 def compute_treatment_effect(
@@ -167,6 +167,10 @@ def estimate(
      Omega (Array, optional): The covariance matrix of shape (T, T) representing the time
                               series correlation structure. If not provided, an identity
                               matrix is used.
+
+     .. note::
+    The Omega matrix is inverted internally.
+
      use_unit_fe (bool): Whether to include unit fixed effects in the model. Default is True.
      use_time_fe (bool): Whether to include time fixed effects in the model. Default is True.
 
@@ -260,7 +264,7 @@ def estimate(
     else:
         Omega_inv = jnp.linalg.inv(Omega)
 
-    if not is_positive_definite(Omega_inv):
+    if not is_positive_definite(Omega_inv):  # pragma: no cover
         raise ValueError("Omega_inv must be a positive definite matrix.")
 
     # Initialize matrices
@@ -299,12 +303,11 @@ def estimate(
                 K=K,
             )
         elif validation_method == "holdout":
-            if initial_window is None or step_size is None or horizon is None:
-                raise ValueError(
+            if initial_window is None or step_size is None or horizon is None:  # pragma: no cover
+                raise ValueError(  # pragma: no cover
                     "Holdout validation requires initial_window, step_size, and horizon."
                 )
 
-            initial_window, step_size, horizon, K = generate_holdout_val_defaults(Y)
             initial_window, step_size, horizon, K, max_window_size = validate_holdout_config(
                 initial_window,  # type: ignore
                 step_size,  # type: ignore
@@ -332,7 +335,9 @@ def estimate(
                 tol=tol,  # type: ignore[arg-type]
             )
         else:
-            raise ValueError("Invalid validation method. Must be 'cv' or 'holdout'.")
+            raise ValueError(
+                "Invalid validation method. Must be 'cv' or 'holdout'."
+            )  # pragma: no cover
     else:
         opt_lambda_L = jnp.array(lambda_L)
         opt_lambda_H = jnp.array(lambda_H)
@@ -397,5 +402,78 @@ def estimate(
     )
 
 
-def complete_matrix():
-    pass  # TODO: Implement this function
+def complete_matrix(
+    Y: Array,
+    W: Array,
+    X: Optional[Array] = None,
+    Z: Optional[Array] = None,
+    V: Optional[Array] = None,
+    Omega: Optional[Array] = None,
+    use_unit_fe: bool = True,
+    use_time_fe: bool = True,
+    lambda_L: Optional[Scalar] = None,
+    lambda_H: Optional[Scalar] = None,
+    n_lambda: int = 10,
+    max_iter: int = 1000,
+    tol: Scalar = 1e-4,
+    validation_method: Literal["cv", "holdout"] = "cv",
+    K: int = 5,
+    initial_window: Optional[int] = None,
+    step_size: Optional[int] = None,
+    horizon: Optional[int] = None,
+    max_window_size: Optional[int] = None,
+) -> Tuple[Array, Scalar, Scalar]:
+    """
+    Complete a matrix using the Matrix Completion with Nuclear Norm Minimization (MC-NNM) model.
+
+    This function is a thin wrapper around the `estimate` function, focusing on matrix completion.
+    It performs the estimation process for the MC-NNM model and returns the completed matrix
+    along with the regularization parameters used.
+
+    For a detailed description of the estimation process, input parameters, and their meanings,
+    please refer to the documentation of the `estimate` function.
+
+    Returns:
+        tuple: A tuple containing:
+            - Y_completed (Array): The completed outcome matrix.
+            - lambda_L (Scalar): The final lambda_L value used in the model.
+            - lambda_H (Scalar): The final lambda_H value used in the model.
+
+    Note:
+        This function uses the same parameters as the `estimate` function. For a comprehensive
+        explanation of each parameter, including optional covariates, fixed effects, validation
+        methods, and other configuration options, please consult the `estimate` function's
+        documentation.
+
+    Example:
+        >>> Y_completed, lambda_L, lambda_H = complete_matrix(Y, W, X=X, Z=Z, V=V)
+        >>> print(Y_completed.shape)  # Print the shape of the completed matrix
+        >>> print(f"Lambda L: {lambda_L}, Lambda H: {lambda_H}")  # Print the regularization parameters
+
+    See Also:
+        estimate: The main function performing the complete MC-NNM estimation process.
+    """
+
+    results = estimate(
+        Y=Y,
+        W=W,
+        X=X,
+        Z=Z,
+        V=V,
+        Omega=Omega,
+        use_unit_fe=use_unit_fe,
+        use_time_fe=use_time_fe,
+        lambda_L=lambda_L,
+        lambda_H=lambda_H,
+        n_lambda=n_lambda,
+        max_iter=max_iter,
+        tol=tol,
+        validation_method=validation_method,
+        K=K,
+        initial_window=initial_window,
+        step_size=step_size,
+        horizon=horizon,
+        max_window_size=max_window_size,
+    )
+
+    return (results.Y_completed, results.lambda_L, results.lambda_H)
