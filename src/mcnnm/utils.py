@@ -224,7 +224,7 @@ def generate_data(
     elif assignment_mechanism == "block":
         treated_units = np.random.choice(nobs, size=int(nobs * treated_fraction), replace=False)
         treat = np.zeros((nobs, nperiods), dtype=int)
-        treat[treated_units, nperiods // 2 :] = 1
+        treat[treated_units, nperiods // 3 :] = 1
     elif assignment_mechanism == "single_treated_period":
         treated_units = np.random.choice(nobs, size=int(nobs * treated_fraction), replace=False)
         treat = np.zeros((nobs, nperiods), dtype=int)
