@@ -266,7 +266,7 @@ def holdout_validate(
     max_window_size: Optional[int] = None,
     max_iter: Optional[int] = 1000,
     tol: Optional[float] = 1e-5,
-) -> Tuple[Array, Array, Array, Array]:  # TODO: overhaul
+) -> Tuple[Array, Array, Array, Array]:
     """
     Perform holdout validation to select the optimal regularization parameters for the MC-NNM model.
 
