@@ -25,12 +25,11 @@ def initialize_coefficients(
         V (Array): The unit-time specific covariates tensor of shape (N, T, J).
 
     Returns:
-    Tuple[Array, Array, Array, Array]:
-        A tuple containing initial values for:
-        - H_tilde
-        - gamma
-        - delta
-        - beta
+        Tuple[Array, Array, Array, Array]: A tuple containing initial values for:
+            - H_tilde: Initial value for the interactive fixed effects matrix.
+            - gamma: Initial value for unit fixed effects.
+            - delta: Initial value for time fixed effects.
+            - beta: Initial value for covariate coefficients.
     """
     N, T = Y.shape
     gamma = jnp.zeros(N)  # unit FE coefficients
@@ -251,7 +250,9 @@ def compute_Y_hat(
     This function computes the decomposition of the observed outcome matrix Y
     into its low-rank component L, covariate effects, and fixed effects (unit and time).
     The decomposition is given by:
-        Y ≈ L + X @ H[:P, :Q] @ Z.T + V @ beta + gamma @ 1_T + 1_N @ delta
+
+    .. math::
+        \\hat{Y} ≈ L + X @ H[:P, :Q] @ Z.T + V @ beta + gamma @ 1_T + 1_N @ delta
 
     Args:
         L (Array): The low-rank matrix of shape (N, T).
@@ -323,9 +324,9 @@ def compute_objective_value(
         + \lambda_L \|L^*\|_* + \lambda_H \|H^*\|_1
 
     where:
+
     - :math:`Y_{it}` is the observed outcome for unit :math:`i` at time :math:`t`
-    - :math:`\hat{Y}_{it}` is the estimated outcome for unit :math:`i` at time
-      :math:`t`, given by:
+    - :math:`\widehat{Y}_{it}` is the estimated outcome for unit :math:`i` at time :math:`t`, given by:
 
       .. math::
 
@@ -335,19 +336,19 @@ def compute_objective_value(
     - :math:`\Omega` is the set of observed entries in the outcome matrix
     - :math:`\Omega^{-1}` is the inverse of the omega matrix, capturing the time
       series correlation
-    - :math:`L^*` is the low-rank matrix of shape (N, T)
+    - :math:`\hat{L}` is the low-rank matrix of shape (N, T)
     - :math:`\tilde{X}` is the augmented unit-specific covariates matrix of shape (N, P+N)
     - :math:`\tilde{Z}` is the augmented time-specific covariates matrix of shape (T, Q+T)
     - :math:`V` is the unit-time-specific covariates tensor of shape (N, T, J)
-    - :math:`\tilde{H}^*` is the augmented covariate coefficients matrix of shape (P+N, Q+T)
-    - :math:`\Gamma^*` is the unit fixed effects vector of shape (N,)
-    - :math:`\Delta^*` is the time fixed effects vector of shape (T,)
-    - :math:`\beta^*` is the unit-time-specific covariate coefficients vector
+    - :math:`\tilde{H}` is the augmented covariate coefficients matrix of shape (P+N, Q+T)
+    - :math:`\Gamma` is the unit fixed effects vector of shape (N,)
+    - :math:`\Delta` is the time fixed effects vector of shape (T,)
+    - :math:`\beta` is the unit-time-specific covariate coefficients vector
       of shape (J,)
     - :math:`\lambda_L` is the regularization parameter for the nuclear norm of
-      :math:`L^*`
+      :math:`L`
     - :math:`\lambda_H` is the regularization parameter for the element-wise L1 norm
-      of :math:`\tilde{H}^*`
+      of :math:`\tilde{H}`
 
     Args:
         Y (Array): The observed outcome matrix of shape (N, T).
@@ -355,14 +356,14 @@ def compute_objective_value(
         Z_tilde (Array): The augmented time-specific covariates matrix :math:`\tilde{Z}` of shape (T, Q+T).
         V (Array): The unit-time-specific covariates tensor :math:`V` of shape
             (N, T, J).
-        H_tilde (Array): The augmented covariate coefficients matrix :math:`\tilde{H}^*` of shape
+        H_tilde (Array): The augmented covariate coefficients matrix :math:`\tilde{H}` of shape
             (P+N, Q+T).
         W (Array): The mask matrix indicating observed entries of shape (N, T).
-        L (Array): The low-rank matrix :math:`L^*` of shape (N, T).
-        gamma (Array): The unit fixed effects vector :math:`\Gamma^*` of shape (N,).
-        delta (Array): The time fixed effects vector :math:`\Delta^*` of shape (T,).
+        L (Array): The low-rank matrix :math:`L` of shape (N, T).
+        gamma (Array): The unit fixed effects vector :math:`\Gamma` of shape (N,).
+        delta (Array): The time fixed effects vector :math:`\Delta` of shape (T,).
         beta (Array): The unit-time-specific covariate coefficients vector
-            :math:`\beta^*` of shape (J,).
+            :math:`\beta` of shape (J,).
         sum_sing_vals (Scalar): The sum of singular values of L.
         lambda_L (Scalar): The regularization parameter for the nuclear norm of L.
         lambda_H (Scalar): The regularization parameter for the element-wise L1 norm
@@ -765,7 +766,21 @@ def fit(
     print_iters: bool = False,
 ) -> Tuple[Array, Array, Array, Array, Array, Array, Scalar]:
     """
-    Perform cyclic coordinate descent updates to estimate the matrices L, H_tilde, and the fixed effects vectors.
+    Perform cyclic coordinate descent to estimate the MC-NNM model parameters.
+
+    This function implements the core estimation algorithm for the Matrix Completion with Nuclear Norm Minimization \
+    (MC-NNM) model. It uses a cyclic coordinate descent approach to iteratively update the model parameters, including \
+    the low-rank matrix L, the covariate coefficients matrix H_tilde, fixed effects vectors (gamma and delta), \
+    and unit-time-specific covariate coefficients (beta).
+
+    The algorithm minimizes an objective function that balances the fit to the observed data with regularization terms.\
+    It uses nuclear norm regularization for the low-rank matrix L and element-wise L1 regularization for the covariate \
+    coefficients matrix H_tilde. The function handles both unit and time fixed effects, as well as various types of \
+    covariates (unit-specific, time-specific, and unit-time-specific).
+
+    The estimation process continues until convergence is reached (determined by the relative change in the objective \
+    function) or the maximum number of iterations is exceeded. The function can optionally provide verbose output to \
+    track the optimization progress.
 
     Args:
         Y (Array): The observed outcome matrix of shape (N, T).
@@ -783,10 +798,8 @@ def fit(
         beta (Array): The initial unit-time-specific covariate coefficients vector of shape (J,).
         lambda_L (Scalar): The regularization parameter for the nuclear norm of L.
         lambda_H (Scalar): The regularization parameter for the element-wise L1 norm of H_tilde.
-        use_unit_fe (bool): Whether to include unit fixed effects in the decomposition. Currently one of use_unit_fe or
-            use_time_fe must be True if covariates are used.
-        use_time_fe (bool): Whether to include time fixed effects in the decomposition. Currently one of use_unit_fe or
-            use_time_fe must be True if covariates are used.
+        use_unit_fe (bool): Whether to include unit fixed effects in the decomposition.
+        use_time_fe (bool): Whether to include time fixed effects in the decomposition.
         Omega_inv (Optional[Array]): The inverse of the omega matrix of shape (T, T). If None, the identity matrix is
         niter (int, optional): The maximum number of iterations for the coordinate descent algorithm. Default is 1000.
         rel_tol (float, optional): The relative tolerance for convergence. Default is 1e-5.
@@ -794,15 +807,21 @@ def fit(
         print_iters (bool, optional): Whether to print in each iteration. Default is False.
 
     Returns:
-    Tuple[Array, Array, Array, Array, Array, Array]:
+        Tuple[Array, Array, Array, Array, Array, Array]:
         A tuple containing:
-        - The updated covariate coefficient matrix H_tilde
-        - The updated low-rank matrix L
-        - The updated unit fixed effects vector
-        - The updated time fixed effects vector
-        - The updated unit-time-specific covariate vector
-        - The updated in_prod vector
-        - The final objective value
+            - The updated covariate coefficient matrix H_tilde
+            - The updated low-rank matrix L
+            - The updated unit fixed effects vector
+            - The updated time fixed effects vector
+            - The updated unit-time-specific covariate vector
+            - The updated in_prod vector
+            - The final objective value
+
+    Note:
+    This function is computationally intensive and forms the core of the MC-NNM estimation procedure. It is designed to\
+    handle large matrices efficiently, leveraging JAX for potential GPU acceleration. The convergence speed and final\
+    estimates can be sensitive to the choice of regularization parameters (lambda_L and lambda_H) and the initial \
+    values of the matrices and vectors.
     """
     obj_val = jnp.inf
 

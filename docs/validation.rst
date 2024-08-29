@@ -38,15 +38,7 @@ Key Parameters:
 
    Example: If `n_lambda_L=10` and `n_lambda_H=10`, the grid search will consider 100 different combinations of lambda values.
 
-Example Usage:
-
-::
-
-   results = estimate(Y, W, X=X, Z=Z, V=V,
-                   validation_method='cv',
-                   K=10,
-                   n_lambda_L=8,
-                   n_lambda_H=8)
+Example Usage: see `here <https://colab.research.google.com/github/tobias-schnabel/mcnnm/blob/main/Example.ipynb>`_
 
 This configuration would:
 
@@ -123,17 +115,7 @@ Key Parameters:
 
    Why it's useful: This can be helpful if you believe that very old data is no longer relevant to current predictions, or if you want to limit computational resources.
 
-Example Usage:
-
-::
-
-   results = estimate(Y, W, X=X, Z=Z, V=V,
-                      validation_method='holdout',
-                      initial_window=50,
-                      step_size=10,
-                      horizon=5,
-                      K=5,
-                      max_window_size=80)
+Example Usage: see `here <https://colab.research.google.com/github/tobias-schnabel/mcnnm/blob/main/Example.ipynb>`_
 
 This configuration would:
 

@@ -38,30 +38,30 @@ def cross_validate(
     all folds.
 
     Steps:
-    1. Create K-fold masks using the `create_folds` function, which randomly assigns observations
-       to folds based on the `cv_ratio`.
-    2. Initialize the low-rank matrix L and the augmented covariate matrices X_tilde, Z_tilde, and V
-       using the `initialize_matrices` function.
-    3. Initialize the model parameters (gamma, delta, beta, H_tilde) and compute the maximum lambda
-       values for each fold using the `initialize_fold` function and `jax.vmap`.
-    4. Determine the overall maximum lambda_L and lambda_H values across all folds.
-    5. Generate lambda_L and lambda_H value ranges using the `propose_lambda_values` function.
-    6. Create a lambda grid by combining the lambda_L and lambda_H value ranges using the
-       `generate_lambda_grid` function.
-    7. Define the `fold_loss` function that computes the validation RMSE for each lambda combination
-       within a fold:
-       - Split the data into training and validation sets based on the fold mask.
-       - Use `jax.lax.scan` to iterate over the lambda grid and compute the RMSE for each combination.
-       - Train the model using the `fit` function on the training set for each lambda combination.
-       - Compute the validation RMSE using the `compute_objective_value` function on the validation set.
-       - Return the validation RMSE for each lambda combination.
-    8. Apply the `fold_loss` function to each fold using `jax.vmap` to compute the validation RMSE for
-       each lambda combination across all folds.
-    9. Compute the average validation RMSE for each lambda combination across all folds.
-    10. Select the best lambda_L and lambda_H values based on the minimum average RMSE.
-    11. Determine the optimal lambda_L and lambda_H ranges by slicing the corresponding value ranges
-        based on the best lambda values.
-    12. Return the best lambda_L and lambda_H values along with their optimal ranges.
+        1. Create K-fold masks using the `create_folds` function, which randomly assigns observations to folds based on\
+        the `cv_ratio`.
+        2. Initialize the low-rank matrix L and the augmented covariate matrices X_tilde, Z_tilde, and V
+           using the `initialize_matrices` function.
+        3. Initialize the model parameters (gamma, delta, beta, H_tilde) and compute the maximum lambda
+           values for each fold using the `initialize_fold` function and `jax.vmap`.
+        4. Determine the overall maximum lambda_L and lambda_H values across all folds.
+        5. Generate lambda_L and lambda_H value ranges using the `propose_lambda_values` function.
+        6. Create a lambda grid by combining the lambda_L and lambda_H value ranges using the
+           `generate_lambda_grid` function.
+        7. Define the `fold_loss` function that computes the validation RMSE for each lambda combination
+           within a fold:
+           - Split the data into training and validation sets based on the fold mask.
+           - Use `jax.lax.scan` to iterate over the lambda grid and compute the RMSE for each combination.
+           - Train the model using the `fit` function on the training set for each lambda combination.
+           - Compute the validation RMSE using the `compute_objective_value` function on the validation set.
+           - Return the validation RMSE for each lambda combination.
+        8. Apply the `fold_loss` function to each fold using `jax.vmap` to compute the validation RMSE for
+           each lambda combination across all folds.
+        9. Compute the average validation RMSE for each lambda combination across all folds.
+        10. Select the best lambda_L and lambda_H values based on the minimum average RMSE.
+        11. Determine the optimal lambda_L and lambda_H ranges by slicing the corresponding value ranges
+            based on the best lambda values.
+        12. Return the best lambda_L and lambda_H values along with their optimal ranges.
 
     Args:
         Y (Array): The target variable matrix of shape (N, T).
@@ -276,28 +276,28 @@ def holdout_validate(
     RMSE across all folds is selected as the optimal regularization parameters.
 
     Steps:
-    1. Create K holdout masks using the `create_holdout_masks` function, which generates masks based on the
-       specified time windows determined by `initial_window`, `step_size`, and `horizon`.
-    2. Initialize the low-rank matrix L and the augmented covariate matrices X_tilde, Z_tilde, and V
-       using the `initialize_matrices` function.
-    3. Initialize the model configurations (gamma, delta, beta, H_tilde) and compute the maximum lambda
-       values for each holdout fold using the `initialize_holdout` function and `jax.vmap`.
-    4. Determine the overall maximum lambda_L and lambda_H values across all holdout folds.
-    5. Generate lambda_L and lambda_H value ranges using the `propose_lambda_values` function.
-    6. Create a lambda grid by combining the lambda_L and lambda_H value ranges using the
-       `generate_lambda_grid` function.
-    7. Define the `holdout_fold_loss` function that computes the holdout RMSE for each lambda combination
-       within a fold:
-       - Split the data into training and validation sets based on the holdout mask.
-       - Use `jax.lax.scan` to iterate over the lambda grid and compute the RMSE for each combination.
-       - Train the model using the `fit` function on the training set for each lambda combination.
-       - Compute the holdout RMSE using the `compute_objective_value` function on the validation set.
-       - Return the holdout RMSE for each lambda combination.
-    8. Apply the `holdout_fold_loss` function to each holdout fold using `jax.vmap` to compute the holdout
-       RMSE for each lambda combination across all folds.
-    9. Compute the average holdout RMSE for each lambda combination across all folds.
-    10. Select the best lambda_L and lambda_H values based on the minimum average RMSE.
-    11. Return the best lambda_L and lambda_H values along with the maximum lambda_L and lambda_H values.
+        1. Create K holdout masks using the `create_holdout_masks` function, which generates masks based on the \
+        specified time windows determined by `initial_window`, `step_size`, and `horizon`.
+        2. Initialize the low-rank matrix L and the augmented covariate matrices X_tilde, Z_tilde, and V
+           using the `initialize_matrices` function.
+        3. Initialize the model configurations (gamma, delta, beta, H_tilde) and compute the maximum lambda
+           values for each holdout fold using the `initialize_holdout` function and `jax.vmap`.
+        4. Determine the overall maximum lambda_L and lambda_H values across all holdout folds.
+        5. Generate lambda_L and lambda_H value ranges using the `propose_lambda_values` function.
+        6. Create a lambda grid by combining the lambda_L and lambda_H value ranges using the
+           `generate_lambda_grid` function.
+        7. Define the `holdout_fold_loss` function that computes the holdout RMSE for each lambda combination
+           within a fold:
+           - Split the data into training and validation sets based on the holdout mask.
+           - Use `jax.lax.scan` to iterate over the lambda grid and compute the RMSE for each combination.
+           - Train the model using the `fit` function on the training set for each lambda combination.
+           - Compute the holdout RMSE using the `compute_objective_value` function on the validation set.
+           - Return the holdout RMSE for each lambda combination.
+        8. Apply the `holdout_fold_loss` function to each holdout fold using `jax.vmap` to compute the holdout
+           RMSE for each lambda combination across all folds.
+        9. Compute the average holdout RMSE for each lambda combination across all folds.
+        10. Select the best lambda_L and lambda_H values based on the minimum average RMSE.
+        11. Return the best lambda_L and lambda_H values along with the maximum lambda_L and lambda_H values.
 
     Args:
         Y (Array): The observed outcome matrix of shape (N, T).
@@ -305,22 +305,22 @@ def holdout_validate(
         Z (Array): The time-specific covariates matrix of shape (T, Q).
         V (Array): The unit-time specific covariates tensor of shape (N, T, J).
         W (Array): The binary matrix indicating observed (0) and missing (1) entries in Y, shape (N, T).
-        Omega_inv (Array, optional): The autocorrelation matrix of shape (T, T). If not provided,
-            the identity matrix is used.
+        Omega_inv (Array, optional): The autocorrelation matrix of shape (T, T). If not provided, an identity matrix \
+        is used.
         use_unit_fe (bool): Whether to use unit fixed effects.
         use_time_fe (bool): Whether to use time fixed effects.
         num_lam (int): The number of lambda values to generate in the grid.
-        initial_window (int): The size of the initial time window for holdout validation. It determines the
-            number of time steps used to initialize the model configurations for each holdout fold.
-        step_size (int): The step size for moving the time window in each holdout fold. It determines the
-            number of time steps to shift the window for each subsequent fold.
-        horizon (int): The size of the holdout horizon (number of time steps to predict). It determines the
-            number of time steps used for evaluating the model's performance in each holdout fold.
+        initial_window (int): The size of the initial time window for holdout validation. It determines the \
+        number of time steps used to initialize the model configurations for each holdout fold.
+        step_size (int): The step size for moving the time window in each holdout fold. It determines the \
+        number of time steps to shift the window for each subsequent fold.
+        horizon (int): The size of the holdout horizon (number of time steps to predict). It determines the number of \
+        time steps used for evaluating the model's performance in each holdout fold.
         K (int): The number of holdout folds.
-        max_window_size (int, optional): The maximum size of the time window. If specified, it limits the
-            size of the time window used for initializing the model configurations in each holdout fold.
-            The window size will not exceed `max_window_size` even if `initial_window` + `horizon` is larger.
-            Defaults to None, meaning no limit on the window size.
+        max_window_size (int, optional): The maximum size of the time window. If specified, it limits the size of the \
+        time window used for initializing the model configurations in each holdout fold. The window size will not \
+        exceed `max_window_size` even if `initial_window` + `horizon` is larger. Defaults to None, meaning no limit on \
+        the window size.
         max_iter (int, optional): Maximum number of iterations for fitting the model. Defaults to 1000.
         tol (float, optional): Convergence tolerance for fitting the model. Defaults to 1e-5.
 
@@ -349,18 +349,32 @@ def holdout_validate(
     N, T = Y.shape
 
     def create_holdout_masks(W, initial_window, step_size, horizon, K, max_window_size):
+        N, T = W.shape
         masks = []
         start_index = initial_window
         for _ in range(K):
             end_index = min(start_index + horizon, T)
             if max_window_size is not None:
-                start_index = max(end_index - max_window_size, 0)
+                train_start = max(end_index - max_window_size, 0)
+            else:
+                train_start = 0
+
             mask = jnp.zeros((N, T), dtype=bool)
-            mask = mask.at[:, :end_index].set(True)
+            mask = mask.at[:, train_start:start_index].set(True)  # Training period
+
             n_train = jnp.sum(W * mask)
             if n_train > 0:
                 masks.append(mask)
-                start_index += step_size
+
+            start_index += step_size
+            if end_index >= T:
+                break
+
+        if not masks:
+            # If no valid masks were created, create a single mask using all available data
+            mask = jnp.ones((N, T), dtype=bool)
+            masks.append(mask)
+
         return jnp.array(masks)
 
     holdout_masks = create_holdout_masks(W, initial_window, step_size, horizon, K, max_window_size)
@@ -542,13 +556,13 @@ def final_fit(
     length of lambda_H.
 
     Steps:
-    1. Initialize matrices and model parameters using the `initialize_matrices` and
-       `initialize_fixed_effects_and_H` functions.
-    2. Generate a lambda grid using the optimal lambda ranges.
-    3. Extract the shortest path of lambda values from the largest to the best values.
-    4. Iteratively fit the model for each lambda pair in the shortest path, using the
-       results from the previous fit as initial values for the next fit.
-    5. Return the final model parameters and loss.
+        1. Initialize matrices and model parameters using the `initialize_matrices` and
+           `initialize_fixed_effects_and_H` functions.
+        2. Generate a lambda grid using the optimal lambda ranges.
+        3. Extract the shortest path of lambda values from the largest to the best values.
+        4. Iteratively fit the model for each lambda pair in the shortest path, using the
+           results from the previous fit as initial values for the next fit.
+        5. Return the final model parameters and loss.
 
     Args:
         Y (Array): The target variable matrix of shape (N, T).
@@ -556,8 +570,8 @@ def final_fit(
         Z (Array): The feature matrix for time-specific covariates of shape (T, Q).
         V (Array): The feature matrix for unit-time covariates of shape (N, T, R).
         W (Array): The binary matrix indicating the presence of observations of shape (N, T).
-        Omega_inv (Array, optional): The inverse of the covariance matrix of shape (T, T).
-            If not provided, the identity matrix is used.
+        Omega_inv (Array, optional): The inverse of the covariance matrix of shape (T, T). If not provided, an\
+         identity matrix is used.
         use_unit_fe (bool): Whether to include unit fixed effects in the model.
         use_time_fe (bool): Whether to include time fixed effects in the model.
         best_lambda_L: The best lambda_L value determined by cross-validation or holdout validation.

@@ -45,7 +45,6 @@ html_theme_options = {
     "use_fullscreen_button": False,
     "navbar_end": ["navbar-icon-links.html", "search-field.html"],
     "search_bar_text": "Search the docs...",
-    "search_bar_position": "navbar",
 }
 html_static_path = ["_static"]
 
