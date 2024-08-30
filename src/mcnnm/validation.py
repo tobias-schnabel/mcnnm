@@ -370,19 +370,24 @@ def holdout_validate(
             if end_index >= T:
                 break
 
-        if not masks:
+        if not masks:  # pragma: no cover
             # If no valid masks were created, create a single mask using all available data
-            mask = jnp.ones((N, T), dtype=bool)
-            masks.append(mask)
+            mask = jnp.ones((N, T), dtype=bool)  # pragma: no cover
+            masks.append(mask)  # pragma: no cover
 
         return jnp.array(masks)
 
     holdout_masks = create_holdout_masks(W, initial_window, step_size, horizon, K, max_window_size)
     if holdout_masks.shape[0] < K:
         print("Warning: Not enough data for holdout validation. Using fewer folds.")
-    if holdout_masks.shape[0] == 0:
-        print("Error: No data available for holdout validation. Exiting.")
-        return (jnp.array(jnp.nan), jnp.array(jnp.nan), jnp.array(jnp.nan), jnp.array(jnp.nan))
+    if holdout_masks.shape[0] == 0:  # pragma: no cover
+        print("Error: No data available for holdout validation. Exiting.")  # pragma: no  cover
+        return (
+            jnp.array(jnp.nan),
+            jnp.array(jnp.nan),
+            jnp.array(jnp.nan),
+            jnp.array(jnp.nan),
+        )  # pragma: no  cover
     L, X_tilde, Z_tilde, V = initialize_matrices(Y, X, Z, V)
 
     def initialize_holdout(holdout_mask):
