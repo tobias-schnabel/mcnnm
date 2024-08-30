@@ -96,6 +96,9 @@ def check_inputs(
     if W.shape != (N, T):
         raise ValueError(f"The shape of W ({W.shape}) must match the shape of Y ({Y.shape}).")
 
+    if not jnp.all((W == 0) | (W == 1)):
+        raise ValueError("The mask must be binary where 0 denotes observed and 1 treated values")
+
     if X is not None:
         if X.shape[0] != N:
             raise ValueError(
