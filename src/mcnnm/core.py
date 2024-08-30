@@ -733,7 +733,7 @@ def update_L(
 
     U, S, Vt = jnp.linalg.svd(proj, full_matrices=False)
     V = Vt.T
-    svt_threshold = lambda_L * num_train / 2
+    svt_threshold = 0.25 * lambda_L * num_train
 
     L_upd = svt(U, V, S, svt_threshold)
 
