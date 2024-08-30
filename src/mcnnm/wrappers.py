@@ -50,7 +50,7 @@ def compute_treatment_effect(
     Y_completed = compute_Y_hat(
         L, X_tilde, Z_tilde, V, H_tilde, gamma, delta, beta, use_unit_fe, use_time_fe
     )
-
+    W = 1 - W
     treated_units = jnp.sum(W)
     tau = jnp.sum((Y - Y_completed) * W) / treated_units
     tau = cast(Scalar, tau.item())  # type: ignore
@@ -244,7 +244,7 @@ def estimate(
         - compute_Y_hat: Function used to compute the completed outcome matrix.
         - compute_treatment_effect: Function used to compute the average treatment effect.
     """
-
+    W = 1 - W
     N, T = Y.shape
 
     if Omega is None:
@@ -381,12 +381,12 @@ def estimate(
         tau=tau,
         lambda_L=opt_lambda_L,
         lambda_H=opt_lambda_H,
-        L=L,
+        L=L_final,
         Y_completed=Y_completed,
         gamma=gamma_final,
         delta=delta_final,
         beta=beta_final,
-        H=H_tilde_init,
+        H=H_final,
     )
 
 
