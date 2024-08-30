@@ -21,15 +21,25 @@ key = jax.random.PRNGKey(2024)
 
 
 def test_check_inputs():
-    # Y = jnp.array([[1, 2], [3, 4]])
-    # W = jnp.array([[0, 1], [0, 0]])
     Y, W, X, Z, V, true_params = generate_data(
         nobs=2, nperiods=2, X_cov=False, Z_cov=False, V_cov=False
     )
-    assert X is None
-    assert Z is None
-    assert V is None
+
+    X, Z, V, Omega = check_inputs(Y, W, X, Z, V)
+    assert X.shape == (2, 0)
+    assert Z.shape == (2, 0)
+    assert V.shape == (2, 2, 1)
     assert true_params["Y(0)"].shape == (2, 2)
+
+
+def test_check_inputs_wrong_W():
+    Y, W, X, Z, V, true_params = generate_data(
+        nobs=2, nperiods=2, X_cov=False, Z_cov=False, V_cov=False
+    )
+    W = Y
+
+    with pytest.raises(ValueError):
+        check_inputs(Y, W, X, Z, V)
 
 
 @pytest.mark.parametrize("unit_fe", [True, False])
@@ -168,7 +178,7 @@ def test_data():
     key = random.PRNGKey(0)
     N, T = 10, 5
     Y = generate_random_array(random.split(key)[0], (N, T))
-    W = random.bernoulli(random.split(key)[1], shape=(N, T))
+    W = random.bernoulli(random.split(key)[1], shape=(N, T)).astype(jnp.int32)
     return N, T, Y, W
 
 
