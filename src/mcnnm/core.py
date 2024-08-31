@@ -587,6 +587,10 @@ def update_H(
     """
     Update the covariate coefficients matrix H_tilde in the coordinate descent algorithm.
 
+    This function implements the update step for the covariate coefficients matrix (H_tilde) in the matrix
+    completion algorithm. It uses a soft-thresholding operator to update each element of the coefficient matrix,
+    taking into account the regularization parameter and the current residuals.
+
     Args:
         Y (Array): The observed outcome matrix of shape (N, T).
         X_tilde (Array): The augmented unit-specific covariates matrix of shape (N, P+N).
@@ -609,26 +613,37 @@ def update_H(
         Tuple[Array, Array]: A tuple containing the updated covariate coefficients matrix H_tilde and the updated inner
         product vector in_prod.
     """
-    H_tilde_rows, H_tilde_cols = X_tilde.shape[1], Z_tilde.shape[1]
-    num_train = jnp.sum(W)
+    # Get dimensions of the covariate coefficients matrix
+    coeff_rows, coeff_cols = X_tilde.shape[1], Z_tilde.shape[1]
+    num_observed = jnp.sum(W)
 
-    L_hat = compute_Y_hat(
+    # Compute the current predicted outcomes
+    Y_hat = compute_Y_hat(
         L, X_tilde, Z_tilde, V, H_tilde, unit_fe, time_fe, beta, use_unit_fe, use_time_fe
     )
-    residual = (Y - L_hat) * W / jnp.sqrt(num_train)
-    residual_flat = residual.ravel()
 
-    H_tilde_flat = H_tilde.ravel()
+    # Compute the residuals
+    error_matrix = Y - Y_hat
+    masked_error_matrix = mask_observed(error_matrix, W)
+    residuals = masked_error_matrix / jnp.sqrt(num_observed)
+    residuals_flat = residuals.ravel()
+
+    # Flatten the covariate coefficients matrix
+    coeff_flat = H_tilde.ravel()
     updated_in_prod = in_prod.copy()
 
-    X_cols, Z_cols = X_tilde.shape[1] - Y.shape[0], Z_tilde.shape[1] - Y.shape[1]
+    # Get the number of unit-specific and time-specific covariates
+    num_unit_covariates = X_tilde.shape[1] - Y.shape[0]
+    num_time_covariates = Z_tilde.shape[1] - Y.shape[1]
 
-    def update_H_elem(carry, idx):
-        updated_in_prod, H_tilde_flat = carry
-        cur_elem = idx
-        U = in_prod_T[cur_elem]
-        updated_in_prod_flat = updated_in_prod.ravel()  # Flatten updated_in_prod
-        H_new = jnp.where(
+    def update_coefficient(carry, idx):
+        """Update a single coefficient using soft-thresholding."""
+        current_in_prod, current_coeffs = carry
+        U = in_prod_T[idx]
+        current_in_prod_flat = current_in_prod.ravel()
+
+        # Compute the update using soft-thresholding
+        new_coeff = jnp.where(
             U != 0,
             0.5
             * (
@@ -636,10 +651,10 @@ def update_H(
                     (
                         2
                         * jnp.dot(
-                            residual_flat
-                            - updated_in_prod_flat
-                            + T_mat[:, cur_elem] * H_tilde_flat[cur_elem],
-                            T_mat[:, cur_elem],
+                            residuals_flat
+                            - current_in_prod_flat
+                            + T_mat[:, idx] * current_coeffs[idx],
+                            T_mat[:, idx],
                         )
                         - lambda_H
                     )
@@ -650,10 +665,10 @@ def update_H(
                     (
                         -2
                         * jnp.dot(
-                            residual_flat
-                            - updated_in_prod_flat
-                            + T_mat[:, cur_elem] * H_tilde_flat[cur_elem],
-                            T_mat[:, cur_elem],
+                            residuals_flat
+                            - current_in_prod_flat
+                            + T_mat[:, idx] * current_coeffs[idx],
+                            T_mat[:, idx],
                         )
                         - lambda_H
                     )
@@ -663,27 +678,34 @@ def update_H(
             ),
             0,
         )
-        updated_in_prod += (H_new - H_tilde_flat[cur_elem]) * T_mat[:, cur_elem].reshape(
-            updated_in_prod.shape
-        )  # Reshape T_mat[:, cur_elem] to match updated_in_prod
-        H_tilde_flat = H_tilde_flat.at[cur_elem].set(H_new)
-        return (updated_in_prod, H_tilde_flat), None
 
-    if Z_cols > 0:
-        (updated_in_prod, H_tilde_flat), _ = jax.lax.scan(
-            update_H_elem, (updated_in_prod, H_tilde_flat), jnp.arange(Z_cols * H_tilde_rows)
+        # Update the inner product
+        current_in_prod += (new_coeff - current_coeffs[idx]) * T_mat[:, idx].reshape(
+            current_in_prod.shape
+        )
+        current_coeffs = current_coeffs.at[idx].set(new_coeff)
+        return (current_in_prod, current_coeffs), None
+
+    # Update time-specific covariates
+    if num_time_covariates > 0:
+        (updated_in_prod, coeff_flat), _ = jax.lax.scan(
+            update_coefficient,
+            (updated_in_prod, coeff_flat),
+            jnp.arange(num_time_covariates * coeff_rows),
         )
 
-    if X_cols > 0:
-        (updated_in_prod, H_tilde_flat), _ = jax.lax.scan(
-            update_H_elem,
-            (updated_in_prod, H_tilde_flat),
-            jnp.arange(Z_cols * H_tilde_rows, H_tilde_cols * H_tilde_rows),
+    # Update unit-specific covariates
+    if num_unit_covariates > 0:
+        (updated_in_prod, coeff_flat), _ = jax.lax.scan(
+            update_coefficient,
+            (updated_in_prod, coeff_flat),
+            jnp.arange(num_time_covariates * coeff_rows, coeff_cols * coeff_rows),
         )
 
-    H_tilde_updated = H_tilde_flat.reshape(H_tilde_rows, H_tilde_cols)
+    # Reshape the updated coefficients back to a matrix
+    updated_H_tilde = coeff_flat.reshape(coeff_rows, coeff_cols)
 
-    return H_tilde_updated, updated_in_prod
+    return updated_H_tilde, updated_in_prod
 
 
 @jit
@@ -723,21 +745,35 @@ def update_L(
     Returns:
         Tuple[Array, Array]: A tuple containing the updated low-rank matrix L and the singular values.
     """
+    # Count the number of observed entries
     num_train = jnp.sum(W)
-    P_mat = compute_Y_hat(
+
+    # Compute the current predicted outcomes
+
+    Y_hat = compute_Y_hat(
         L, X_tilde, Z_tilde, V, H_tilde, unit_fe, time_fe, beta, use_unit_fe, use_time_fe
     )
-    P_omega = Y - P_mat
-    masked_P_omega = mask_observed(P_omega, W)
-    proj = masked_P_omega + L
 
-    U, S, Vt = jnp.linalg.svd(proj, full_matrices=False)
+    # Calculate the residuals (observed - predicted)
+    residuals = Y - Y_hat
+
+    # Apply the observation mask to the residuals
+    masked_residuals = mask_observed(residuals, W)
+
+    # Add the current L to the masked residuals
+    svd_input = masked_residuals + L
+
+    # Perform Singular Value Decomposition (SVD)
+    U, singular_values, Vt = jnp.linalg.svd(svd_input, full_matrices=False)
     V = Vt.T
+
+    # Compute the singular value thresholding parameter
     svt_threshold = 0.25 * lambda_L * num_train
 
-    L_upd = svt(U, V, S, svt_threshold)
+    # Apply singular value thresholding to update L
+    L_updated = svt(U, V, singular_values, svt_threshold)
 
-    return L_upd, S
+    return L_updated, singular_values
 
 
 @jit
