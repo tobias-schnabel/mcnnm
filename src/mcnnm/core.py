@@ -265,6 +265,18 @@ def update_beta(
     """
     Update the unit-time-specific covariate coefficients (beta) in the coordinate descent algorithm.
 
+    This function calculates the coefficients for unit-time-specific covariates by minimizing
+    the squared error of the model predictions with respect to the observed outcomes. It accounts
+    for the other components of the model (covariate effects, low-rank matrix, unit and time fixed effects)
+    in the calculation.
+
+    The update process involves the following steps:
+    1. Compute the covariate contribution to the predicted outcomes.
+    2. Calculate the total predicted outcomes (including all components except V*beta).
+    3. Compute the residuals (observed - predicted).
+    4. Apply the observation mask to the residuals and unit-time-specific covariates.
+    5. Calculate the updated beta coefficients using the masked residuals and covariates.
+
     Args:
         Y (Array): The observed outcome matrix of shape (N, T).
         X_tilde (Array): The augmented unit-specific covariates matrix of shape (N, P+N).
@@ -279,16 +291,31 @@ def update_beta(
     Returns:
         Array: The updated unit-time-specific covariate coefficients vector of shape (J,).
     """
-    T_ = jnp.einsum("np,pq,tq->nt", X_tilde, H_tilde, Z_tilde)
-    b_ = T_ + L + jnp.expand_dims(unit_fe, axis=1) + time_fe - Y
-    b_mask_ = b_ * W
+    # Compute the covariate contribution to Y hat
+    covariate_contribution = jnp.einsum("np,pq,tq->nt", X_tilde, H_tilde, Z_tilde)
 
-    V_mask_ = V * jnp.expand_dims(W, axis=-1)
-    V_sum_ = jnp.sum(V_mask_, axis=(0, 1))
+    # Calculate Y hat (without V*beta)
+    Y_hat = covariate_contribution + L + jnp.expand_dims(unit_fe, axis=1) + time_fe
 
-    V_b_prod_ = jnp.einsum("ntj,nt->j", V_mask_, b_mask_)
+    # Compute the residuals (observed - predicted)
+    residuals = Y_hat - Y
 
-    return jnp.where(V_sum_ > 0, -V_b_prod_ / (V_sum_ + 1e-8), 0.0)
+    # Apply the observation mask to the residuals
+    masked_residuals = mask_observed(residuals, W)
+
+    # Apply the observation mask to the unit-time-specific covariates
+    masked_V = V * jnp.expand_dims(W, axis=-1)
+
+    # Sum of masked unit-time-specific covariates for each covariate
+    V_sums = jnp.sum(masked_V, axis=(0, 1))
+
+    # Compute the product of masked residuals and masked unit-time-specific covariates
+    V_residual_products = jnp.einsum("ntj,nt->j", masked_V, masked_residuals)
+
+    # Calculate updated beta coefficients, avoiding division by zero
+    updated_beta = jnp.where(V_sums > 0, -V_residual_products / (V_sums + 1e-8), 0.0)
+
+    return updated_beta
 
 
 @jit
