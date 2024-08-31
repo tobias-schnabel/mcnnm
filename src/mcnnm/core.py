@@ -484,38 +484,11 @@ def compute_objective_value(
     error_mask = mask_observed(error_matrix, W)  # mask the error matrix
     weighted_error_term = (1 / train_size) * jnp.trace(error_mask @ inv_omega @ error_mask.T)
 
-    # lax.cond(
-    #     weighted_error_term < 0,
-    #     lambda _: jdb.print("WARNING: Negative weighted error term"),
-    #     lambda _: None,
-    #     None,
-    # )
     L_regularization_term = lambda_L * sum_sing_vals
-
-    # lax.cond(
-    #     L_regularization_term < 0,
-    #     lambda _: jdb.print("WARNING: Negative L regularization term"),
-    #     lambda _: None,
-    #     None,
-    # )
 
     H_regularization_term = lambda_H * norm_H
 
-    # lax.cond(
-    #     H_regularization_term < 0,
-    #     lambda _: jdb.print("WARNING: Negative H regularization term"),
-    #     lambda _: None,
-    #     None,
-    # )
-
     obj_val = weighted_error_term + L_regularization_term + H_regularization_term
-    # fov = obj_val.copy()
-    # lax.cond(
-    #     fov < 0,
-    #     lambda _: jdb.print("WARNING: NEGATIVE Objective function value: {ov}", ov=fov),
-    #     lambda _: None,
-    #     None,
-    # )
 
     return obj_val
 
