@@ -357,27 +357,30 @@ def compute_Y_hat(
         Array: The estimated matrix \\(\\hat{Y}\\) of shape (N, T).
     """
     N, T = L.shape
-    P = X_tilde.shape[1]
-    Q = Z_tilde.shape[1]
+    P = X_tilde.shape[1]  # Number of unit-specific covariates
+    Q = Z_tilde.shape[1]  # Number of time-specific covariates
 
-    decomposition = L
+    # Start with the low-rank component
+    Y_hat = L
 
+    # Add unit FEs
     unit_fe_term = jnp.outer(gamma, jnp.ones(T))
-    decomposition += jnp.where(use_unit_fe, unit_fe_term, jnp.zeros_like(unit_fe_term))
+    Y_hat += jnp.where(use_unit_fe, unit_fe_term, jnp.zeros_like(unit_fe_term))
 
+    # Add time FEs
     time_fe_term = jnp.outer(jnp.ones(N), delta)
-    decomposition += jnp.where(use_time_fe, time_fe_term, jnp.zeros_like(time_fe_term))
+    Y_hat += jnp.where(use_time_fe, time_fe_term, jnp.zeros_like(time_fe_term))
 
     if Q > 0:
-        decomposition += X_tilde @ H_tilde[:P, :Q] @ Z_tilde.T
+        Y_hat += X_tilde @ H_tilde[:P, :Q] @ Z_tilde.T
     if H_tilde.shape[1] > Q:
-        decomposition += X_tilde @ H_tilde[:P, Q:]
+        Y_hat += X_tilde @ H_tilde[:P, Q:]
     if P + N <= H_tilde.shape[0] and Q > 0:
-        decomposition += H_tilde[P : P + N, :Q] @ Z_tilde.T
+        Y_hat += H_tilde[P : P + N, :Q] @ Z_tilde.T
     V_beta_term = jnp.einsum("ntj,j->nt", V, beta)
-    decomposition += V_beta_term
+    Y_hat += V_beta_term
 
-    return decomposition
+    return Y_hat
 
 
 def compute_objective_value(
