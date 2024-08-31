@@ -147,12 +147,30 @@ def update_unit_fe(
     Returns:
         Array: The updated unit fixed effects vector of shape (N,) if use_unit_fe is True, else a zero vector.
     """
-    T_ = jnp.einsum("np,pq,tq->nt", X_tilde, H_tilde, Z_tilde)
-    b_ = T_ + L + time_fe - Y
-    b_mask_ = b_ * W
-    l = jnp.sum(W, axis=1)
-    res = jnp.where(l > 0, -jnp.sum(b_mask_, axis=1) / (l + 1e-8), 0.0)
-    return jnp.where(use_unit_fe, res, jnp.zeros_like(res))
+    # Compute the covariate contribution to the predicted outcomes
+    covariate_contribution = jnp.einsum("np,pq,tq->nt", X_tilde, H_tilde, Z_tilde)
+
+    # Calculate the total predicted outcomes (without unit fixed effects)
+    Y_hat = covariate_contribution + L + time_fe
+
+    # Compute the residuals (observed - predicted)
+    residuals = Y_hat - Y
+
+    # Apply the observation mask to the residuals
+    masked_residuals = mask_observed(residuals, W)
+
+    # Count the number of observed entries for each unit
+    num_observed_per_unit = jnp.sum(W, axis=1)
+
+    # Calculate the average residual for each unit, avoiding division by zero
+    average_residuals = jnp.where(
+        num_observed_per_unit > 0,
+        -jnp.sum(masked_residuals, axis=1) / (num_observed_per_unit + 1e-8),
+        0.0,
+    )
+
+    # Return the updated unit fixed effects if use_unit_fe is True, else return zeros
+    return jnp.where(use_unit_fe, average_residuals, jnp.zeros_like(average_residuals))
 
 
 @jit
