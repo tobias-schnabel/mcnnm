@@ -132,7 +132,19 @@ def update_unit_fe(
     use_unit_fe: bool,
 ) -> Array:
     """
-    Update the unit fixed effects (unit_fe) in the coordinate descent algorithm when covariates are available.
+    Update the unit fixed effects in the coordinate descent algorithm when covariates are available.
+
+    This function calculates the unit fixed effects by minimizing the squared error of the model
+    predictions with respect to the observed outcomes. It accounts for the covariate effects,
+    low-rank matrix, and time fixed effects in the calculation.
+
+    The update process involves the following steps:
+    1. Compute the covariate contribution to the predicted outcomes.
+    2. Calculate the total predicted outcomes (including L and time fixed effects).
+    3. Compute the residuals (observed - predicted).
+    4. Apply the observation mask to the residuals.
+    5. Calculate the average residual for each unit, accounting for missing observations.
+    6. Return the negative of these averages as the updated unit fixed effects.
 
     Args:
         Y (Array): The observed outcome matrix of shape (N, T).
@@ -185,7 +197,19 @@ def update_time_fe(
     use_time_fe: bool,
 ) -> Array:
     """
-    Update the time fixed effects (time_fe) in the coordinate descent algorithm when covariates are available.
+    Update the time fixed effects in the coordinate descent algorithm when covariates are available.
+
+    This function calculates the time fixed effects by minimizing the squared error of the model
+    predictions with respect to the observed outcomes. It accounts for the covariate effects,
+    low-rank matrix, and unit fixed effects in the calculation.
+
+    The update process involves the following steps:
+    1. Compute the covariate contribution to the predicted outcomes.
+    2. Calculate the total predicted outcomes (including L and unit fixed effects).
+    3. Compute the residuals (observed - predicted).
+    4. Apply the observation mask to the residuals.
+    5. Calculate the average residual for each time period, accounting for missing observations.
+    6. Return the negative of these averages as the updated time fixed effects.
 
     Args:
         Y (Array): The observed outcome matrix of shape (N, T).
@@ -200,12 +224,30 @@ def update_time_fe(
     Returns:
         Array: The updated time fixed effects vector of shape (T,) if use_time_fe is True, else a zero vector.
     """
-    T_ = jnp.einsum("np,pq,tq->nt", X_tilde, H_tilde, Z_tilde)
-    b_ = T_ + L + jnp.expand_dims(unit_fe, axis=1) - Y
-    b_mask_ = b_ * W
-    l = jnp.sum(W, axis=0)
-    res = jnp.where(l > 0, -jnp.sum(b_mask_, axis=0) / (l + 1e-8), 0.0)
-    return jnp.where(use_time_fe, res, jnp.zeros_like(res))
+    # Compute the covariate contribution to Y hat
+    covariate_contribution = jnp.einsum("np,pq,tq->nt", X_tilde, H_tilde, Z_tilde)
+
+    # Calculate the total predicted outcomes (without time fixed effects)
+    Y_hat = covariate_contribution + L + jnp.expand_dims(unit_fe, axis=1)
+
+    # Compute the residuals (observed - predicted)
+    residuals = Y_hat - Y
+
+    # Apply the observation mask to the residuals
+    masked_residuals = mask_observed(residuals, W)
+
+    # Count the number of observed entries for each time period
+    num_observed_per_time = jnp.sum(W, axis=0)
+
+    # Calculate the average residual for each time period, avoiding division by zero
+    average_residuals = jnp.where(
+        num_observed_per_time > 0,
+        -jnp.sum(masked_residuals, axis=0) / (num_observed_per_time + 1e-8),
+        0.0,
+    )
+
+    # Return the updated time fixed effects if use_time_fe is True, else return zeros
+    return jnp.where(use_time_fe, average_residuals, jnp.zeros_like(average_residuals))
 
 
 @jit
