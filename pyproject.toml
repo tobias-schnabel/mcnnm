@@ -64,6 +64,7 @@ optional = true
 
 [tool.poetry.group.comparison.dependencies]
 causaltensor = "^0.1.8"
+cvxpy = "*"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
