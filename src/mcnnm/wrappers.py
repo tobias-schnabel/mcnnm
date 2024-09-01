@@ -92,7 +92,7 @@ class MCNNMResults(NamedTuple):
 
 def estimate(
     Y: Array,
-    W: Array,
+    Mask: Array,
     X: Optional[Array] = None,
     Z: Optional[Array] = None,
     V: Optional[Array] = None,
@@ -101,9 +101,9 @@ def estimate(
     use_time_fe: bool = True,
     lambda_L: Optional[Scalar] = None,
     lambda_H: Optional[Scalar] = None,
-    n_lambda: int = 10,
-    max_iter: int = 1000,
-    tol: Scalar = 1e-4,
+    n_lambda: Optional[int] = 10,
+    max_iter: Optional[Scalar] = 1e4,
+    tol: Optional[Scalar] = 1e-4,
     validation_method: Literal["cv", "holdout"] = "cv",
     K: int = 5,
     initial_window: Optional[int] = None,
@@ -156,13 +156,13 @@ def estimate(
     Parameters:
         Y (Array): The observed outcome matrix of shape (N, T), where N is the number of units
                    and T is the number of time periods.
-        W (Array): The treatment assignment matrix of shape (N, T). Binary values where 1 indicates
+        Mask (Array): The treatment assignment matrix of shape (N, T). Binary values where 1 indicates
                    treatment and 0 indicates control.
         X (Array, optional): Unit-specific covariates of shape (N, P), where P is the number of
                              unit-specific covariates.
         Z (Array, optional): Time-specific covariates of shape (T, Q), where Q is the number of
                              time-specific covariates.
-        V (Array, optional): Unit-time specific covariates of shape (N, T, R), where R is the
+        V (Array, optional): Unit-time specific covariates of shape (N, T, J), where J is the
                              number of unit-time specific covariates.
         Omega (Array, optional): The covariance matrix of shape (T, T) representing the time
                                  series correlation structure. If not provided, an identity
@@ -174,8 +174,8 @@ def estimate(
         lambda_H (Scalar, optional): The regularization parameter for the nuclear norm of H.
                                      If not provided, it will be selected via validation.
         n_lambda (int): The number of lambda values to consider in the validation grid. Default is 10.
-        max_iter (int): Maximum number of iterations for the optimization algorithm. Default is 1000.
-        tol (Scalar): Tolerance for convergence of the optimization algorithm. Default is 1e-4.
+        max_iter (Scalar, optional): Maximum number of iterations for the optimization algorithm. Default is 10,000.
+        tol (Scalar, optional): Tolerance for convergence of the optimization algorithm. Default is 1e-4.
         validation_method (str): The method to use for selecting lambda values. Must be either
                                  'cv' for cross-validation or 'holdout' for holdout validation.
                                  Default is 'cv'.
@@ -244,18 +244,37 @@ def estimate(
         - compute_Y_hat: Function used to compute the completed outcome matrix.
         - compute_treatment_effect: Function used to compute the average treatment effect.
     """
-    W = 1 - W
+    W = 1 - Mask  # get inverse mask where 1 indicates no treatment
+
+    # Convert max_iter to int
+    if max_iter is not None:  # pragma: no cover
+        try:
+            max_iter = int(max_iter)
+        except ValueError:  # pragma: no cover
+            raise ValueError(f"max_iter must be convertible to int, got {max_iter}")
+    else:  # pragma: no cover
+        max_iter = 10_000
+
+    # Convert n_lambda to int
+    if n_lambda is not None:  # pragma: no cover
+        try:  # pragma: no cover
+            n_lambda = int(n_lambda)
+        except ValueError:
+            raise ValueError(f"n_lambda must be convertible to int, got {n_lambda}")
+    else:  # pragma: no cover
+        n_lambda = 10
+
     N, T = Y.shape
 
     if Omega is None:
-        Omega_inv = jnp.eye(T)
+        Omega_inv = jnp.eye(T)  # default TxT identity matrix
     else:
-        Omega_inv = jnp.linalg.inv(Omega)
+        Omega_inv = jnp.linalg.inv(Omega)  # invert Omega if specified
 
     if not is_positive_definite(Omega_inv):  # pragma: no cover
         raise ValueError("Omega_inv must be a positive definite matrix.")
 
-    # Initialize matrices
+    # Initialize matrices to zero of correct dimensions
     L, X_tilde, Z_tilde, V = initialize_matrices(Y, X, Z, V)
 
     # Initialize fixed effects and H matrix
@@ -392,7 +411,7 @@ def estimate(
 
 def complete_matrix(
     Y: Array,
-    W: Array,
+    Mask: Array,
     X: Optional[Array] = None,
     Z: Optional[Array] = None,
     V: Optional[Array] = None,
@@ -402,8 +421,8 @@ def complete_matrix(
     lambda_L: Optional[Scalar] = None,
     lambda_H: Optional[Scalar] = None,
     n_lambda: int = 10,
-    max_iter: int = 1000,
-    tol: Scalar = 1e-4,
+    max_iter: Optional[int] = 10_000,
+    tol: Optional[Scalar] = 1e-4,
     validation_method: Literal["cv", "holdout"] = "cv",
     K: int = 5,
     initial_window: Optional[int] = None,
@@ -442,9 +461,9 @@ def complete_matrix(
         estimate: The main function performing the complete MC-NNM estimation process.
     """
 
-    results = estimate(
+    results = estimate(  # pragma: no cover
         Y=Y,
-        W=W,
+        Mask=Mask,
         X=X,
         Z=Z,
         V=V,

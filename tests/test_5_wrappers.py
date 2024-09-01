@@ -123,7 +123,7 @@ def test_estimate(
     # Run estimation
     results = estimate(
         Y=Y,
-        W=W,
+        Mask=W,
         X=X if X_cov else None,
         Z=Z if Z_cov else None,
         V=V if V_cov else None,
@@ -150,14 +150,14 @@ def test_estimate(
 
     # Check if estimated ATE is reasonably close to true ATE
     # Use a large tolerance due to small sample size and potential noise
-    # print(
-    #     f"Absolute difference between estimated and true tau: "
-    #     f"{jnp.abs(results.tau - true_params['treatment_effect']):.2f}"
-    # )
+    print(
+        f"Absolute difference between estimated and true tau: "
+        f"{jnp.abs(results.tau - true_params['treatment_effect']):.2f}"
+    )
 
     # # Check if Y_completed is close to true Y for observed entries
-    # mse = jnp.mean((results.Y_completed[W == 0] - Y[W == 0]) ** 2)
-    # assert mse < noise_scale**2  # MSE should be less than noise variance
+    mse = jnp.mean((results.Y_completed - Y) ** 2)
+    print(f"MSE: {mse}")  # MSE should be less than noise variance
 
     # Check fixed effects
     if use_unit_fe:
@@ -233,7 +233,7 @@ def test_complete_matrix():
     # Run estimation
     Y_completed, opt_lambda_L, opt_lambda_H = complete_matrix(
         Y=Y,
-        W=W,
+        Mask=W,
         X=X,
         Z=Z,
         V=V,
