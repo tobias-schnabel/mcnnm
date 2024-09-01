@@ -3,3 +3,4 @@ sphinx-book-theme
 jax
 numpy
 sphinx-autodoc-typehints
+sphinx-tabs
