@@ -27,7 +27,7 @@ Here's a basic example of how to use lightweight-mcnnm:
 .. code-block:: python
 
    import jax.numpy as jnp
-   from lightweight_mcnnm import estimate
+   from mcnnm import estimate
 
    # Generate some sample data
    Y = jnp.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
@@ -100,6 +100,8 @@ lightweight-mcnnm supports three types of covariates:
 1. Unit-specific covariates (X)
 2. Time-specific covariates (Z)
 3. Unit-time specific covariates (V)
+
+lightweight-mcnnm is currently the only implementation of MC-NNM that supports unit-time specific covariates.
 
 Here's an example of how to include covariates in your estimation:
 

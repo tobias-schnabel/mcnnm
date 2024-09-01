@@ -10,6 +10,48 @@ Welcome to lightweight-mcnnm's documentation!
    :target: https://www.gnu.org/licenses/gpl-3.0
    :alt: License: GPL v3
 
+.. image:: https://img.shields.io/pypi/pyversions/lightweight-mcnnm.svg
+   :target: https://pypi.org/project/lightweight-mcnnm/
+   :alt: Python Versions
+
+.. image:: https://img.shields.io/badge/OS-Linux%20|%20Windows%20|%20macOS-blue
+   :alt: OS
+
+.. image:: https://img.shields.io/pypi/v/lightweight-mcnnm.svg?color=brightgreen&cache-bust=2
+   :target: https://pypi.org/project/lightweight-mcnnm/
+   :alt: PyPI version
+
+.. image:: https://readthedocs.org/projects/mcnnm/badge/?version=latest
+   :target: https://mcnnm.readthedocs.io/en/latest/?badge=latest
+   :alt: Documentation Status
+
+.. image:: https://img.shields.io/badge/code%20style-black-000000.svg
+   :target: https://github.com/psf/black
+   :alt: Code style: black
+
+.. image:: https://img.shields.io/badge/mypy-checked-blue
+   :target: https://github.com/tobias-schnabel/mcnnm/actions/workflows/ci.yml
+   :alt: mypy checked
+
+.. image:: https://codecov.io/gh/tobias-schnabel/mcnnm/graph/badge.svg?token=VYJ12XOQMP
+   :target: https://codecov.io/gh/tobias-schnabel/mcnnm
+   :alt: codecov
+
+.. image:: https://github.com/tobias-schnabel/mcnnm/actions/workflows/ci.yml/badge.svg?branch=main
+   :target: https://github.com/tobias-schnabel/mcnnm/actions/workflows/ci.yml
+   :alt: Tests
+
+.. image:: https://img.shields.io/github/last-commit/tobias-schnabel/mcnnm
+   :target: https://github.com/tobias-schnabel/mcnnm/commits/
+   :alt: GitHub last commit
+
+.. image:: https://img.shields.io/github/issues/tobias-schnabel/mcnnm
+   :alt: Issues
+
+.. image:: https://img.shields.io/github/issues-pr/tobias-schnabel/mcnnm
+   :alt: Pull Requests
+
+
 lightweight-mcnnm is a Python package that provides a lightweight and performant implementation of the Matrix Completion with Nuclear Norm Minimization (MC-NNM) estimator for causal inference in panel data settings.
 
 .. toctree::
@@ -59,18 +101,42 @@ Here's a simple example of how to use lightweight-mcnnm:
 
 .. code-block:: python
 
-   import jax.numpy as jnp
-   from lightweight_mcnnm import estimate
+   from mcnnm import estimate, generate_data
 
-   # Generate some sample data
-   Y = jnp.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-   W = jnp.array([[0, 0, 1], [0, 1, 1], [0, 0, 0]])
+   Y, W, X, Z, V, true_params = generate_data(
+        nobs=50,
+        nperiods=10,
+        unit_fe=True,
+        time_fe=True,
+        X_cov=True,
+        Z_cov=True,
+        V_cov=True,
+        seed=2024,
+        noise_scale=0.1,
+        autocorrelation=0.0,
+        assignment_mechanism="staggered",
+        treatment_probability=0.1,
+    )
 
-   # Fit the MC-NNM model
-   results = estimate(Y, W)
+   # Run estimation
+   results = estimate(
+       Y=Y,
+       Mask=W,
+       X=X,
+       Z=Z,
+       V=V,
+       Omega=None,
+       use_unit_fe=True,
+       use_time_fe=True,
+       lambda_L=None,
+       lambda_H=None,
+       validation_method='cv',
+       K=3,
+       n_lambda=30,
+   )
 
-   # Print the estimated treatment effect
-   print(f"Estimated treatment effect: {results.tau}")
+   print(f"\nTrue effect: {true_params['treatment_effect']}, Estimated effect: {results.tau:.3f}")
+   print(f"Chosen lambda_L: {results.lambda_L:.4f}, lambda_H: {results.lambda_H:.4f}")
 
 For more detailed information and examples, check out the :doc:`usage` and :doc:`examples` pages.
 
