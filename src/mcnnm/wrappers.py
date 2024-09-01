@@ -238,11 +238,11 @@ def estimate(
         >>> print(f"True ATE: {true_params['treatment_effect']}")  # Compare with the true ATE
 
     See Also:
-        - cross_validate: Function used for cross-validation.
-        - holdout_validate: Function used for holdout validation.
-        - final_fit: Function used for the final model fitting.
-        - compute_Y_hat: Function used to compute the completed outcome matrix.
-        - compute_treatment_effect: Function used to compute the average treatment effect.
+        - :func:`.validation.cross_validate`: Function used for cross-validation.
+        - :func:`validation.holdout_validate`: Function used for holdout validation.
+        - :func:`validation.final_fit`: Function used for the final model fitting.
+        - :func:`.core.compute_Y_hat`: Function used to compute the completed outcome matrix.
+        - :func:`.core.compute_treatment_effect`: Function used to compute the average treatment effect.
     """
     W = 1 - Mask  # get inverse mask where 1 indicates no treatment
 
@@ -263,6 +263,12 @@ def estimate(
             raise ValueError(f"n_lambda must be convertible to int, got {n_lambda}")
     else:  # pragma: no cover
         n_lambda = 10
+
+    # Convert lambdas to jnp arrays if specified
+    if lambda_L is not None:
+        lambda_L = jnp.array([lambda_L])
+    if lambda_H is not None:
+        lambda_H = jnp.array([lambda_H])
 
     N, T = Y.shape
 

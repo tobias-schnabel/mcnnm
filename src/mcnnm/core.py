@@ -331,7 +331,7 @@ def compute_Y_hat(
     use_unit_fe: bool,
     use_time_fe: bool,
 ) -> Array:
-    """
+    r"""
     Compute the decomposition of the observed outcome matrix Y.
 
     This function computes the decomposition of the observed outcome matrix Y
@@ -339,7 +339,21 @@ def compute_Y_hat(
     The decomposition is given by:
 
     .. math::
-        \\hat{Y} ≈ L + X @ H[:P, :Q] @ Z.T + V @ beta + gamma @ 1_T + 1_N @ delta
+
+        \hat{Y}_{it} = \hat{L} + \tilde{X}\hat{\tilde{H}}\tilde{Z}^T + \hat{\Gamma}1_T^T + 1_N\hat{\Delta}^T +
+        [V_{i,t}^T \hat{\beta}]_{i,t}
+
+    where:
+
+    - :math:`\hat{L}` is the estimated low-rank matrix of shape (N, T)
+    - :math:`\tilde{X}` is the augmented unit-specific covariates matrix of shape (N, P+N)
+    - :math:`\tilde{Z}` is the augmented time-specific covariates matrix of shape (T, Q+T)
+    - :math:`V` is the unit-time-specific covariates tensor of shape (N, T, J)
+    - :math:`\hat{\tilde{H}}` is the estimated augmented covariate coefficients matrix of shape (P+N, Q+T)
+    - :math:`\hat{\Gamma}` is the estimated unit fixed effects vector of shape (N,)
+    - :math:`\hat{\Delta}` is the estimated time fixed effects vector of shape (T,)
+    - :math:`\hat{\beta}` is the estimated unit-time-specific covariate coefficients vector
+      of shape (J,)
 
     Args:
         L (Array): The low-rank matrix of shape (N, T).
@@ -354,7 +368,7 @@ def compute_Y_hat(
         use_time_fe (bool): Whether to include time fixed effects in the decomposition.
 
     Returns:
-        Array: The estimated matrix \\(\\hat{Y}\\) of shape (N, T).
+        Array: The estimated matrix :math:`\hat{Y}` of shape (N, T).
     """
     N, T = L.shape
     P = X_tilde.shape[1]  # Number of unit-specific covariates
@@ -409,32 +423,26 @@ def compute_objective_value(
 
     .. math::
 
-        \frac{1}{|\Omega|} \sum_{(i,t) \in \Omega} \sum_{(i,s) \in \Omega}
+        \frac{1}{|\mathcal{O}|} \sum_{(i,t) \in \mathcal{O}} \sum_{(i,s) \in \mathcal{O}}
         (Y_{it} - \hat{Y}_{it}) [\Omega^{-1}]_{ts} (Y_{is} - \hat{Y}_{is})
         + \lambda_L \|L^*\|_* + \lambda_H \|H^*\|_1
 
     where:
 
     - :math:`Y_{it}` is the observed outcome for unit :math:`i` at time :math:`t`
-    - :math:`\widehat{Y}_{it}` is the estimated outcome for unit :math:`i` at time :math:`t`, given by:
+    - :math:`\widehat{Y}_{it}` is the estimated outcome for unit :math:`i` at time :math:`t`, \
+        computed by :func:`compute_Y_hat`, and given by:
 
       .. math::
 
-          \hat{Y}_{it} = L^*_{it} + \sum_{p=1}^{P+N} \tilde{X}_{ip} \tilde{H}^*_{pq} \tilde{Z}_{tq}
-          + \Gamma^*_i + \Delta^*_t + \sum_{j=1}^J V_{itj} \beta^*_j
+          \hat{Y}_{it} =\hat{L} + \tilde{X}\hat{\tilde{H}}\tilde{Z}^T + \hat{\Gamma}1_T^T -
+        1_N\hat{\Delta}^T - [V_{i,t}^T \hat{\beta}]_{i,t}
 
-    - :math:`\Omega` is the set of observed entries in the outcome matrix
+    and:
+
+    - :math:`\mathcal{O}` is the set of observed entries in the outcome matrix
     - :math:`\Omega^{-1}` is the inverse of the omega matrix, capturing the time
       series correlation
-    - :math:`\hat{L}` is the low-rank matrix of shape (N, T)
-    - :math:`\tilde{X}` is the augmented unit-specific covariates matrix of shape (N, P+N)
-    - :math:`\tilde{Z}` is the augmented time-specific covariates matrix of shape (T, Q+T)
-    - :math:`V` is the unit-time-specific covariates tensor of shape (N, T, J)
-    - :math:`\tilde{H}` is the augmented covariate coefficients matrix of shape (P+N, Q+T)
-    - :math:`\Gamma` is the unit fixed effects vector of shape (N,)
-    - :math:`\Delta` is the time fixed effects vector of shape (T,)
-    - :math:`\beta` is the unit-time-specific covariate coefficients vector
-      of shape (J,)
     - :math:`\lambda_L` is the regularization parameter for the nuclear norm of
       :math:`L`
     - :math:`\lambda_H` is the regularization parameter for the element-wise L1 norm
