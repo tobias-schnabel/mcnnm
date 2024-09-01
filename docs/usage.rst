@@ -20,8 +20,6 @@ For a comprehensive example of using lightweight-mcnnm, please refer to the foll
 https://colab.research.google.com/github/tobias-schnabel/mcnnm/blob/main/Example.ipynb
 
 
-
-
 Basic Usage
 -----------
 Here's a basic example of how to use lightweight-mcnnm:
@@ -48,7 +46,7 @@ The `estimate` function expects two main inputs:
 - `Y`: A matrix of observed outcomes
 - `W`: A matrix of treatment assignments
 
-Both matrices should be provided as JAX NumPy arrays.
+Both matrices should be provided as JAX NumPy arrays. The package offers a convenience function convert_inputs that can be used to convert pandas DataFrames to JAX NumPy arrays.
 
 Generating Synthetic Data
 -------------------------
@@ -56,13 +54,41 @@ For testing and demonstration purposes, you can use the `generate_data` function
 
 .. code-block:: python
 
-   from mcnnm import generate_data
+   from mcnnm import generate_data, estimate
 
-   data, true_params = generate_data(nobs=500, nperiods=100, seed=42,
-                                     assignment_mechanism='staggered')
+   Y, W, X, Z, V, true_params = generate_data(
+        nobs=50,
+        nperiods=10,
+        unit_fe=True,
+        time_fe=True,
+        X_cov=True,
+        Z_cov=True,
+        V_cov=True,
+        seed=2024,
+        noise_scale=0.2,
+        autocorrelation=0.0,
+        assignment_mechanism="last_periods",
+        treated_fraction=0.4,
+        last_treated_periods=3,
+    )
 
-   Y = jnp.array(data.pivot(index='unit', columns='period', values='y').values)
-   W = jnp.array(data.pivot(index='unit', columns='period', values='treat').values)
+   results = estimate(
+    Y=Y,
+    Mask=W,
+    X=X,
+    Z=Z,
+    V=V,
+    Omega=None,
+    use_unit_fe=True,
+    use_time_fe=True,
+    lambda_L=None,
+    lambda_H=None,
+    validation_method='cv',
+    K=10,
+    n_lambda=12,
+    max_iter=1e5,
+    tol=1e-5,
+    )
 
 Advanced Usage
 --------------
@@ -79,7 +105,7 @@ Here's an example of how to include covariates in your estimation:
 
 .. code-block:: python
 
-   results = fit(Y, W, X=X, Z=Z, V=V)
+   results = estimate(Y, W, X=X, Z=Z, V=V)
 
 Choosing Validation Method
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -89,11 +115,13 @@ You can choose between cross-validation (the default) and holdout validation:
 
    results = estimate(Y, W, validation_method='holdout')
 
+
 Interpreting Results
 --------------------
-The `estimate` function returns a results object with the following attributes:
+The `estimate` function returns a results object with the following main attributes:
 
 - `tau`: The estimated treatment effect
+- `Y_completed`: The imputed matrix of outcomes
 - `lambda_L`: The chosen regularization parameter for the low-rank component
 - `lambda_H`: The chosen regularization parameter for the high-rank component
 
