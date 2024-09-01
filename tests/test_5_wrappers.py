@@ -56,9 +56,7 @@ def test_compute_treatment_effect(N, T, fe_params, X_cov, Z_cov, V_cov, noise_sc
 @pytest.mark.parametrize("X_cov", [False, True])
 @pytest.mark.parametrize("Z_cov", [False, True])
 @pytest.mark.parametrize("V_cov", [False, True])
-# @pytest.mark.parametrize("noise_scale", [0.5, 1.0, 2.0])
 @pytest.mark.parametrize("validation_method", ["cv", "holdout"])
-# @pytest.mark.parametrize("K", [5, 10])
 @pytest.mark.parametrize("autocorrelation", [0.0, 0.5])
 @pytest.mark.parametrize("use_max_window_size", [False, True])
 @pytest.mark.parametrize("use_custom_lambda", [False, True])
@@ -114,8 +112,8 @@ def test_estimate(
         max_window = None
 
     if use_custom_lambda:
-        lambda_L = jnp.array([0.01])
-        lambda_H = jnp.array([0.01])
+        lambda_L = 0.01
+        lambda_H = 0.01
     else:
         lambda_L = None
         lambda_H = None
