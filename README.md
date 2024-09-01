@@ -64,11 +64,6 @@ The simplest way to install lightweight-mcnnm and its dependencies is from PyPI 
 pip install lightweight-mcnnm
 ```
 
-This package uses numpy version 2.1.0 and above. If you have an older version of numpy installed, you can alternatively install version 1.0.0 of this package, which uses numpy version 1.26.4:
-
-```bash
-pip install lightweight-mcnnm==1.0.0
-```
 
 To upgrade lightweight-mcnnm to the latest version, use:
 ```bash
@@ -94,16 +89,39 @@ https://mcnnm.readthedocs.io/en/latest/
 import jax.numpy as jnp
 from lightweight_mcnnm import estimate, generate_data
 
-# Generate sample data
-data, true_params = generate_data(nobs=500, nperiods=100, seed=42)
+Y, W, X, Z, V, true_params = generate_data(
+        nobs=50,
+        nperiods=10,
+        unit_fe=True,
+        time_fe=True,
+        X_cov=True,
+        Z_cov=True,
+        V_cov=True,
+        seed=2024,
+        noise_scale=0.1,
+        assignment_mechanism="staggered",
+        treatment_probability=0.1,
+    )
 
-Y = jnp.array(data.pivot(index='unit', columns='period', values='y').values)
-W = jnp.array(data.pivot(index='unit', columns='period', values='treat').values)
+# Run estimation
+results = estimate(
+    Y=Y,
+    Mask=W,
+    X=X,
+    Z=Z,
+    V=V,
+    Omega=None,
+    use_unit_fe=True,
+    use_time_fe=True,
+    lambda_L=None,
+    lambda_H=None,
+    validation_method='cv',
+    K=3,
+    n_lambda=30,
+)
 
-# Estimate the MC-NNM model
-results = estimate(Y, W)
-
-print(f"True effect: {true_params['treatment_effect']}, Estimated effect: {results.tau:.4f}")
+print(f"\nTrue effect: {true_params['treatment_effect']}, Estimated effect: {results.tau:.3f}")
+print(f"Chosen lambda_L: {results.lambda_L:.4f}, lambda_H: {results.lambda_H:.4f}")
 ```
 For more detailed usage instructions and examples, please refer to the documentation.
 
@@ -199,10 +217,10 @@ Athey, S., Bayati, M., Doudchenko, N., Imbens, G., & Khosravi, K. (2021). Matrix
 
 BibTeX entries:
 
-@software{schnabel2023lightweightmcnnm,
+@software{schnabel2024lightweightmcnnm,
   author = {Schnabel, Tobias},
   title = {lightweight-mcnnm: A Python package for Matrix Completion with Nuclear Norm Minimization},
-  year = {2023},
+  year = {2024},
   url = {https://github.com/tobias-schnabel/mcnnm}
 }
 

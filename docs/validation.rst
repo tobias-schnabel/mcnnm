@@ -1,7 +1,7 @@
 Validation Methods
 ==================
 
-This package supports two validation methods for selecting optimal regularization parameters:
+This package supports two validation methods for selecting optimal regularization parameters. Both methods are only used if either lambda_L or lambda_H is not provided by the user. If both lambda_L and lambda_H are provided, the model is trained with these fixed values.
 
 1. Cross-Validation
 -------------------
@@ -9,14 +9,16 @@ This is the default method used in the `estimate` function: `validation_method: 
 Cross-validation is implemented in the `cross_validate` function. This method performs K-fold cross-validation to select optimal regularization parameters (lambda_L and lambda_H).
 
 The process works as follows:
-1. The data is randomly split into K folds.
-2. For each pair of lambda values in the provided grid:
 
-a. The model is trained K times, each time using K-1 folds for training and the remaining fold for validation.
-b. The loss is computed for each validation fold.
-c. The average loss across all valid folds is calculated.
+1. The data is randomly split into K folds using jax.random.bernoulli.
+2. In each fold, data points are randomly assigned to either the training or validation set.
+3. For each pair of lambda values in the provided grid:
 
-3. The lambda pair that results in the lowest average loss is selected.
+   a. The model is trained and evaluated on each fold
+   b. The loss is computed for each validation fold.
+   c. The average loss across all valid folds is calculated.
+
+4. The lambda pair that results in the lowest average validation loss across folds is selected.
 
 Key features:
 
@@ -33,30 +35,22 @@ Key Parameters:
 
    Why it's useful: A higher K value provides a more thorough evaluation but increases computation time. A lower K value is faster but may be less robust.
 
-2. `n_lambda_L` and `n_lambda_H` (int):
-   These parameters determine the number of lambda values to consider in the grid search for lambda_L and lambda_H respectively.
+2. `num_lam` (int):
+   This parameter determines the number of lambda values to consider in the grid search for both lambda_L and lambda_H.
 
-   Example: If `n_lambda_L=10` and `n_lambda_H=10`, the grid search will consider 100 different combinations of lambda values.
+   Example: If `num_lam=8`, the grid search will consider 64 different combinations of lambda values.
 
-Example Usage:
-
-::
-
-   results = estimate(Y, W, X=X, Z=Z, V=V,
-                   validation_method='cv',
-                   K=10,
-                   n_lambda_L=8,
-                   n_lambda_H=8)
+Example Usage: see `here <https://colab.research.google.com/github/tobias-schnabel/mcnnm/blob/main/Example.ipynb>`_
 
 This configuration would:
 
-- Use 10-fold cross-validation
-- Consider 8 different values for lambda_L and 8 for lambda_H, resulting in 64 lambda pairs to evaluate
+- Use 5-fold cross-validation (default)
+- Consider 8 different values for both lambda_L and lambda_H, resulting in 64 lambda pairs to evaluate
 
 Choosing Parameters:
 
 - `K`: Common choices are 5 or 10. Higher values provide more thorough validation but increase computation time. For smaller datasets, you might use leave-one-out cross-validation by setting K equal to the number of observations.
-- `n_lambda_L` and `n_lambda_H`: These control the granularity of your lambda search. Higher values provide a more comprehensive search but increase computation time. Start with moderate values (e.g., 5-10) and adjust based on your computational resources and the sensitivity of your results to lambda values.
+- `num_lam`: This controls the granularity of your lambda search. Higher values provide a more comprehensive search but increase computation time. Start with moderate values (e.g., 5-10) and adjust based on your computational resources and the sensitivity of your results to lambda values.
 
 When to use Cross-Validation:
 
@@ -71,15 +65,31 @@ While cross-validation is often a good default choice, it's important to conside
 ---------------------
 Holdout validation can be used in the `estimate` function by setting `validation_method='holdout'`. This method uses a time-based holdout strategy to select optimal regularization parameters.
 
+2. Holdout Validation
+---------------------
+Holdout validation can be used in the `estimate` function by setting `validation_method='holdout'`. This method uses a time-based holdout strategy to select optimal regularization parameters.
+
 The process works as follows:
 
-1. The data is split into training and test sets based on time periods.
-2. For each pair of lambda values in the provided grid:
-   a. The model is trained on the training set.
-   b. The loss is computed on the test set.
-   c. This process is repeated for multiple time periods, creating a series of train-test splits.
-3. The average loss across all valid periods is calculated for each lambda pair.
-4. The lambda pair that results in the lowest average loss is selected.
+1. Create K holdout masks using the `create_holdout_masks` function, which generates masks based on the specified time windows determined by `initial_window`, `step_size`, and `horizon`.
+2. Initialize the low-rank matrix L and the augmented covariate matrices X_tilde, Z_tilde, and V using the `initialize_matrices` function.
+3. Initialize the model configurations (gamma, delta, beta, H_tilde) and compute the maximum lambda values for each holdout fold using the `initialize_holdout` function and `jax.vmap`.
+4. Determine the overall maximum lambda_L and lambda_H values across all holdout folds.
+5. Generate lambda_L and lambda_H value ranges using the `propose_lambda_values` function.
+6. Create a lambda grid by combining the lambda_L and lambda_H value ranges using the `generate_lambda_grid` function.
+7. Define the `holdout_fold_loss` function that computes the holdout RMSE for each lambda combination within a fold:
+   - Split the data into training and validation sets based on the holdout mask.
+   - Use `jax.lax.scan` to iterate over the lambda grid and compute the RMSE for each combination.
+   - Train the model using the `fit` function on the training set for each lambda combination.
+   - Compute the holdout RMSE using the `compute_objective_value` function on the validation set.
+   - Return the holdout RMSE for each lambda combination.
+8. Apply the `holdout_fold_loss` function to each holdout fold using `jax.vmap` to compute the holdout RMSE for each lambda combination across all folds.
+9. Compute the average holdout RMSE for each lambda combination across all folds.
+10. Select the best lambda_L and lambda_H values based on the minimum average RMSE.
+11. Return the best lambda_L and lambda_H values along with the optimal lambda_L and lambda_H ranges.
+
+This approach allows for a more sophisticated time-based validation strategy, taking into account the temporal structure of the data and providing a robust selection of regularization parameters.
+
 
 Key Parameters:
 
@@ -87,7 +97,7 @@ Key Parameters:
    This parameter sets the number of initial time periods to use for the first training set.
    It determines how much historical data is used for the initial model training.
 
-   Example: If `initial_window=50` and you have 100 time periods, the first training set will use periods 0-49.
+   Example: If `initial_window=50` and you have 100 time periods, the first training set will use periods 1-50.
 
    Why it's useful: This allows you to control how much historical data is considered relevant for prediction.
 
@@ -123,17 +133,7 @@ Key Parameters:
 
    Why it's useful: This can be helpful if you believe that very old data is no longer relevant to current predictions, or if you want to limit computational resources.
 
-Example Usage:
-
-::
-
-   results = estimate(Y, W, X=X, Z=Z, V=V,
-                      validation_method='holdout',
-                      initial_window=50,
-                      step_size=10,
-                      horizon=5,
-                      K=5,
-                      max_window_size=80)
+Example Usage: see `here <https://colab.research.google.com/github/tobias-schnabel/mcnnm/blob/main/Example.ipynb>`_
 
 This configuration would:
 
@@ -163,23 +163,6 @@ When to use Holdout Validation:
 
 The optimal configuration may depend on your specific dataset and prediction task. It's often beneficial to experiment with different parameter settings to find what works best for your particular case.
 
-Proposing Lambda Values
------------------------
-The internal `propose_lambda` function in the `util.py` file is used to generate a sequence of lambda values for grid search. It works as follows:
-
-1. If no `proposed_lambda` is provided:
-
-   • Returns a logarithmically spaced sequence of `n_lambdas` values between 10^-3 and 10^0.
-
-2. If a `proposed_lambda` is provided:
-
-   • Creates a logarithmically spaced sequence of `n_lambdas` values centered around the `proposed_lambda`.
-   • The range spans from `10^(log10(proposed_lambda) - 2)` to `10^(log10(proposed_lambda) + 2)`.
-
-Usage:
-
-• When called without arguments, it provides a default range of lambda values.
-• When called with a specific lambda value, it provides a range of values around that lambda for fine-tuning.
 
 Customizing Validation in estimate()
 ------------------------------------
@@ -187,20 +170,18 @@ The `estimate` function in `estimate.py` allows for customization of the validat
 
 1. `validation_method` (str): Choose between 'cv' for cross-validation (the default) or 'holdout' for time-based holdout validation.
 
-2. `lambda_L` and `lambda_H` (Optional[float]): If provided, these values are used as the starting point for the grid search.
+2. `num_lam` (int): Number of lambda values to consider in the grid search for both lambda_L and lambda_H.
 
-3. `n_lambda_L` and `n_lambda_H` (int): Number of lambda values to consider in the grid search for lambda_L and lambda_H respectively. If both lambda values are provided and `n_lambda_L` and `n_lambda_H` are set to 1, no grid search is performed.
+3. `K` (int): Number of folds for cross-validation or number of splits for holdout validation (default is 5).
 
-4. `K` (int): Number of folds for cross-validation (default is 5).
+4. `initial_window` (int): Size of the initial window for holdout validation.
 
-5. `window_size` (Optional[int]): Size of the rolling window for time-based validation.
+5. `step_size` (int): Step size for moving the window in holdout validation.
 
-6. `expanding_window` (bool): Whether to use an expanding window for time-based validation.
+6. `horizon` (int): Number of future time periods to predict in holdout validation.
 
-7. `max_window_size` (Optional[int]): Maximum size of the expanding window for time-based validation.
+7. `max_window_size` (Optional[int]): Maximum size of the window for holdout validation.
 
 8. `max_iter` (int) and `tol` (float): Maximum number of iterations and convergence tolerance for fitting.
-
-9. `verbose` (bool): Whether to print progress messages during validation.
 
 These parameters allow users to fine-tune the validation process according to their specific needs and data characteristics.

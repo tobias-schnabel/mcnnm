@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.abspath(os.path.join("..", "src")))
 project = "lightweight-mcnnm"
 copyright = "2024, Tobias Schnabel"
 author = "Tobias Schnabel"
-release = "1.0.1"
+release = "1.0.2"
 
 extensions = [
     "sphinx.ext.autodoc",
@@ -15,7 +15,20 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
     "sphinx.ext.mathjax",
+    # "sphinx_gallery.gen_gallery",
 ]
+
+extensions.append("sphinx_autodoc_typehints")
+extensions.append("sphinx_tabs.tabs")
+
+
+# sphinx_gallery_conf = {
+#     'examples_dirs': '../examples',
+#     'gallery_dirs': 'auto_examples',
+#     'filename_pattern': '/example_',
+#     'ignore_pattern': r'__init__\.py',
+# }
+
 
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
@@ -28,6 +41,10 @@ html_theme_options = {
     "use_repository_button": True,
     "use_issues_button": True,
     "use_edit_page_button": True,
+    "use_download_button": True,
+    "use_fullscreen_button": False,
+    "navbar_end": ["navbar-icon-links.html", "search-field.html"],
+    "search_bar_text": "Search the docs...",
 }
 html_static_path = ["_static"]
 
