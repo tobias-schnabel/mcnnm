@@ -220,10 +220,16 @@ def generate_data(
     # Generate treatment assignment based on the specified mechanism
     if assignment_mechanism == "staggered":
         treat = np.zeros((nobs, nperiods), dtype=int)
-        adoption_times = np.random.geometric(p=treatment_probability, size=nobs)
-        for i in range(nobs):  # pragma: no  cover
-            if adoption_times[i] <= nperiods:
-                treat[i, adoption_times[i] - 1 :] = 1
+        min_adoption_time = nperiods // 4  # Earliest possible adoption time
+
+        # Generate adoption times starting from min_adoption_time
+        adoption_times = (
+            np.random.geometric(p=treatment_probability, size=nobs) + min_adoption_time - 1
+        )
+
+        for i in range(nobs):  # pragma: no cover
+            if adoption_times[i] < nperiods:
+                treat[i, adoption_times[i] :] = 1
     elif assignment_mechanism == "block":
         treated_units = np.random.choice(nobs, size=int(nobs * treated_fraction), replace=False)
         treat = np.zeros((nobs, nperiods), dtype=int)
