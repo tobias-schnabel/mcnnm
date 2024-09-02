@@ -65,10 +65,6 @@ While cross-validation is often a good default choice, it's important to conside
 ---------------------
 Holdout validation can be used in the `estimate` function by setting `validation_method='holdout'`. This method uses a time-based holdout strategy to select optimal regularization parameters.
 
-2. Holdout Validation
----------------------
-Holdout validation can be used in the `estimate` function by setting `validation_method='holdout'`. This method uses a time-based holdout strategy to select optimal regularization parameters.
-
 The process works as follows:
 
 1. Create K holdout masks using the `create_holdout_masks` function, which generates masks based on the specified time windows determined by `initial_window`, `step_size`, and `horizon`.
