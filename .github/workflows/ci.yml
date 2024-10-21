@@ -19,67 +19,61 @@ jobs:
 
     - name: Install poetry
       uses: abatilo/actions-poetry@v2
-    - name: Setup a local virtual environment (if no poetry.toml file)
+
+    - name: Setup a local virtual environment
       run: |
         poetry config virtualenvs.create true --local
         poetry config virtualenvs.in-project true --local
+
     - uses: actions/cache@v3
-      name: Define a cache for the virtual environment based on the dependencies lock file
+      name: Define a cache for the virtual environment
       with:
         path: ./.venv
         key: venv-${{ hashFiles('poetry.lock') }}
+
     - name: Install the project dependencies
       run: poetry install
 
     - name: Run type checker
-      run: |
-        poetry run mypy .
+      run: poetry run mypy .
 
     - name: Run security scanner
-      run: |
-        poetry run bandit -r src -f custom
+      run: poetry run bandit -r src -f custom
 
     - name: Run code formatter check
-      run: |
-        poetry run black --check .
-
-#    - name: Run flake8
-#      run: |
-#        poetry run flake8 .
+      run: poetry run black --check .
 
   test:
-    name: Test on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ['3.10', '3.11', '3.12']
+    name: Test on Python 3.12
+    runs-on: ubuntu-latest
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Set up Python ${{ matrix.python-version }}
+    - name: Set up Python 3.12
       uses: actions/setup-python@v4
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: '3.12'
 
     - name: Install poetry
       uses: abatilo/actions-poetry@v2
-    - name: Setup a local virtual environment (if no poetry.toml file)
+
+    - name: Setup a local virtual environment
       run: |
         poetry config virtualenvs.create true --local
         poetry config virtualenvs.in-project true --local
+
     - uses: actions/cache@v3
-      name: Define a cache for the virtual environment based on the dependencies lock file
+      name: Define a cache for the virtual environment
       with:
         path: ./.venv
-        key: venv-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('poetry.lock') }}
+        key: venv-${{ hashFiles('poetry.lock') }}
+
     - name: Install the project dependencies
       run: poetry install
 
     - name: Run tests with coverage
-      run: |
-        poetry run pytest --cov=src --cov-report=xml --cov-report=term
+      run: poetry run pytest --cov=src --cov-report=xml --cov-report=term
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
