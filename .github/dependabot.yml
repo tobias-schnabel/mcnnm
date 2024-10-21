@@ -8,6 +8,4 @@ updates:
       all-dependencies:
         patterns:
           - "*"
-    auto-merge:
-      - dependency-type: "all"
     open-pull-requests-limit: 1
