@@ -33,16 +33,10 @@ jobs:
         key: uv-${{ hashFiles('uv.lock') }}
 
     - name: Install the project dependencies
-      run: uv sync
+      run: uv sync --all-groups
 
-    - name: Run type checker
-      run: uv run mypy .
-
-    - name: Run ruff linter
-      run: uv run ruff check .
-
-    - name: Run ruff formatter check
-      run: uv run ruff format --check .
+    - name: Run pre-commit hooks
+      run: uv run pre-commit run --all-files
 
   test:
     name: Test on Python 3.12
