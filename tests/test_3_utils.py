@@ -1,29 +1,29 @@
 # mypy: ignore-errors
 # type: ignore
-import pytest
+from typing import Literal
+
+import jax
 import jax.numpy as jnp
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
+from jax import random
+
 from mcnnm.utils import (
     check_inputs,
-    generate_data,
     convert_inputs,
-    propose_lambda_values,
-    generate_lambda_grid,
     extract_shortest_path,
+    generate_data,
+    generate_lambda_grid,
+    propose_lambda_values,
     validate_holdout_config,
 )
-from typing import Literal
-import jax
-from jax import random
 
 key = jax.random.PRNGKey(2024)
 
 
 def test_check_inputs():
-    Y, W, X, Z, V, true_params = generate_data(
-        nobs=2, nperiods=2, X_cov=False, Z_cov=False, V_cov=False
-    )
+    Y, W, X, Z, V, true_params = generate_data(nobs=2, nperiods=2, X_cov=False, Z_cov=False, V_cov=False)
 
     X, Z, V, Omega = check_inputs(Y, W, X, Z, V)
     assert X.shape == (2, 0)
@@ -33,9 +33,7 @@ def test_check_inputs():
 
 
 def test_check_inputs_wrong_W():
-    Y, W, X, Z, V, true_params = generate_data(
-        nobs=2, nperiods=2, X_cov=False, Z_cov=False, V_cov=False
-    )
+    Y, W, X, Z, V, true_params = generate_data(nobs=2, nperiods=2, X_cov=False, Z_cov=False, V_cov=False)
     W = Y
 
     with pytest.raises(ValueError):
@@ -64,9 +62,7 @@ def test_generate_data(
     X_cov: bool,
     Z_cov: bool,
     V_cov: bool,
-    assignment_mechanism: Literal[
-        "staggered", "block", "single_treated_period", "single_treated_unit", "last_periods"
-    ],
+    assignment_mechanism: Literal["staggered", "block", "single_treated_period", "single_treated_unit", "last_periods"],
     autocorrelation: float,
 ):
     nobs, nperiods = 100, 50
@@ -150,9 +146,7 @@ def test_generate_data(
         assert true_params["V_coef"].size == 0
 
     assert jnp.allclose(Y, true_params["Y(0)"] + W * treatment_effect)
-    assert (
-        isinstance(Y, jnp.ndarray) and isinstance(W, jnp.ndarray) and isinstance(true_params, dict)
-    )
+    assert isinstance(Y, jnp.ndarray) and isinstance(W, jnp.ndarray) and isinstance(true_params, dict)
 
     assert true_params["treatment_effect"] == treatment_effect
     assert true_params["noise_scale"] == noise_scale
@@ -220,27 +214,21 @@ def test_mismatched_W_shape(test_data):
 def test_invalid_X_shape(test_data):
     N, T, Y, W = test_data
     X = jnp.ones((N + 1, 3))
-    with pytest.raises(
-        ValueError, match="The first dimension of X .* must match the first dimension of Y"
-    ):
+    with pytest.raises(ValueError, match="The first dimension of X .* must match the first dimension of Y"):
         check_inputs(Y, W, X)
 
 
 def test_invalid_Z_shape(test_data):
     N, T, Y, W = test_data
     Z = jnp.ones((T + 1, 2))
-    with pytest.raises(
-        ValueError, match="The first dimension of Z .* must match the second dimension of Y"
-    ):
+    with pytest.raises(ValueError, match="The first dimension of Z .* must match the second dimension of Y"):
         check_inputs(Y, W, Z=Z)
 
 
 def test_invalid_V_shape(test_data):
     N, T, Y, W = test_data
     V = jnp.ones((N + 1, T, 4))
-    with pytest.raises(
-        ValueError, match="The first two dimensions of V .* must match the shape of Y"
-    ):
+    with pytest.raises(ValueError, match="The first two dimensions of V .* must match the shape of Y"):
         check_inputs(Y, W, V=V)
 
 
@@ -338,7 +326,7 @@ def test_input_mutability(test_data):
     original_inputs = [Y, W, X, Z, V, Omega]
     _ = check_inputs(Y, W, X, Z, V, Omega)
 
-    for original, current in zip(original_inputs, [Y, W, X, Z, V, Omega]):
+    for original, current in zip(original_inputs, [Y, W, X, Z, V, Omega], strict=False):
         assert jnp.array_equal(original, current), "Input arrays should not be modified"
 
 
@@ -474,9 +462,7 @@ def test_convert_inputs_mismatched_X_shape():
     W = pd.DataFrame([[0, 1], [1, 0]])
     X = pd.DataFrame([[5, 6]])  # Only one row, should be two to match Y
 
-    with pytest.raises(
-        ValueError, match="The first dimension of X .* must match the first dimension of Y"
-    ):
+    with pytest.raises(ValueError, match="The first dimension of X .* must match the first dimension of Y"):
         convert_inputs(Y, W, X=X)
 
 
@@ -485,9 +471,7 @@ def test_convert_inputs_mismatched_Z_shape():
     W = pd.DataFrame([[0, 1], [1, 0]])
     Z = pd.DataFrame([[9, 10, 11]])  # Three columns, should be two to match Y
 
-    with pytest.raises(
-        ValueError, match="The first dimension of Z .* must match the second dimension of Y"
-    ):
+    with pytest.raises(ValueError, match="The first dimension of Z .* must match the second dimension of Y"):
         convert_inputs(Y, W, Z=Z)
 
 
@@ -654,9 +638,7 @@ def test_extract_shortest_path_order():
     assert jnp.all(jnp.diff(shortest_path[:, 1]) <= 0)
 
     # Check if the path starts at the maximum values
-    assert jnp.allclose(
-        shortest_path[0], jnp.array([jnp.max(lambda_L_values), jnp.max(lambda_H_values)])
-    )
+    assert jnp.allclose(shortest_path[0], jnp.array([jnp.max(lambda_L_values), jnp.max(lambda_H_values)]))
 
     # Check if the path ends at (0, 0)
     assert jnp.allclose(shortest_path[-1], jnp.array([0.0, 0.0]))
@@ -694,37 +676,27 @@ def test_valid_configuration():
 
 def test_invalid_initial_window():
     with pytest.raises(ValueError, match="initial_window must be greater than 0."):
-        validate_holdout_config(
-            initial_window=0, step_size=5, horizon=3, K=4, max_window_size=None, T=30
-        )
+        validate_holdout_config(initial_window=0, step_size=5, horizon=3, K=4, max_window_size=None, T=30)
 
 
 def test_invalid_step_size():
     with pytest.raises(ValueError, match="step_size must be greater than 0."):
-        validate_holdout_config(
-            initial_window=10, step_size=0, horizon=3, K=4, max_window_size=None, T=30
-        )
+        validate_holdout_config(initial_window=10, step_size=0, horizon=3, K=4, max_window_size=None, T=30)
 
 
 def test_invalid_horizon():
     with pytest.raises(ValueError, match="horizon must be greater than 0."):
-        validate_holdout_config(
-            initial_window=10, step_size=5, horizon=0, K=4, max_window_size=None, T=30
-        )
+        validate_holdout_config(initial_window=10, step_size=5, horizon=0, K=4, max_window_size=None, T=30)
 
 
 def test_invalid_K():
     with pytest.raises(ValueError, match="K must be greater than 0."):
-        validate_holdout_config(
-            initial_window=10, step_size=5, horizon=3, K=0, max_window_size=None, T=30
-        )
+        validate_holdout_config(initial_window=10, step_size=5, horizon=3, K=0, max_window_size=None, T=30)
 
 
 def test_invalid_max_window_size():
     with pytest.raises(ValueError, match="max_window_size must be greater than 0 if specified."):
-        validate_holdout_config(
-            initial_window=10, step_size=5, horizon=3, K=4, max_window_size=0, T=30
-        )
+        validate_holdout_config(initial_window=10, step_size=5, horizon=3, K=4, max_window_size=0, T=30)
 
 
 def test_adjust_max_window_size():

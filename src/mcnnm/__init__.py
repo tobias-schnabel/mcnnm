@@ -1,4 +1,4 @@
-from .wrappers import estimate, MCNNMResults, complete_matrix
-from .utils import generate_data, convert_inputs
+from .utils import convert_inputs, generate_data
+from .wrappers import MCNNMResults, complete_matrix, estimate
 
 __all__ = ["estimate", "complete_matrix", "generate_data", "convert_inputs", "MCNNMResults"]

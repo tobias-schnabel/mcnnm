@@ -1,14 +1,14 @@
 # mypy: ignore-errors
 # type: ignore
+import jax
 import jax.numpy as jnp
 import pytest
-import jax
 
 from mcnnm import complete_matrix
-from mcnnm.utils import generate_data
 from mcnnm.core import initialize_fixed_effects_and_H, initialize_matrices
-from mcnnm.wrappers import compute_treatment_effect, estimate
 from mcnnm.types import Array
+from mcnnm.utils import generate_data
+from mcnnm.wrappers import compute_treatment_effect, estimate
 
 key = jax.random.PRNGKey(2024)
 
@@ -36,8 +36,8 @@ def test_compute_treatment_effect(N, T, fe_params, X_cov, Z_cov, V_cov, noise_sc
 
     L, X_tilde, Z_tilde, V = initialize_matrices(Y, X, Z, V)
 
-    gamma, delta, beta, H_tilde, T_mat, in_prod_T, in_prod, lambda_L_max, lambda_H_max = (
-        initialize_fixed_effects_and_H(Y, L, X_tilde, Z_tilde, V, W, False, False, verbose=False)
+    gamma, delta, beta, H_tilde, T_mat, in_prod_T, in_prod, lambda_L_max, lambda_H_max = initialize_fixed_effects_and_H(
+        Y, L, X_tilde, Z_tilde, V, W, False, False, verbose=False
     )
 
     treatment_effect = compute_treatment_effect(
@@ -92,9 +92,7 @@ def test_estimate(
     )
 
     if autocorrelation > 0:
-        Omega = jnp.eye(T) * autocorrelation + jnp.tri(T, k=-1) * (
-            1 - autocorrelation
-        )  # AR(1) covariance matrix
+        Omega = jnp.eye(T) * autocorrelation + jnp.tri(T, k=-1) * (1 - autocorrelation)  # AR(1) covariance matrix
     else:
         Omega = None
 
@@ -185,9 +183,7 @@ def test_estimate(
 
     assert not jnp.any(jnp.isnan(results.Y_completed)), "Y_completed contains NaN values"
     assert not jnp.any(jnp.isinf(results.Y_completed)), "Y_completed contains infinite values"
-    assert not jnp.allclose(
-        results.Y_completed, jnp.zeros_like(results.Y_completed)
-    ), "Y_completed is all zeros"
+    assert not jnp.allclose(results.Y_completed, jnp.zeros_like(results.Y_completed)), "Y_completed is all zeros"
 
     assert not jnp.isnan(results.tau), "tau contains NaN values"
     assert not jnp.isinf(results.tau), "tau contains infinite values"

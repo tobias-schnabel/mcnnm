@@ -1,9 +1,7 @@
-from typing import Tuple
-
 import jax
 import jax.numpy as jnp
-from jax.numpy.linalg import norm
 from jax import jit
+from jax.numpy.linalg import norm
 
 from .types import Array, Scalar
 
@@ -144,7 +142,7 @@ def element_wise_l1_norm(A: Array) -> Scalar:
 
 
 @jit
-def normalize(mat: Array) -> Tuple[Array, Array]:
+def normalize(mat: Array) -> tuple[Array, Array]:
     """
     Normalize the columns of the input matrix.
     Return the normalized matrix and the column norms.

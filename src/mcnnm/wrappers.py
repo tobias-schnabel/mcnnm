@@ -1,11 +1,12 @@
-from .core_utils import is_positive_definite
-from .types import Array, Scalar
-from typing import NamedTuple, Optional, Literal, cast, Tuple
+from typing import Literal, NamedTuple, cast
+
 import jax.numpy as jnp
 
-from .core import compute_Y_hat, initialize_matrices, initialize_fixed_effects_and_H
-from .validation import cross_validate, holdout_validate, final_fit
+from .core import compute_Y_hat, initialize_fixed_effects_and_H, initialize_matrices
+from .core_utils import is_positive_definite
+from .types import Array, Scalar
 from .utils import validate_holdout_config
+from .validation import cross_validate, final_fit, holdout_validate
 
 
 def compute_treatment_effect(
@@ -47,13 +48,11 @@ def compute_treatment_effect(
     Returns:
         Scalar: The estimated average treatment effect.
     """
-    Y_completed = compute_Y_hat(
-        L, X_tilde, Z_tilde, V, H_tilde, gamma, delta, beta, use_unit_fe, use_time_fe
-    )
+    Y_completed = compute_Y_hat(L, X_tilde, Z_tilde, V, H_tilde, gamma, delta, beta, use_unit_fe, use_time_fe)
     W = 1 - W
     treated_units = jnp.sum(W)
     tau = jnp.sum((Y - Y_completed) * W) / treated_units
-    tau = cast(Scalar, tau.item())  # type: ignore
+    tau = cast("Scalar", tau.item())  # type: ignore
     return tau
 
 
@@ -79,37 +78,37 @@ class MCNNMResults(NamedTuple):
     All attributes are optional and initialized to None by default.
     """
 
-    tau: Optional[Scalar] = None
-    lambda_L: Optional[Scalar] = None
-    lambda_H: Optional[Scalar] = None
-    L: Optional[Array] = None
-    Y_completed: Optional[Array] = None
-    gamma: Optional[Array] = None
-    delta: Optional[Array] = None
-    beta: Optional[Array] = None
-    H: Optional[Array] = None
+    tau: Scalar | None = None
+    lambda_L: Scalar | None = None
+    lambda_H: Scalar | None = None
+    L: Array | None = None
+    Y_completed: Array | None = None
+    gamma: Array | None = None
+    delta: Array | None = None
+    beta: Array | None = None
+    H: Array | None = None
 
 
 def estimate(
     Y: Array,
     Mask: Array,
-    X: Optional[Array] = None,
-    Z: Optional[Array] = None,
-    V: Optional[Array] = None,
-    Omega: Optional[Array] = None,
+    X: Array | None = None,
+    Z: Array | None = None,
+    V: Array | None = None,
+    Omega: Array | None = None,
     use_unit_fe: bool = True,
     use_time_fe: bool = True,
-    lambda_L: Optional[Scalar] = None,
-    lambda_H: Optional[Scalar] = None,
-    n_lambda: Optional[int] = 10,
-    max_iter: Optional[Scalar] = 1e4,
-    tol: Optional[Scalar] = 1e-4,
+    lambda_L: Scalar | None = None,
+    lambda_H: Scalar | None = None,
+    n_lambda: int | None = 10,
+    max_iter: Scalar | None = 1e4,
+    tol: Scalar | None = 1e-4,
     validation_method: Literal["cv", "holdout"] = "cv",
     K: int = 5,
-    initial_window: Optional[int] = None,
-    step_size: Optional[int] = None,
-    horizon: Optional[int] = None,
-    max_window_size: Optional[int] = None,
+    initial_window: int | None = None,
+    step_size: int | None = None,
+    horizon: int | None = None,
+    max_window_size: int | None = None,
 ) -> MCNNMResults:
     """
     Estimate the Matrix Completion with Nuclear Norm Minimization (MC-NNM) model.
@@ -294,9 +293,7 @@ def estimate(
         in_prod_init,
         lambda_L_max,
         lambda_H_max,
-    ) = initialize_fixed_effects_and_H(
-        Y, L, X_tilde, Z_tilde, V, W, use_unit_fe, use_time_fe, verbose=False
-    )
+    ) = initialize_fixed_effects_and_H(Y, L, X_tilde, Z_tilde, V, W, use_unit_fe, use_time_fe, verbose=False)
 
     # Select lambda values via validation
     if lambda_L is None or lambda_H is None:
@@ -348,9 +345,7 @@ def estimate(
                 tol=tol,  # type: ignore[arg-type]
             )
         else:
-            raise ValueError(
-                "Invalid validation method. Must be 'cv' or 'holdout'."
-            )  # pragma: no cover
+            raise ValueError("Invalid validation method. Must be 'cv' or 'holdout'.")  # pragma: no cover
     else:
         opt_lambda_L = jnp.array(lambda_L)
         opt_lambda_H = jnp.array(lambda_H)
@@ -418,24 +413,24 @@ def estimate(
 def complete_matrix(
     Y: Array,
     Mask: Array,
-    X: Optional[Array] = None,
-    Z: Optional[Array] = None,
-    V: Optional[Array] = None,
-    Omega: Optional[Array] = None,
+    X: Array | None = None,
+    Z: Array | None = None,
+    V: Array | None = None,
+    Omega: Array | None = None,
     use_unit_fe: bool = True,
     use_time_fe: bool = True,
-    lambda_L: Optional[Scalar] = None,
-    lambda_H: Optional[Scalar] = None,
+    lambda_L: Scalar | None = None,
+    lambda_H: Scalar | None = None,
     n_lambda: int = 10,
-    max_iter: Optional[int] = 10_000,
-    tol: Optional[Scalar] = 1e-4,
+    max_iter: int | None = 10_000,
+    tol: Scalar | None = 1e-4,
     validation_method: Literal["cv", "holdout"] = "cv",
     K: int = 5,
-    initial_window: Optional[int] = None,
-    step_size: Optional[int] = None,
-    horizon: Optional[int] = None,
-    max_window_size: Optional[int] = None,
-) -> Tuple[Array, Scalar, Scalar]:
+    initial_window: int | None = None,
+    step_size: int | None = None,
+    horizon: int | None = None,
+    max_window_size: int | None = None,
+) -> tuple[Array, Scalar, Scalar]:
     """
     Complete a matrix using the Matrix Completion with Nuclear Norm Minimization (MC-NNM) model.
 
