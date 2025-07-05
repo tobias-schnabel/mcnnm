@@ -127,27 +127,3 @@ lint.ignore = [
 line-length = 120
 src = ["src"]
 target-version = "py312"
-
-[tool.tox]
-legacy_tox_ini = """
-[tox]
-envlist = py312, py313, pypy3
-skip_missing_interpreters = true
-
-[gh-actions]
-python =
-    3.12: py312
-    3.13: py313
-    pypy-3.10: pypy3
-
-[testenv]
-passenv = GITHUB_*
-allowlist_externals = uv
-setenv =
-    PYTHONPATH = {toxinidir}/src
-
-commands =
-    uv sync --all-groups
-    uv run pytest --cov=src --cov-report=xml --cov-report=term
-    uv run coverage report
-"""

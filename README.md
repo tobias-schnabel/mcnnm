@@ -5,8 +5,8 @@
 ![OS](https://img.shields.io/badge/OS-Linux%20|%20Windows%20|%20macOS-blue)
 [![PyPI version](https://img.shields.io/pypi/v/lightweight-mcnnm.svg?color=brightgreen&cache-bust=2)](https://pypi.org/project/lightweight-mcnnm/)
 [![Documentation Status](https://readthedocs.org/projects/mcnnm/badge/?version=latest)](https://mcnnm.readthedocs.io/en/latest/?badge=latest)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![mypy checked](https://img.shields.io/badge/mypy-checked-blue)](https://github.com/tobias-schnabel/mcnnm/actions/workflows/ci.yml)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![codecov](https://codecov.io/gh/tobias-schnabel/mcnnm/graph/badge.svg?token=VYJ12XOQMP)](https://codecov.io/gh/tobias-schnabel/mcnnm)
 [![Tests](https://github.com/tobias-schnabel/mcnnm/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tobias-schnabel/mcnnm/actions/workflows/ci.yml)
 [![GitHub last commit](https://img.shields.io/github/last-commit/tobias-schnabel/mcnnm)](https://github.com/tobias-schnabel/mcnnm/commits/)
@@ -129,66 +129,53 @@ For more detailed usage instructions and examples, please refer to the documenta
 
 ### Setting up the development environment
 
-This project uses [Poetry](https://python-poetry.org/) for dependency management. To set up your development environment:
+This project uses [uv](https://docs.astral.sh/uv/) for dependency management. To set up your development environment:
 
-1. Ensure you have Poetry installed. If not, install it by following the instructions on the [official Poetry website](https://python-poetry.org/docs/#installation).
+1. Ensure you have uv installed. If not, install it by following the instructions on the [official  website](https://docs.astral.sh/uv/getting-started/installation/).
 
 2. Clone the repository:
    ```bash
    git clone https://github.com/tobias-schnabel/mcnnm.git
    cd lightweight-mcnnm
    ```
-3. Install the project dependencies:
+3. Install the project dependencies, including local development dependencies:
     ```bash
-    poetry install
+    uv sync --all-groups
     ```
     This command creates a virtual environment and installs all the necessary dependencies.
-4. Activate the virtual environment:
-    ```bash
-   poetry shell
-   ```
+
 Now you're ready to start developing!
 ### Testing and building the package
 5. Running tests: use the following command:
     ```bash
-    poetry run pytest
+    uv run pytest
    ```
 
 6. Coverage: to generate a coverage report, run the following command:
     ```bash
-    poetry run coverage report
+    uv run coverage report
     ```
     This will generate a coverage report showing the percentage of code covered by the tests.
 6. Building the package: run the following command:
     ```bash
-    poetry build
+    uv build
     ```
     This will create both wheel and source distributions in the dist/ directory.
 
 ## Development Workflow
 ### Pre-commit Hooks
-This project uses pre-commit hooks to ensure code quality and consistency. Pre-commit hooks are scripts that run automatically every time you commit changes to your version control system. They help catch common issues before they get into the codebase. To set up:
-1. Install pre-commit:
+This project uses pre-commit hooks to ensure code quality and consistency. Pre-commit hooks are scripts that run automatically every time you commit changes to your version control system. They help catch common issues before they get into the codebase. To run the hooks on all files (recommended for the first setup):
     ```bash
-    poetry add pre-commit
-    ```
-2. Install the hooks:
-    ```bash
-    poetry run pre-commit install
-    ```
-3. Run the hooks on all files (recommended for the first setup):
-    ```bash
-    poetry run pre-commit run --all-files
+    uv run pre-commit run --all-files
     ```
 The configuration for the pre-commit hooks can be found in the .pre-commit-config.yaml file. The following hooks are configured:
 
     •	Trailing whitespace removal: Ensures no trailing whitespace is left in the code.
     •	End-of-file fixer: Ensures files end with a newline.
     •	YAML check: Validates YAML files.
-    •	Flake8: Checks for Python style guide enforcement.
-    •	Black: Ensures consistent code formatting.
-    •	Bandit: Checks for common security issues in Python code.
-    •	Mypy: Performs static type checking.
+    •	TOML check: Validates TOML files.
+    •	ruff: Linter and Formatter
+    •   ty: type checker
 
 ### Branch Protection
 To maintain the integrity of the main branch, branch protection rules are enforced. These rules ensure that all changes to the main branch go through a review process and pass all required checks.
@@ -210,7 +197,7 @@ This project was inspired by and draws upon ideas from
 If you use lightweight-mcnnm in your research, please cite both the software and the original paper describing the method:
 
 For the software:
-Schnabel, T. (2023). lightweight-mcnnm: A Python package for Matrix Completion with Nuclear Norm Minimization. https://github.com/tobias-schnabel/mcnnm
+Schnabel, T. (2023). lightweight-mcnnm: A Python package for Matrix Completion with Nuclear Norm Minimization. https://github.com/tobias-schnabel/lightweight-mcnnm
 
 For the method:
 Athey, S., Bayati, M., Doudchenko, N., Imbens, G., & Khosravi, K. (2021). Matrix Completion Methods for Causal Panel Data Models. Journal of the American Statistical Association, 116(536), 1716-1730.
@@ -221,7 +208,7 @@ BibTeX entries:
   author = {Schnabel, Tobias},
   title = {lightweight-mcnnm: A Python package for Matrix Completion with Nuclear Norm Minimization},
   year = {2024},
-  url = {https://github.com/tobias-schnabel/mcnnm}
+  url = {https://github.com/tobias-schnabel/lightweight-mcnnm}
 }
 
 @article{athey2021matrix,

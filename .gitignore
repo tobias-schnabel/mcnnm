@@ -84,17 +84,8 @@ coverage.xml
 profile_default/
 ipython_config.py
 
-# pyenv
-.python-version
-
-# celery beat schedule file
-celerybeat-schedule
-
 # dotenv
 .env
-
-# mypy
-.mypy_cache/
 
 # Pyre
 .pyre/
