@@ -38,23 +38,28 @@ jobs:
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
 
-    - name: Bump version (patch)
-      id: bump-version
-      run: |
-        # Get current version
-        CURRENT_VERSION=$(uv version)
-        echo "Current version: $CURRENT_VERSION"
+        - name: Bump version (patch)
+        id: bump-version
+        run: |
+          # Get current version
+          CURRENT_VERSION=$(uv version)
+          echo "Current version: $CURRENT_VERSION"
 
-        # Bump patch version
-        uv version --bump patch
-        NEW_VERSION=$(uv version)
-        echo "New version: $NEW_VERSION"
+          # Bump patch version
+          uv version --bump patch
+          FULL_VERSION=$(uv version)
+          echo "New full version: $FULL_VERSION"
 
-        # Update docs/conf.py to match new version
-        sed -i "s/release = \"[^\"]*\"/release = \"$NEW_VERSION\"/" docs/conf.py
+          # Extract just the version number (everything after the last space)
+          NEW_VERSION=$(echo "$FULL_VERSION" | awk '{print $NF}')
+          echo "New version number: $NEW_VERSION"
 
-        # Output new version for next steps
-        echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          # Update docs/conf.py to match new version
+          sed -i "s/release = \"[^\"]*\"/release = \"$NEW_VERSION\"/" docs/conf.py
+
+          # Output new version for next steps
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
 
     - name: Commit and push version bump
       run: |
