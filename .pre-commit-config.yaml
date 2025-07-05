@@ -5,15 +5,16 @@ repos:
     -   id: trailing-whitespace
     -   id: end-of-file-fixer
     -   id: check-yaml
+    -   id: check-toml
     -   id: check-added-large-files
--   repo: https://github.com/psf/black
-    rev: 24.4.2
+-   repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.2
     hooks:
-    -   id: black
--   repo: https://github.com/PyCQA/flake8
-    rev: 7.1.0
-    hooks:
-    -   id: flake8
+    # Run the linter with auto-fixes
+    -   id: ruff-check
+        args: [ --fix ]
+    # Run the formatter
+    -   id: ruff-format
 -   repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.10.1
     hooks:
