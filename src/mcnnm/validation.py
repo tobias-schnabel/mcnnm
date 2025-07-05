@@ -1,16 +1,14 @@
-from typing import Tuple, Optional
-
 import jax
 import jax.numpy as jnp
 
 from .core import (
-    fit,
-    initialize_matrices,
-    initialize_fixed_effects_and_H,
     compute_objective_value,
+    fit,
+    initialize_fixed_effects_and_H,
+    initialize_matrices,
 )
-from .utils import generate_lambda_grid, propose_lambda_values, extract_shortest_path
 from .types import Array, Scalar
+from .utils import extract_shortest_path, generate_lambda_grid, propose_lambda_values
 
 
 def cross_validate(
@@ -19,15 +17,15 @@ def cross_validate(
     Z: Array,
     V: Array,
     W: Array,
-    Omega_inv: Optional[Array],
+    Omega_inv: Array | None,
     use_unit_fe: bool,
     use_time_fe: bool,
     num_lam: int,
-    max_iter: Optional[int] = 1000,
-    tol: Optional[float] = 1e-5,
-    cv_ratio: Optional[float] = 0.8,
-    K: Optional[int] = 5,
-) -> Tuple[Array, Array, Array, Array]:
+    max_iter: int | None = 1000,
+    tol: float | None = 1e-5,
+    cv_ratio: float | None = 0.8,
+    K: int | None = 5,
+) -> tuple[Array, Array, Array, Array]:
     """
     Perform K-fold cross-validation to select the best regularization parameters for the model.
 
@@ -98,6 +96,7 @@ def cross_validate(
           functions.
         - The function computes the RMSE for each fold and lambda combination using the `fit` function.
         - The function selects the best lambda values based on the minimum average RMSE across all folds.
+
     """
     N, T = Y.shape
 
@@ -105,7 +104,9 @@ def cross_validate(
         def create_fold_mask(key):
             return jax.random.bernoulli(key, cv_ratio, shape=(N, T))
 
-        keys = jax.random.split(key, K)
+        # Ensure K is not None
+        k_folds = K if K is not None else 5
+        keys = jax.random.split(key, k_folds)
         fold_masks = jax.vmap(create_fold_mask)(keys)
         return fold_masks * W
 
@@ -127,7 +128,15 @@ def cross_validate(
             lambda_L_max,
             lambda_H_max,
         ) = initialize_fixed_effects_and_H(
-            Y_train, L, X_tilde, Z_tilde, V, W_train, use_unit_fe, use_time_fe, verbose=False
+            Y_train,
+            L,
+            X_tilde,
+            Z_tilde,
+            V,
+            W_train,
+            use_unit_fe,
+            use_time_fe,
+            verbose=False,
         )
         return (
             gamma_init,
@@ -233,9 +242,34 @@ def cross_validate(
         _, fold_val_rmses = jax.lax.scan(compute_rmse, init_state, lambda_grid)
         return fold_val_rmses
 
-    fold_rmses = jax.vmap(fold_loss, in_axes=(0, 0, 0, 0, 0, 0, 0, 0, 0, 0))(*fold_configs)
+    # Unpack fold_configs explicitly to satisfy type checker
+    (
+        gamma_inits,
+        delta_inits,
+        beta_inits,
+        H_tilde_inits,
+        T_mat_inits,
+        in_prod_T_inits,
+        in_prod_inits,
+        lambda_L_maxs,
+        lambda_H_maxs,
+        holdout_masks,
+    ) = fold_configs
+    fold_rmses = jax.vmap(fold_loss, in_axes=(0, 0, 0, 0, 0, 0, 0, 0, 0, 0))(
+        gamma_inits,
+        delta_inits,
+        beta_inits,
+        H_tilde_inits,
+        T_mat_inits,
+        in_prod_T_inits,
+        in_prod_inits,
+        lambda_L_maxs,
+        lambda_H_maxs,
+        holdout_masks,
+    )
     mean_rmses = jnp.mean(
-        fold_rmses, axis=0
+        fold_rmses,
+        axis=0,
     )  # validation RMSE for each lambda pair averaged across all folds
     min_index = jnp.argmin(mean_rmses)  # index of the lambda pair with the lowest average RMSE
 
@@ -255,7 +289,7 @@ def holdout_validate(
     Z: Array,
     V: Array,
     W: Array,
-    Omega_inv: Optional[Array],
+    Omega_inv: Array | None,
     use_unit_fe: bool,
     use_time_fe: bool,
     num_lam: int,
@@ -263,10 +297,10 @@ def holdout_validate(
     step_size: int,
     horizon: int,
     K: int,
-    max_window_size: Optional[int] = None,
-    max_iter: Optional[int] = 1000,
-    tol: Optional[float] = 1e-5,
-) -> Tuple[Array, Array, Array, Array]:
+    max_window_size: int | None = None,
+    max_iter: int | None = 1000,
+    tol: float | None = 1e-5,
+) -> tuple[Array, Array, Array, Array]:
     """
     Perform holdout validation to select the optimal regularization parameters for the MC-NNM model.
 
@@ -345,6 +379,7 @@ def holdout_validate(
           functions.
         - The function computes the RMSE for each holdout fold and lambda combination using the `fit` function.
         - The function selects the best lambda values based on the minimum average RMSE across all holdout folds.
+
     """
     N, T = Y.shape
 
@@ -405,7 +440,15 @@ def holdout_validate(
             lambda_L_max,
             lambda_H_max,
         ) = initialize_fixed_effects_and_H(
-            Y_train, L, X_tilde, Z_tilde, V, W_train, use_unit_fe, use_time_fe, verbose=False
+            Y_train,
+            L,
+            X_tilde,
+            Z_tilde,
+            V,
+            W_train,
+            use_unit_fe,
+            use_time_fe,
+            verbose=False,
         )
         return (
             gamma_init,
@@ -511,11 +554,34 @@ def holdout_validate(
         _, fold_val_rmses = jax.lax.scan(compute_holdout_rmse, init_state, lambda_grid)
         return fold_val_rmses
 
+    # Unpack holdout_configs explicitly to satisfy type checker
+    (
+        gamma_inits,
+        delta_inits,
+        beta_inits,
+        H_tilde_inits,
+        T_mat_inits,
+        in_prod_T_inits,
+        in_prod_inits,
+        lambda_L_maxs,
+        lambda_H_maxs,
+        holdout_masks,
+    ) = holdout_configs
     holdout_rmses = jax.vmap(holdout_fold_loss, in_axes=(0, 0, 0, 0, 0, 0, 0, 0, 0, 0))(
-        *holdout_configs
+        gamma_inits,
+        delta_inits,
+        beta_inits,
+        H_tilde_inits,
+        T_mat_inits,
+        in_prod_T_inits,
+        in_prod_inits,
+        lambda_L_maxs,
+        lambda_H_maxs,
+        holdout_masks,
     )
     mean_rmses = jnp.mean(
-        holdout_rmses, axis=0
+        holdout_rmses,
+        axis=0,
     )  # validation RMSE for each lambda pair averaged across all folds
     min_index = jnp.argmin(mean_rmses)  # index of the lambda pair with the lowest average RMSE
 
@@ -535,16 +601,16 @@ def final_fit(
     Z: Array,
     V: Array,
     W: Array,
-    Omega_inv: Optional[Array],
+    Omega_inv: Array | None,
     use_unit_fe: bool,
     use_time_fe: bool,
     best_lambda_L,
     best_lambda_H,
     lambda_L_opt_range,
     lambda_H_opt_range,
-    max_iter: Optional[int] = 1000,
-    tol: Optional[float] = 1e-5,
-) -> Tuple[Array, Array, Array, Array, Array, Array, Scalar]:
+    max_iter: int | None = 1000,
+    tol: float | None = 1e-5,
+) -> tuple[Array, Array, Array, Array, Array, Array, Scalar]:
     """
     Perform the final fit of the MC-NNM model using the optimal regularization parameters.
 
@@ -600,6 +666,7 @@ def final_fit(
         - The function uses the `fit` function to perform the model fitting for each lambda pair.
         - The function uses `jax.lax.scan` for efficient iteration over the lambda pairs.
         - The warm-starting approach helps to improve the stability and convergence of the final fit.
+
     """
     # Initialize matrices
     L_init, X_tilde, Z_tilde, V = initialize_matrices(Y, X, Z, V)
@@ -616,7 +683,15 @@ def final_fit(
         lambda_L_max,
         lambda_H_max,
     ) = initialize_fixed_effects_and_H(
-        Y, L_init, X_tilde, Z_tilde, V, W, use_unit_fe, use_time_fe, verbose=False
+        Y,
+        L_init,
+        X_tilde,
+        Z_tilde,
+        V,
+        W,
+        use_unit_fe,
+        use_time_fe,
+        verbose=False,
     )
 
     lambda_grid = generate_lambda_grid(lambda_L_opt_range, lambda_H_opt_range)

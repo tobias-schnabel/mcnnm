@@ -1,38 +1,39 @@
 # mypy: ignore-errors
 # type: ignore
+
+import jax
 import jax.numpy as jnp
 import numpy as np
-import jax
 from jax import random
-from mcnnm.types import Array
-from typing import Optional, Tuple
-from mcnnm.core_utils import normalize, normalize_back
-from mcnnm.utils import generate_data
+
 from mcnnm.core import (
-    initialize_coefficients,
-    compute_svd,
-    update_unit_fe,
-    update_time_fe,
-    initialize_matrices,
     compute_objective_value,
+    compute_svd,
     compute_Y_hat,
+    fit,
+    initialize_coefficients,
     initialize_fixed_effects_and_H,
+    initialize_matrices,
     svt,
+    update_beta,
     update_H,
     update_L,
-    update_beta,
-    fit,
+    update_time_fe,
+    update_unit_fe,
 )
+from mcnnm.core_utils import normalize, normalize_back
+from mcnnm.types import Array
+from mcnnm.utils import generate_data
 
 key = jax.random.PRNGKey(2024)
 
 
 def initialize_matrices_numpy(
     Y: np.ndarray,
-    X: Optional[np.ndarray],
-    Z: Optional[np.ndarray],
-    V: Optional[np.ndarray],
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    X: np.ndarray | None,
+    Z: np.ndarray | None,
+    V: np.ndarray | None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     N, T = Y.shape
     L = np.zeros_like(Y)
     # Initialize covariates as 0 if not used
@@ -54,14 +55,12 @@ def initialize_matrices_numpy(
 
 def initialize_coefficients_numpy(
     Y: np.ndarray, X_tilde: np.ndarray, Z_tilde: np.ndarray, V: np.ndarray
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     N, T = Y.shape
     gamma = np.zeros(N)  # unit FE coefficients
     delta = np.zeros(T)  # time FE coefficients
 
-    H_tilde = np.zeros(
-        (X_tilde.shape[1], Z_tilde.shape[1])
-    )  # X_tilde and Z_tilde-covariate coefficients
+    H_tilde = np.zeros((X_tilde.shape[1], Z_tilde.shape[1]))  # X_tilde and Z_tilde-covariate coefficients
 
     beta_shape = max(V.shape[2], 1)
     beta = np.zeros((beta_shape,))  # unit-time covariate coefficients
@@ -197,7 +196,7 @@ def compute_Y_hat_numpy(
         decomposition += X @ H[:P, :Q] @ Z.T
     if H.shape[1] > Q:
         decomposition += X @ H[:P, Q:]
-    if P + N <= H.shape[0] and Q > 0:
+    if H.shape[0] >= P + N and Q > 0:
         decomposition += H[P : P + N, :Q] @ Z.T
     decomposition += np.einsum("ntj,j->nt", V, beta)
 
@@ -220,7 +219,7 @@ def compute_objective_value_numpy(
     lambda_H: float,
     use_unit_fe: bool,
     use_time_fe: bool,
-    inv_omega: Optional[Array] = None,
+    inv_omega: Array | None = None,
 ) -> float:
     # Convert all inputs to numpy arrays
     Y = np.array(Y)
@@ -263,9 +262,7 @@ def initialize_fixed_effects_and_H_numpy(
     niter: int = 1000,
     rel_tol: float = 1e-5,
     verbose: bool = False,
-) -> tuple[
-    np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, float, float
-]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, float, float]:
     num_train = np.sum(W)
     in_prod = np.zeros_like(W)
 
@@ -305,9 +302,7 @@ def initialize_fixed_effects_and_H_numpy(
         prev_obj_val = obj_val
         obj_val = new_obj_val
 
-    Y_hat = compute_Y_hat_numpy(
-        L, X_tilde, Z_tilde, V, H_tilde, gamma, delta, beta, use_unit_fe, use_time_fe
-    )
+    Y_hat = compute_Y_hat_numpy(L, X_tilde, Z_tilde, V, H_tilde, gamma, delta, beta, use_unit_fe, use_time_fe)
     masked_error_matrix = mask_observed_numpy(Y - Y_hat, W)
     s = np.linalg.svd(masked_error_matrix, compute_uv=False)
     lambda_L_max = 2.0 * np.max(s) / num_train
@@ -667,9 +662,7 @@ def test_compute_Y_hat():
     # Test with both unit and time fixed effects
     use_unit_fe = True
     use_time_fe = True
-    expected_output = compute_Y_hat_numpy(
-        L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe
-    )
+    expected_output = compute_Y_hat_numpy(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
     output = compute_Y_hat(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
     assert jnp.allclose(output, expected_output)
     assert not jnp.allclose(output, jnp.zeros_like(output))
@@ -677,9 +670,7 @@ def test_compute_Y_hat():
     # Test with only unit fixed effects
     use_unit_fe = True
     use_time_fe = False
-    expected_output = compute_Y_hat_numpy(
-        L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe
-    )
+    expected_output = compute_Y_hat_numpy(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
     output = compute_Y_hat(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
     assert jnp.allclose(output, expected_output)
     assert not jnp.allclose(output, jnp.zeros_like(output))
@@ -687,9 +678,7 @@ def test_compute_Y_hat():
     # Test with only time fixed effects
     use_unit_fe = False
     use_time_fe = True
-    expected_output = compute_Y_hat_numpy(
-        L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe
-    )
+    expected_output = compute_Y_hat_numpy(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
     output = compute_Y_hat(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
     assert jnp.allclose(output, expected_output)
     assert not jnp.allclose(output, jnp.zeros_like(output))
@@ -697,9 +686,7 @@ def test_compute_Y_hat():
     # Test without fixed effects
     use_unit_fe = False
     use_time_fe = False
-    expected_output = compute_Y_hat_numpy(
-        L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe
-    )
+    expected_output = compute_Y_hat_numpy(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
     output = compute_Y_hat(L, X, Z, V, H, gamma, delta, beta, use_unit_fe, use_time_fe)
     assert jnp.allclose(output, expected_output)
     assert not jnp.allclose(output, jnp.zeros_like(output))
@@ -880,31 +867,25 @@ def test_initialize_fixed_effects_and_H():
     # Test case 1: With unit and time fixed effects
     expected_output = initialize_fixed_effects_and_H_numpy(Y, L, X_tilde, Z_tilde, V, W, True, True)
     output = initialize_fixed_effects_and_H(Y, L, X_tilde, Z_tilde, V, W, True, True)
-    for expected, actual in zip(expected_output, output):
+    for expected, actual in zip(expected_output, output, strict=False):
         assert jnp.allclose(actual, expected)
 
     # Test case 2: With unit fixed effects only
-    expected_output = initialize_fixed_effects_and_H_numpy(
-        Y, L, X_tilde, Z_tilde, V, W, True, False
-    )
+    expected_output = initialize_fixed_effects_and_H_numpy(Y, L, X_tilde, Z_tilde, V, W, True, False)
     output = initialize_fixed_effects_and_H(Y, L, X_tilde, Z_tilde, V, W, True, False)
-    for expected, actual in zip(expected_output, output):
+    for expected, actual in zip(expected_output, output, strict=False):
         assert jnp.allclose(actual, expected)
 
     # Test case 3: With time fixed effects only
-    expected_output = initialize_fixed_effects_and_H_numpy(
-        Y, L, X_tilde, Z_tilde, V, W, False, True
-    )
+    expected_output = initialize_fixed_effects_and_H_numpy(Y, L, X_tilde, Z_tilde, V, W, False, True)
     output = initialize_fixed_effects_and_H(Y, L, X_tilde, Z_tilde, V, W, False, True)
-    for expected, actual in zip(expected_output, output):
+    for expected, actual in zip(expected_output, output, strict=False):
         assert jnp.allclose(actual, expected)
 
     # Test case 4: Without unit and time fixed effects
-    expected_output = initialize_fixed_effects_and_H_numpy(
-        Y, L, X_tilde, Z_tilde, V, W, False, False
-    )
+    expected_output = initialize_fixed_effects_and_H_numpy(Y, L, X_tilde, Z_tilde, V, W, False, False)
     output = initialize_fixed_effects_and_H(Y, L, X_tilde, Z_tilde, V, W, False, False)
-    for expected, actual in zip(expected_output, output):
+    for expected, actual in zip(expected_output, output, strict=False):
         assert jnp.allclose(actual, expected)
 
 
@@ -1071,9 +1052,7 @@ def test_update_L_no_regularization():
     beta = random.normal(key, (J,))
     lambda_L = 0.0
 
-    L_upd, S = update_L(
-        Y, X_tilde, Z_tilde, V, H_tilde, W, L, unit_fe, time_fe, beta, lambda_L, True, True
-    )
+    L_upd, S = update_L(Y, X_tilde, Z_tilde, V, H_tilde, W, L, unit_fe, time_fe, beta, lambda_L, True, True)
 
     assert L_upd.shape == L.shape
     assert S.shape == (min(N, T),)
@@ -1099,9 +1078,7 @@ def test_update_L_with_regularization():
     beta = random.normal(key, (J,))
     lambda_L = 0.1
 
-    L_upd, S = update_L(
-        Y, X_tilde, Z_tilde, V, H_tilde, W, L, unit_fe, time_fe, beta, lambda_L, True, True
-    )
+    L_upd, S = update_L(Y, X_tilde, Z_tilde, V, H_tilde, W, L, unit_fe, time_fe, beta, lambda_L, True, True)
 
     assert L_upd.shape == L.shape
     assert S.shape == (min(N, T),)
@@ -1127,9 +1104,7 @@ def test_update_L_without_fixed_effects():
     beta = random.normal(key, (J,))
     lambda_L = 0.1
 
-    L_upd, S = update_L(
-        Y, X_tilde, Z_tilde, V, H_tilde, W, L, unit_fe, time_fe, beta, lambda_L, False, False
-    )
+    L_upd, S = update_L(Y, X_tilde, Z_tilde, V, H_tilde, W, L, unit_fe, time_fe, beta, lambda_L, False, False)
 
     assert L_upd.shape == L.shape
     assert S.shape == (min(N, T),)
@@ -1192,9 +1167,7 @@ def test_fit_happy_path():
     assert not jnp.any(jnp.isnan(in_prod))
 
     # reconstruct Y
-    Y_hat = compute_Y_hat(
-        L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True
-    )
+    Y_hat = compute_Y_hat(L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True)
     assert Y_hat.shape == Y.shape
     assert not jnp.any(jnp.isnan(Y_hat))
     assert not jnp.allclose(Y_hat, jnp.zeros_like(Y_hat))
@@ -1247,9 +1220,7 @@ def test_fit_no_X_covariates():
     assert not jnp.any(jnp.isnan(in_prod))
 
     # reconstruct Y
-    Y_hat = compute_Y_hat(
-        L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True
-    )
+    Y_hat = compute_Y_hat(L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True)
     assert Y_hat.shape == Y.shape
     assert not jnp.any(jnp.isnan(Y_hat))
     assert not jnp.allclose(Y_hat, jnp.zeros_like(Y_hat))
@@ -1302,9 +1273,7 @@ def test_fit_no_Z_covariates():
     assert not jnp.any(jnp.isnan(in_prod))
 
     # reconstruct Y
-    Y_hat = compute_Y_hat(
-        L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True
-    )
+    Y_hat = compute_Y_hat(L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True)
     assert Y_hat.shape == Y.shape
     assert not jnp.any(jnp.isnan(Y_hat))
     assert not jnp.allclose(Y_hat, jnp.zeros_like(Y_hat))
@@ -1357,9 +1326,7 @@ def test_fit_no_V_covariates():
     assert not jnp.any(jnp.isnan(in_prod))
 
     # reconstruct Y
-    Y_hat = compute_Y_hat(
-        L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True
-    )
+    Y_hat = compute_Y_hat(L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True)
     assert Y_hat.shape == Y.shape
     assert not jnp.any(jnp.isnan(Y_hat))
     assert not jnp.allclose(Y_hat, jnp.zeros_like(Y_hat))
@@ -1367,9 +1334,7 @@ def test_fit_no_V_covariates():
 
 def test_fit_no_covariates():
     N, T = 5, 5
-    Y, W, X, Z, V, true_params = generate_data(
-        N, T, X_cov=False, Z_cov=False, V_cov=False, seed=2024
-    )
+    Y, W, X, Z, V, true_params = generate_data(N, T, X_cov=False, Z_cov=False, V_cov=False, seed=2024)
 
     L_out, X_tilde, Z_tilde, V = initialize_matrices(Y, X, Z, V)
 
@@ -1414,9 +1379,7 @@ def test_fit_no_covariates():
     assert not jnp.any(jnp.isnan(in_prod))
 
     # reconstruct Y
-    Y_hat = compute_Y_hat(
-        L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True
-    )
+    Y_hat = compute_Y_hat(L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True)
     assert Y_hat.shape == Y.shape
     assert not jnp.any(jnp.isnan(Y_hat))
     assert not jnp.allclose(Y_hat, jnp.zeros_like(Y_hat))
@@ -1472,9 +1435,7 @@ def test_fit_no_unit_fixed_effects():
     assert not jnp.any(jnp.isnan(in_prod))
 
     # reconstruct Y
-    Y_hat = compute_Y_hat(
-        L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True
-    )
+    Y_hat = compute_Y_hat(L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True)
     assert Y_hat.shape == Y.shape
     assert not jnp.any(jnp.isnan(Y_hat))
     assert not jnp.allclose(Y_hat, jnp.zeros_like(Y_hat))
@@ -1529,9 +1490,7 @@ def test_fit_no_time_fixed_effects():
     assert not jnp.any(jnp.isnan(in_prod))
 
     # reconstruct Y
-    Y_hat = compute_Y_hat(
-        L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True
-    )
+    Y_hat = compute_Y_hat(L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True)
     assert Y_hat.shape == Y.shape
     assert not jnp.any(jnp.isnan(Y_hat))
     assert not jnp.allclose(Y_hat, jnp.zeros_like(Y_hat))
@@ -1539,9 +1498,7 @@ def test_fit_no_time_fixed_effects():
 
 def test_fit_no_fixed_effects():  # TODO: Fix fit function to handle this case
     N, T = 5, 5
-    Y, W, X, Z, V, true_params = generate_data(
-        N, T, unit_fe=False, time_fe=False, seed=2024, noise_scale=0.1
-    )
+    Y, W, X, Z, V, true_params = generate_data(N, T, unit_fe=False, time_fe=False, seed=2024, noise_scale=0.1)
 
     L_out, X_tilde, Z_tilde, V = initialize_matrices(Y, X, Z, V)
 
@@ -1595,9 +1552,7 @@ def test_fit_no_fixed_effects():  # TODO: Fix fit function to handle this case
     # assert not jnp.any(jnp.isnan(in_prod))
 
     # reconstruct Y
-    Y_hat = compute_Y_hat(
-        L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True
-    )
+    Y_hat = compute_Y_hat(L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, True, True)
     assert Y_hat.shape == Y.shape
     # assert not jnp.any(jnp.isnan(Y_hat))
     assert not jnp.allclose(Y_hat, jnp.zeros_like(Y_hat))
@@ -1668,9 +1623,7 @@ def test_fit_no_fixed_effects_no_covariates():
     assert not jnp.any(jnp.isnan(in_prod))
 
     # reconstruct Y
-    Y_hat = compute_Y_hat(
-        L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, False, False
-    )
+    Y_hat = compute_Y_hat(L_out, X_tilde, Z_tilde, V, H_out, gamma_out, delta_out, beta_out, False, False)
     assert Y_hat.shape == Y.shape
     assert not jnp.any(jnp.isnan(Y_hat))
     # assert not jnp.allclose(Y_hat, jnp.zeros_like(Y_hat))

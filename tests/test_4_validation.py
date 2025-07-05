@@ -1,11 +1,11 @@
-import pytest
 import jax.numpy as jnp
+import pytest
 
 from mcnnm.utils import (
     generate_data,
     generate_holdout_val_defaults,
 )
-from mcnnm.validation import cross_validate, holdout_validate, final_fit
+from mcnnm.validation import cross_validate, final_fit, holdout_validate
 
 
 @pytest.mark.parametrize("N, T", [(10, 10)])

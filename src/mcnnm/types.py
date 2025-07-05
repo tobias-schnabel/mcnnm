@@ -1,5 +1,6 @@
+from typing import TypeAlias
+
 import jax
-from typing import Union, TypeAlias
 
 Array: TypeAlias = jax.Array
-Scalar: TypeAlias = Union[float, int, Array]
+Scalar: TypeAlias = float | int | Array

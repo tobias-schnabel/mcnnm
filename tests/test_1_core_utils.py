@@ -1,10 +1,18 @@
-import pytest
-import jax.numpy as jnp
-from mcnnm.core_utils import is_positive_definite
-from mcnnm.core_utils import mask_observed, mask_unobserved, frobenius_norm, nuclear_norm
-from mcnnm.core_utils import element_wise_l1_norm, normalize, normalize_back
 import jax
+import jax.numpy as jnp
+import pytest
 from jax import random
+
+from mcnnm.core_utils import (
+    element_wise_l1_norm,
+    frobenius_norm,
+    is_positive_definite,
+    mask_observed,
+    mask_unobserved,
+    normalize,
+    normalize_back,
+    nuclear_norm,
+)
 
 key = jax.random.PRNGKey(2024)
 

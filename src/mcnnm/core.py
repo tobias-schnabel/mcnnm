@@ -1,20 +1,18 @@
-from typing import Tuple, Optional, cast
+from typing import cast
 
 import jax
 import jax.debug as jdb
 import jax.numpy as jnp
 from jax import jit, lax
 
-from .core_utils import mask_observed, element_wise_l1_norm, is_positive_definite
+from .core_utils import element_wise_l1_norm, is_positive_definite, mask_observed
 from .types import Array, Scalar
 
 jax.config.update("jax_enable_x64", True)
 
 
 @jit
-def initialize_coefficients(
-    Y: Array, X_tilde: Array, Z_tilde: Array, V: Array
-) -> Tuple[Array, Array, Array, Array]:
+def initialize_coefficients(Y: Array, X_tilde: Array, Z_tilde: Array, V: Array) -> tuple[Array, Array, Array, Array]:
     """
     Initialize covariate and fixed effects coefficients for the MC-NNM model.
 
@@ -35,9 +33,7 @@ def initialize_coefficients(
     gamma = jnp.zeros(N)  # unit FE coefficients
     delta = jnp.zeros(T)  # time FE coefficients
 
-    H_tilde = jnp.zeros(
-        (X_tilde.shape[1], Z_tilde.shape[1])
-    )  # X_tilde and Z_tilde covariate coefficients
+    H_tilde = jnp.zeros((X_tilde.shape[1], Z_tilde.shape[1]))  # X_tilde and Z_tilde covariate coefficients
 
     beta_shape = max(V.shape[2], 0)
     beta = jnp.zeros((beta_shape,))  # unit-time covariate coefficients
@@ -48,10 +44,10 @@ def initialize_coefficients(
 @jit
 def initialize_matrices(
     Y: Array,
-    X: Optional[Array],
-    Z: Optional[Array],
-    V: Optional[Array],
-) -> Tuple[Array, Array, Array, Array]:
+    X: Array | None,
+    Z: Array | None,
+    V: Array | None,
+) -> tuple[Array, Array, Array, Array]:
     """
     Initialize the matrices for the MC-NNM model.
 
@@ -92,7 +88,7 @@ def initialize_matrices(
 
 
 @jit
-def compute_svd(M: Array) -> Tuple[Array, Array, Array]:
+def compute_svd(M: Array) -> tuple[Array, Array, Array]:
     """
     Compute the Singular Value Decomposition (SVD) of the input matrix M.
     Return the left singular vectors (U), right singular vectors (V), and singular values (Sigma).
@@ -389,7 +385,7 @@ def compute_Y_hat(
         Y_hat += X_tilde @ H_tilde[:P, :Q] @ Z_tilde.T
     if H_tilde.shape[1] > Q:
         Y_hat += X_tilde @ H_tilde[:P, Q:]
-    if P + N <= H_tilde.shape[0] and Q > 0:
+    if H_tilde.shape[0] >= P + N and Q > 0:
         Y_hat += H_tilde[P : P + N, :Q] @ Z_tilde.T
     V_beta_term = jnp.einsum("ntj,j->nt", V, beta)
     Y_hat += V_beta_term
@@ -413,7 +409,7 @@ def compute_objective_value(
     lambda_H: Scalar,
     use_unit_fe: bool,
     use_time_fe: bool,
-    inv_omega: Optional[Array] = None,
+    inv_omega: Array | None = None,
 ) -> Scalar:
     r"""
     Compute the objective value for the MC-NNM model with covariates, fixed effects,
@@ -477,9 +473,7 @@ def compute_objective_value(
     train_size = jnp.sum(W)
     norm_H = element_wise_l1_norm(H_tilde)
 
-    Y_hat = compute_Y_hat(
-        L, X_tilde, Z_tilde, V, H_tilde, gamma, delta, beta, use_unit_fe, use_time_fe
-    )
+    Y_hat = compute_Y_hat(L, X_tilde, Z_tilde, V, H_tilde, gamma, delta, beta, use_unit_fe, use_time_fe)
     error_matrix = Y_hat - Y
 
     if inv_omega is None:
@@ -599,13 +593,11 @@ def initialize_fixed_effects_and_H(
     init_val = (1e10, 1e10, gamma, delta, 0)
     obj_val, _, gamma, delta, _ = lax.while_loop(cond_fun, body_fun, init_val)
 
-    Y_hat = compute_Y_hat(
-        L, X_tilde, Z_tilde, V, H_tilde, gamma, delta, beta, use_unit_fe, use_time_fe
-    )
+    Y_hat = compute_Y_hat(L, X_tilde, Z_tilde, V, H_tilde, gamma, delta, beta, use_unit_fe, use_time_fe)
     masked_error_matrix = mask_observed(Y - Y_hat, W)
     s = jnp.linalg.svd(masked_error_matrix, compute_uv=False)
     lambda_L_max = 2.0 * jnp.max(s) / num_train
-    lambda_L_max = cast(Scalar, lambda_L_max)  # type: ignore[assignment]
+    lambda_L_max = cast("Scalar", lambda_L_max)  # type: ignore[assignment]
 
     T_mat = jnp.zeros((Y.size, H_rows * H_cols))
 
@@ -621,7 +613,7 @@ def initialize_fixed_effects_and_H(
     P_omega_resh = masked_error_matrix.ravel()
     all_Vs = jnp.dot(T_mat.T, P_omega_resh) / jnp.sqrt(num_train)
     lambda_H_max = 2 * jnp.max(jnp.abs(all_Vs))
-    lambda_H_max = cast(Scalar, lambda_H_max)  # type: ignore[assignment]
+    lambda_H_max = cast("Scalar", lambda_H_max)  # type: ignore[assignment]
 
     # Truncate the value to 5 decimal places for printing
     truncated_ov = jnp.round(obj_val, decimals=5)
@@ -654,7 +646,7 @@ def update_H(
     lambda_H: Scalar,
     use_unit_fe: bool,
     use_time_fe: bool,
-) -> Tuple[Array, Array]:
+) -> tuple[Array, Array]:
     """
     Update the covariate coefficients matrix H_tilde in the coordinate descent algorithm.
 
@@ -689,9 +681,7 @@ def update_H(
     num_observed = jnp.sum(W)
 
     # Compute the current predicted outcomes
-    Y_hat = compute_Y_hat(
-        L, X_tilde, Z_tilde, V, H_tilde, unit_fe, time_fe, beta, use_unit_fe, use_time_fe
-    )
+    Y_hat = compute_Y_hat(L, X_tilde, Z_tilde, V, H_tilde, unit_fe, time_fe, beta, use_unit_fe, use_time_fe)
 
     # Compute the residuals
     error_matrix = Y - Y_hat
@@ -722,9 +712,7 @@ def update_H(
                     (
                         2
                         * jnp.dot(
-                            residuals_flat
-                            - current_in_prod_flat
-                            + T_mat[:, idx] * current_coeffs[idx],
+                            residuals_flat - current_in_prod_flat + T_mat[:, idx] * current_coeffs[idx],
                             T_mat[:, idx],
                         )
                         - lambda_H
@@ -736,9 +724,7 @@ def update_H(
                     (
                         -2
                         * jnp.dot(
-                            residuals_flat
-                            - current_in_prod_flat
-                            + T_mat[:, idx] * current_coeffs[idx],
+                            residuals_flat - current_in_prod_flat + T_mat[:, idx] * current_coeffs[idx],
                             T_mat[:, idx],
                         )
                         - lambda_H
@@ -751,9 +737,7 @@ def update_H(
         )
 
         # Update the inner product
-        current_in_prod += (new_coeff - current_coeffs[idx]) * T_mat[:, idx].reshape(
-            current_in_prod.shape
-        )
+        current_in_prod += (new_coeff - current_coeffs[idx]) * T_mat[:, idx].reshape(current_in_prod.shape)
         current_coeffs = current_coeffs.at[idx].set(new_coeff)
         return (current_in_prod, current_coeffs), None
 
@@ -794,7 +778,7 @@ def update_L(
     lambda_L: Scalar,
     use_unit_fe: bool,
     use_time_fe: bool,
-) -> Tuple[Array, Array]:
+) -> tuple[Array, Array]:
     """
     Update the low-rank matrix L in the coordinate descent algorithm.
 
@@ -821,9 +805,7 @@ def update_L(
 
     # Compute the current predicted outcomes
 
-    Y_hat = compute_Y_hat(
-        L, X_tilde, Z_tilde, V, H_tilde, unit_fe, time_fe, beta, use_unit_fe, use_time_fe
-    )
+    Y_hat = compute_Y_hat(L, X_tilde, Z_tilde, V, H_tilde, unit_fe, time_fe, beta, use_unit_fe, use_time_fe)
 
     # Calculate the residuals (observed - predicted)
     residuals = Y - Y_hat
@@ -866,12 +848,12 @@ def fit(
     lambda_H: Scalar,
     use_unit_fe: bool,
     use_time_fe: bool,
-    Omega_inv: Optional[Array] = None,
+    Omega_inv: Array | None = None,
     niter: int = 1000,
     rel_tol: float = 1e-5,
     verbose: bool = False,
     print_iters: bool = False,
-) -> Tuple[Array, Array, Array, Array, Array, Array, Scalar]:
+) -> tuple[Array, Array, Array, Array, Array, Array, Scalar]:
     """
     Perform cyclic coordinate descent to estimate the MC-NNM model parameters.
 
@@ -963,8 +945,7 @@ def fit(
             jnp.inf,
         )
         return lax.cond(
-            (rel_error < rel_tol)
-            & (rel_error > -0.5),  # Allow for slightly negative relative error
+            (rel_error < rel_tol) & (rel_error > -0.5),  # Allow for slightly negative relative error
             lambda _: False,
             lambda _: carry[-1] < niter,
             None,
@@ -1050,9 +1031,7 @@ def fit(
         in_prod,
         0,
     )  # TODO: improve initialization
-    obj_val, _, gamma, delta, beta, L, H, in_prod, term_iter = lax.while_loop(
-        cond_fun, body_fun, init_val
-    )
+    obj_val, _, gamma, delta, beta, L, H, in_prod, term_iter = lax.while_loop(cond_fun, body_fun, init_val)
 
     # lax.cond(
     #     term_iter == niter,

@@ -1,4 +1,5 @@
-from typing import Optional, Tuple, List, Literal, Dict
+from typing import Literal
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -12,42 +13,42 @@ jax.config.update("jax_enable_x64", True)
 def convert_inputs(
     Y: pd.DataFrame,
     W: pd.DataFrame,
-    X: Optional[pd.DataFrame] = None,
-    Z: Optional[pd.DataFrame] = None,
-    V: Optional[List[pd.DataFrame]] = None,
-    Omega: Optional[pd.DataFrame] = None,
-) -> Tuple[
+    X: pd.DataFrame | None = None,
+    Z: pd.DataFrame | None = None,
+    V: list[pd.DataFrame] | None = None,
+    Omega: pd.DataFrame | None = None,
+) -> tuple[
     jnp.ndarray,
     jnp.ndarray,
-    Optional[jnp.ndarray],
-    Optional[jnp.ndarray],
-    Optional[jnp.ndarray],
-    Optional[jnp.ndarray],
+    jnp.ndarray | None,
+    jnp.ndarray | None,
+    jnp.ndarray | None,
+    jnp.ndarray | None,
 ]:
     """
     Convert input DataFrames to JAX arrays for the MC-NNM model.
     """
-    Y = jnp.array(Y.values)
-    W = jnp.array(W.values)
-    N, T = Y.shape
+    Y_arr = jnp.array(Y.values)
+    W_arr = jnp.array(W.values)
+    N, T = Y_arr.shape
 
-    X_arr: Optional[jnp.ndarray] = None
-    Z_arr: Optional[jnp.ndarray] = None
-    V_arr: Optional[jnp.ndarray] = None
-    Omega_arr: Optional[jnp.ndarray] = None
+    X_arr: jnp.ndarray | None = None
+    Z_arr: jnp.ndarray | None = None
+    V_arr: jnp.ndarray | None = None
+    Omega_arr: jnp.ndarray | None = None
 
     if X is not None:
         X_arr = jnp.array(X.values)
         if X_arr.shape[0] != N:
             raise ValueError(
-                f"The first dimension of X ({X_arr.shape[0]}) must match the first dimension of Y ({N})."
+                f"The first dimension of X ({X_arr.shape[0]}) must match the first dimension of Y ({N}).",
             )
 
     if Z is not None:
         Z_arr = jnp.array(Z.values)
         if Z_arr.shape[0] != T:
             raise ValueError(
-                f"The first dimension of Z ({Z_arr.shape[0]}) must match the second dimension of Y ({T})."
+                f"The first dimension of Z ({Z_arr.shape[0]}) must match the second dimension of Y ({T}).",
             )
 
     if V is not None:
@@ -63,17 +64,17 @@ def convert_inputs(
         if Omega_arr.shape != (T, T):
             raise ValueError(f"The shape of Omega ({Omega_arr.shape}) must be ({T}, {T}).")
 
-    return Y, W, X_arr, Z_arr, V_arr, Omega_arr
+    return Y_arr, W_arr, X_arr, Z_arr, V_arr, Omega_arr
 
 
 def check_inputs(
     Y: Array,
     W: Array,
-    X: Optional[Array] = None,
-    Z: Optional[Array] = None,
-    V: Optional[Array] = None,
-    Omega: Optional[Array] = None,
-) -> Tuple[Array, Array, Array, Array]:
+    X: Array | None = None,
+    Z: Array | None = None,
+    V: Array | None = None,
+    Omega: Array | None = None,
+) -> tuple[Array, Array, Array, Array]:
     """
     Check and preprocess input arrays for the MC-NNM model.
 
@@ -90,6 +91,7 @@ def check_inputs(
 
     Raises:
         ValueError: If the input array dimensions are mismatched or invalid.
+
     """
     N, T = Y.shape
 
@@ -102,7 +104,7 @@ def check_inputs(
     if X is not None:
         if X.shape[0] != N:
             raise ValueError(
-                f"The first dimension of X ({X.shape[0]}) must match the first dimension of Y ({N})."
+                f"The first dimension of X ({X.shape[0]}) must match the first dimension of Y ({N}).",
             )
     else:
         X = jnp.zeros((N, 0))
@@ -110,7 +112,7 @@ def check_inputs(
     if Z is not None:
         if Z.shape[0] != T:
             raise ValueError(
-                f"The first dimension of Z ({Z.shape[0]}) must match the second dimension of Y ({T})."
+                f"The first dimension of Z ({Z.shape[0]}) must match the second dimension of Y ({T}).",
             )
     else:
         Z = jnp.zeros((T, 0))
@@ -118,7 +120,7 @@ def check_inputs(
     if V is not None:
         if V.shape[:2] != (N, T):
             raise ValueError(
-                f"The first two dimensions of V ({V.shape[:2]}) must match the shape of Y ({Y.shape})."
+                f"The first two dimensions of V ({V.shape[:2]}) must match the shape of Y ({Y.shape}).",
             )
     else:
         V = jnp.zeros((N, T, 1))  # Add a dummy dimension if V is None, otherwise causes issues
@@ -148,19 +150,23 @@ def generate_data(
     covariates_scale: float = 0.5,
     noise_scale: float = 1,
     assignment_mechanism: Literal[
-        "staggered", "block", "single_treated_period", "single_treated_unit", "last_periods"
+        "staggered",
+        "block",
+        "single_treated_period",
+        "single_treated_unit",
+        "last_periods",
     ] = "last_periods",
     treated_fraction: float = 0.2,
     last_treated_periods: int = 2,
     autocorrelation: float = 0.0,
-    seed: Optional[int] = None,
-) -> Tuple[
+    seed: int | None = None,
+) -> tuple[
     jnp.ndarray,
     jnp.ndarray,
-    Optional[jnp.ndarray],
-    Optional[jnp.ndarray],
-    Optional[jnp.ndarray],
-    Dict,
+    jnp.ndarray | None,
+    jnp.ndarray | None,
+    jnp.ndarray | None,
+    dict,
 ]:
     if seed is not None:
         np.random.seed(seed)
@@ -175,9 +181,7 @@ def generate_data(
 
     # Generate fixed effects
     unit_fe_values = np.random.normal(0, fixed_effects_scale, nobs) if unit_fe else np.zeros(nobs)
-    time_fe_values = (
-        np.random.normal(0, fixed_effects_scale, nperiods) if time_fe else np.zeros(nperiods)
-    )
+    time_fe_values = np.random.normal(0, fixed_effects_scale, nperiods) if time_fe else np.zeros(nperiods)
 
     # generate random offsets to y_mean
     X_mean = Y_mean - np.random.normal(2, 1)
@@ -202,7 +206,8 @@ def generate_data(
         errors[i, 0] = np.random.normal(0, noise_scale)
         for t in range(1, nperiods):
             errors[i, t] = autocorrelation * errors[i, t - 1] + np.random.normal(
-                0, noise_scale * np.sqrt(1 - autocorrelation**2)
+                0,
+                noise_scale * np.sqrt(1 - autocorrelation**2),
             )
 
     # Generate outcome
@@ -223,9 +228,7 @@ def generate_data(
         min_adoption_time = nperiods // 4  # Earliest possible adoption time
 
         # Generate adoption times starting from min_adoption_time
-        adoption_times = (
-            np.random.geometric(p=treatment_probability, size=nobs) + min_adoption_time - 1
-        )
+        adoption_times = np.random.geometric(p=treatment_probability, size=nobs) + min_adoption_time - 1
 
         for i in range(nobs):  # pragma: no cover
             if adoption_times[i] < nperiods:
@@ -279,7 +282,9 @@ def generate_data(
 
 
 def propose_lambda_values(
-    max_lambda: Scalar, min_lambda: Optional[Scalar] = None, n_lambdas: int = 6
+    max_lambda: Scalar,
+    min_lambda: Scalar | None = None,
+    n_lambdas: int = 6,
 ) -> Array:
     """
     Creates a decreasing, log-spaced list of proposed lambda values between max_lambda and min_lambda,
@@ -295,6 +300,7 @@ def propose_lambda_values(
 
     Raises:
         ValueError: If max_lambda is smaller than the default minimum lambda value (1e-10).
+
     """
     min_log_lambda = jnp.log10(max_lambda) - 3 if min_lambda is None else jnp.log10(min_lambda)
     max_log_lambda = jnp.log10(max_lambda)
@@ -304,7 +310,7 @@ def propose_lambda_values(
 
     if max_log_lambda < -10:
         raise ValueError(
-            f"max_lambda ({max_lambda}) is too small. It should be greater than or equal to 1e-10."
+            f"max_lambda ({max_lambda}) is too small. It should be greater than or equal to 1e-10.",
         )
     if n_lambdas < 2:
         raise ValueError("n_lambdas must be greater than or equal to 2.")
@@ -330,10 +336,9 @@ def generate_lambda_grid(lambda_L_values: Array, lambda_H_values: Array) -> jnp.
 
     Returns:
         jnp.ndarray: A 2D array where each row represents a pair of lambda values (lambda_L, lambda_H).
+
     """
-    lambda_grid = (
-        jnp.array(jnp.meshgrid(lambda_L_values, lambda_H_values, indexing="ij")).reshape(2, -1).T
-    )
+    lambda_grid = jnp.array(jnp.meshgrid(lambda_L_values, lambda_H_values, indexing="ij")).reshape(2, -1).T
     return lambda_grid
 
 
@@ -350,6 +355,7 @@ def extract_shortest_path(lambda_grid):
 
     Returns:
         jnp.ndarray: A 2D array containing the lambda pairs along the shortest path.
+
     """
     # Get unique lambda values
     unique_lambda_L = jnp.unique(lambda_grid[:, 0])
@@ -388,6 +394,7 @@ def generate_holdout_val_defaults(Y: Array):
             - initial_window (int): Number of initial time periods to use for the first training set.
             - step_size (int): Number of time periods to move forward for each split.
             - horizon (int): Number of future time periods to predict (forecast horizon).
+
     """
     N, T = Y.shape
     T = int(T)
@@ -405,9 +412,9 @@ def validate_holdout_config(
     step_size: int,
     horizon: int,
     K: int,
-    max_window_size: Optional[int],
+    max_window_size: int | None,
     T: int,
-) -> Tuple[int, int, int, int, Optional[int]]:
+) -> tuple[int, int, int, int, int | None]:
     """
     Validate the configuration of initial_window, step_size, horizon, K, and max_window_size for holdout validation.
 
@@ -446,7 +453,7 @@ def validate_holdout_config(
         total_steps = initial_window + (K - 1) * step_size + horizon
         if total_steps > T:
             raise ValueError(
-                "Cannot generate a valid holdout configuration. Please adjust the parameters manually."
+                "Cannot generate a valid holdout configuration. Please adjust the parameters manually.",
             )
 
     if max_window_size is not None and max_window_size < horizon:
@@ -459,7 +466,7 @@ def validate_holdout_config(
         end_index = start_index + step_size
         if end_index > T:
             raise ValueError(  # pragma: no cover
-                "The holdout folds are overlapping. Please adjust the step_size or reduce the number of folds (K)."
+                "The holdout folds are overlapping. Please adjust the step_size or reduce the number of folds (K).",
             )
 
     return initial_window, step_size, horizon, K, max_window_size
