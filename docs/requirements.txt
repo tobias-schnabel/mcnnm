@@ -2,5 +2,6 @@ sphinx
 sphinx-book-theme
 jax
 numpy
+pandas
 sphinx-autodoc-typehints
 sphinx-tabs
